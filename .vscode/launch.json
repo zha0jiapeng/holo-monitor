@@ -1,0 +1,99 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "启动 DromaraApplication (主应用)",
+            "request": "launch",
+            "mainClass": "org.dromara.DromaraApplication",
+            "projectName": "ruoyi-admin",
+            "args": [],
+            "vmArgs": [
+                "-Dfile.encoding=UTF-8",
+                "-Duser.language=zh",
+                "-Duser.country=CN",
+                "-Dconsole.encoding=UTF-8",
+                "-Djava.nio.charset.Charset=UTF-8",
+                "-Duser.timezone=Asia/Shanghai",
+                "-Xms512m",
+                "-Xmx1024m",
+                "-XX:MetaspaceSize=128m",
+                "-XX:MaxMetaspaceSize=512m",
+                "-XX:+HeapDumpOnOutOfMemoryError"
+            ],
+            "env": {
+                "SPRING_PROFILES_ACTIVE": "dev"
+            },
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "java",
+            "name": "启动 DromaraApplication (生产环境)",
+            "request": "launch",
+            "mainClass": "org.dromara.DromaraApplication",
+            "projectName": "ruoyi-admin",
+            "args": [],
+            "vmArgs": [
+                "-Dfile.encoding=UTF-8",
+                "-Duser.language=zh",
+                "-Duser.country=CN",
+                "-Dconsole.encoding=UTF-8",
+                "-Djava.nio.charset.Charset=UTF-8",
+                "-Duser.timezone=Asia/Shanghai",
+                "-Xms1024m",
+                "-Xmx2048m",
+                "-XX:MetaspaceSize=256m",
+                "-XX:MaxMetaspaceSize=512m",
+                "-XX:+HeapDumpOnOutOfMemoryError",
+                "-XX:+UseZGC"
+            ],
+            "env": {
+                "SPRING_PROFILES_ACTIVE": "prod"
+            },
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "java",
+            "name": "启动 SnailJob 服务器",
+            "request": "launch",
+            "mainClass": "org.dromara.snailjob.SnailJobServerApplication",
+            "projectName": "ruoyi-snailjob-server",
+            "args": [],
+            "vmArgs": [
+                "-Dfile.encoding=UTF-8",
+                "-Duser.language=zh",
+                "-Duser.country=CN",
+                "-Dconsole.encoding=UTF-8",
+                "-Duser.timezone=Asia/Shanghai",
+                "-Xms256m",
+                "-Xmx512m"
+            ],
+            "env": {
+                "SPRING_PROFILES_ACTIVE": "dev"
+            },
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "java",
+            "name": "启动 Monitor Admin",
+            "request": "launch",
+            "mainClass": "org.dromara.monitor.MonitorAdminApplication",
+            "projectName": "ruoyi-monitor-admin",
+            "args": [],
+            "vmArgs": [
+                "-Dfile.encoding=UTF-8",
+                "-Duser.language=zh",
+                "-Duser.country=CN",
+                "-Dconsole.encoding=UTF-8",
+                "-Duser.timezone=Asia/Shanghai",
+                "-Xms256m",
+                "-Xmx512m"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
