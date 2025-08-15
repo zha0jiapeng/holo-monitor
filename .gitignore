@@ -46,6 +46,4 @@ nbdist/
 !*/build/*.xml
 
 .flattened-pom.xml
-/ruoyi-extend/*
-/ruoyi-extend/ruoyi-rustfs/rustfs/data/**
 
