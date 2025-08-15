@@ -229,6 +229,12 @@ thread-pool:
   # 线程池维护线程所允许的空闲时间
   keepAliveSeconds: 300
 
+# 文件上传配置
+file:
+  upload:
+    # 是否使用原文件名 (true: 使用原文件名, false: 使用UUID生成文件名)
+    use-original-name: true
+
 --- # 分布式锁 lock4j 全局配置
 lock4j:
   # 获取分布式锁超时时间，默认为 3000 毫秒

@@ -24,6 +24,7 @@ import org.dromara.common.oss.core.OssClient;
 import org.dromara.common.oss.entity.UploadResult;
 import org.dromara.common.oss.enums.AccessPolicyType;
 import org.dromara.common.oss.factory.OssFactory;
+import org.dromara.common.oss.properties.FileUploadProperties;
 import org.dromara.system.domain.SysOss;
 import org.dromara.system.domain.bo.SysOssBo;
 import org.dromara.system.domain.vo.SysOssVo;
@@ -53,6 +54,7 @@ import java.util.Map;
 public class SysOssServiceImpl implements ISysOssService, OssService {
 
     private final SysOssMapper baseMapper;
+    private final FileUploadProperties fileUploadProperties;
 
     /**
      * 查询OSS对象存储列表
@@ -210,7 +212,14 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
             }
             
             // 文件不存在，执行上传
-            UploadResult uploadResult = storage.uploadSuffix(fileBytes, suffix, file.getContentType());
+            UploadResult uploadResult;
+            if (Boolean.TRUE.equals(fileUploadProperties.getUseOriginalName())) {
+                // 使用原文件名上传
+                uploadResult = storage.uploadWithOriginalName(fileBytes, originalfileName, file.getContentType());
+            } else {
+                // 使用UUID生成文件名上传
+                uploadResult = storage.uploadSuffix(fileBytes, suffix, file.getContentType());
+            }
             
             // 保存文件信息（包含哈希值）
             return buildResultEntity(originalfileName, suffix, storage.getConfigKey(), uploadResult, fileHash);
@@ -244,7 +253,14 @@ public class SysOssServiceImpl implements ISysOssService, OssService {
         }
         
         // 文件不存在，执行上传
-        UploadResult uploadResult = storage.uploadSuffix(file, suffix);
+        UploadResult uploadResult;
+        if (Boolean.TRUE.equals(fileUploadProperties.getUseOriginalName())) {
+            // 使用原文件名上传
+            uploadResult = storage.uploadWithOriginalName(file);
+        } else {
+            // 使用UUID生成文件名上传
+            uploadResult = storage.uploadSuffix(file, suffix);
+        }
         
         // 保存文件信息（包含哈希值）
         return buildResultEntity(originalfileName, suffix, storage.getConfigKey(), uploadResult, fileHash);

@@ -339,6 +339,30 @@ public class OssClient {
     }
 
     /**
+     * 上传 byte[] 数据到 Amazon S3，使用原文件名构造对象键
+     *
+     * @param data         要上传的 byte[] 数据
+     * @param originalName 原文件名
+     * @param contentType  文件内容类型
+     * @return UploadResult 包含上传后的文件信息
+     * @throws OssException 如果上传失败，抛出自定义异常
+     */
+    public UploadResult uploadWithOriginalName(byte[] data, String originalName, String contentType) {
+        return upload(new ByteArrayInputStream(data), getPathWithOriginalName(properties.getPrefix(), originalName), Long.valueOf(data.length), contentType);
+    }
+
+    /**
+     * 上传文件到 Amazon S3，使用原文件名构造对象键
+     *
+     * @param file 要上传的文件
+     * @return UploadResult 包含上传后的文件信息
+     * @throws OssException 如果上传失败，抛出自定义异常
+     */
+    public UploadResult uploadWithOriginalName(File file) {
+        return upload(file.toPath(), getPathWithOriginalName(properties.getPrefix(), file.getName()), null, FileUtils.getMimeType(file.getName()));
+    }
+
+    /**
      * 获取文件输入流
      *
      * @param path 完整文件路径
@@ -444,6 +468,22 @@ public class OssClient {
         String path = StringUtils.isNotEmpty(prefix) ?
             prefix + StringUtils.SLASH + datePath + StringUtils.SLASH + uuid : datePath + StringUtils.SLASH + uuid;
         return path + suffix;
+    }
+
+    /**
+     * 生成使用原文件名的文件路径，通过使用日期路径和原文件名来组织文件
+     *
+     * @param prefix       前缀
+     * @param originalName 原文件名
+     * @return 文件路径
+     */
+    public String getPathWithOriginalName(String prefix, String originalName) {
+        // 生成日期路径
+        String datePath = DateUtils.datePath();
+        // 拼接路径
+        String path = StringUtils.isNotEmpty(prefix) ?
+            prefix + StringUtils.SLASH + datePath + StringUtils.SLASH + originalName : datePath + StringUtils.SLASH + originalName;
+        return path;
     }
 
     /**
