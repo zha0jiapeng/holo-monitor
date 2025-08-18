@@ -80,19 +80,21 @@ spring:
 #          password: root
       hikari:
         # 最大连接池数量
-        maxPoolSize: 20
+        maxPoolSize: 30
         # 最小空闲线程数量
-        minIdle: 10
+        minIdle: 15
         # 配置获取连接等待超时的时间
-        connectionTimeout: 30000
+        connectionTimeout: 60000
         # 校验超时时间
-        validationTimeout: 5000
+        validationTimeout: 10000
         # 空闲连接存活最大时间，默认10分钟
-        idleTimeout: 600000
+        idleTimeout: 1200000
         # 此属性控制池中连接的最长生命周期，值0表示无限生命周期，默认30分钟
-        maxLifetime: 1800000
+        maxLifetime: 3600000
         # 多久检查一次连接的活性
-        keepaliveTime: 30000
+        keepaliveTime: 60000
+        # 连接泄漏检测
+        leakDetectionThreshold: 300000
 
 --- # redis 单机配置(单机与集群只能开启一个另一个需要注释掉)
 spring.data:

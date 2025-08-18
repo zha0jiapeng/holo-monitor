@@ -48,6 +48,11 @@ public class TestPointBo extends BaseEntity {
     //@NotBlank(message = "测点名称不能为空", groups = {AddGroup.class, EditGroup.class})
     private String kksName;
 
+    private Integer mt;
+
+
+    private Integer type;
+
     /**
      * 最近幅值
      */

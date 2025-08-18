@@ -18,6 +18,7 @@ import org.dromara.common.log.enums.BusinessType;
 import org.dromara.hm.domain.TestPoint;
 import org.dromara.hm.domain.bo.TestPointBo;
 import org.dromara.hm.domain.vo.TestPointVo;
+import org.dromara.hm.enums.TestPointTypeEnum;
 import org.dromara.hm.service.ITestPointService;
 import lombok.RequiredArgsConstructor;
 import org.dromara.hm.validate.BindGroup;
@@ -83,6 +84,16 @@ public class TestPointController extends BaseController {
     public R<TestPointVo> getByKksCode(@NotNull(message = "KKS编码不能为空")
                                      @PathVariable("kksCode") String kksCode) {
         return R.ok(testPointService.queryByKksCode(kksCode));
+    }
+
+    /**
+     * 获取测点类型映射列表
+     */
+    @SaCheckPermission("hm:testpoint:list")
+    @GetMapping("/types")
+    public R<Map<Integer, String>> getTestPointTypes() {
+        Map<Integer, String> typeMap = TestPointTypeEnum.getTypeMap();
+        return R.ok(typeMap);
     }
 
     /**
@@ -167,8 +178,6 @@ public class TestPointController extends BaseController {
     public R<Void> unbind(@RequestBody List<Long> ids) {
         return toAjax(testPointService.unbind(ids));
     }
-
-
 
     /**
      * 删除测点

@@ -1,5 +1,6 @@
 package org.dromara.hm.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.TestPoint;
@@ -88,12 +89,12 @@ public interface ITestPointService {
     TestPointVo queryByKksCode(String kksCode);
 
     /**
-     * 从JSON数据批量导入所有测点（从JSON中解析equipmentId）
+     * 从JSON数据导入单个测点
      *
-     * @param jsonData JSON数据
+     * @param testPointJson 单个测点的JSON数据
      * @return 导入结果
      */
-    Boolean importFromJson(String jsonData);
+    Boolean importFromJson(JsonNode testPointJson);
 
 
     Boolean unbind(List<Long> testPointIds);

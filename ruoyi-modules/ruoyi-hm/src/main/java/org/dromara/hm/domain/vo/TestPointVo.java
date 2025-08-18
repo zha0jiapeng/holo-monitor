@@ -59,6 +59,14 @@ public class TestPointVo implements Serializable {
     @ExcelProperty(value = "测点名称")
     private String kksName;
 
+    @ExcelRequired
+    @ExcelProperty(value = "测点具体类型")
+    private Integer mt;
+
+    @ExcelRequired
+    @ExcelProperty(value = "测点类型")
+    private Integer type;
+
     /**
      * 最近幅值
      */

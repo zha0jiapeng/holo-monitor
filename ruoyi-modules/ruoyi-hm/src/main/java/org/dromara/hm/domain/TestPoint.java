@@ -45,6 +45,12 @@ public class TestPoint extends TenantEntity {
      */
     private String kksName;
 
+    private Integer mt;
+
+
+    private Integer type;
+
+
     /**
      * 最近幅值
      */

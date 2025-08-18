@@ -1,5 +1,6 @@
 package org.dromara.hm.service.impl;
 
+import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -23,10 +24,8 @@ import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
-import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.dromara.hm.enums.TestPointTypeEnum;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
@@ -75,6 +74,8 @@ public class TestPointServiceImpl implements ITestPointService {
         Map<String, Object> params = bo.getParams();
         LambdaQueryWrapper<TestPoint> lqw = Wrappers.lambdaQuery();
         lqw.eq(bo.getEquipmentId() != null, TestPoint::getEquipmentId, bo.getEquipmentId());
+        lqw.eq(bo.getType() != null, TestPoint::getType, bo.getType());
+        lqw.eq(bo.getMt() != null, TestPoint::getMt, bo.getMt());
         lqw.eq(StringUtils.isNotBlank(bo.getKksCode()), TestPoint::getKksCode, bo.getKksCode());
         lqw.like(StringUtils.isNotBlank(bo.getKksName()), TestPoint::getKksName, bo.getKksName());
         lqw.eq(bo.getLastSt() != null, TestPoint::getLastSt, bo.getLastSt());
@@ -219,75 +220,76 @@ public class TestPointServiceImpl implements ITestPointService {
     }
 
     @Override
-    public Boolean importFromJson(String jsonData) {
+    @Transactional(rollbackFor = Exception.class)
+    public Boolean importFromJson(JsonNode testPointJson) {
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
-            JsonNode rootNode = objectMapper.readTree(jsonData);
-            JsonNode dataNode = rootNode.get("data");
-
-            if (dataNode == null || !dataNode.isArray()) {
-                throw new ServiceException("JSON格式错误：缺少data数组");
+            TestPoint testPoint = parseTestPointFromJson(testPointJson);
+            if (!isValidTestPoint(testPoint)) {
+                log.warn("测点数据无效，跳过处理：{}", testPointJson);
+                return false;
             }
 
-            // 解析SD400MP测点数据
-            List<TestPoint> sdTestPointList = new ArrayList<>();
-            Long currentEquipmentId = null;
+            return processTestPoint(testPoint);
 
-            for (JsonNode testPointNode : dataNode) {
-                TestPoint testPoint = parseTestPointFromJsonAll(testPointNode);
-                if (testPoint != null && testPoint.getId() != null) {
-                    sdTestPointList.add(testPoint);
-                    // 记录当前处理的设备ID
-                    if (currentEquipmentId == null && testPoint.getEquipmentId() != null) {
-                        currentEquipmentId = testPoint.getEquipmentId();
-                    }
-                }
-            }
+        } catch (Exception e) {
+            log.error("测点同步失败：{}", e.getMessage(), e);
+            throw new ServiceException("测点同步失败：" + e.getMessage());
+        }
+    }
 
-            if (sdTestPointList.isEmpty()) {
-                return true;
-            }
+    /**
+     * 验证测点数据有效性
+     */
+    private boolean isValidTestPoint(TestPoint testPoint) {
+        return testPoint != null
+            && testPoint.getId() != null
+            && testPoint.getEquipmentId() != null;
+    }
 
-            // 获取当前设备下的现有测点，按id建立映射
-            LambdaQueryWrapper<TestPoint> wrapper = Wrappers.lambdaQuery();
-            if (currentEquipmentId != null) {
-                wrapper.eq(TestPoint::getEquipmentId, currentEquipmentId);
-            }
-            List<TestPoint> existingTestPoints = baseMapper.selectList(wrapper);
-            Map<Long, TestPoint> existingIdMap = existingTestPoints.stream()
-                .filter(tp -> tp.getId() != null)
-                .collect(Collectors.toMap(TestPoint::getId, tp -> tp, (tp1, tp2) -> tp1));
+    /**
+     * 处理测点数据（新增或更新）
+     */
+    private boolean processTestPoint(TestPoint testPoint) {
+        TestPoint existing = baseMapper.selectById(testPoint.getId());
 
-            // 处理新增和更新
-            for (TestPoint testPoint : sdTestPointList) {
-                TestPoint existing = existingIdMap.get(testPoint.getId());
-                if (existing != null) {
-                    // 更新现有测点
-                    updateTestPointBySql(testPoint.getId(), testPoint);
-                } else {
-                    // 新增测点
-                    setDefaultThresholds(testPoint);
-                    baseMapper.insert(testPoint);
-                }
-            }
+        if (existing != null) {
+            return updateExistingTestPoint(testPoint);
+        } else {
+            return insertNewTestPoint(testPoint);
+        }
+    }
 
-            // 删除当前设备下在SD400MP中已不存在的测点
-            List<Long> sdIds = sdTestPointList.stream()
-                .map(TestPoint::getId)
-                .collect(Collectors.toList());
-
-            List<Long> toDeleteIds = existingTestPoints.stream()
-                .filter(tp -> tp.getId() != null && !sdIds.contains(tp.getId()))
-                .map(TestPoint::getId)
-                .collect(Collectors.toList());
-
-            if (!toDeleteIds.isEmpty()) {
-                baseMapper.deleteByIds(toDeleteIds);
-            }
-
+    /**
+     * 更新现有测点
+     */
+    private boolean updateExistingTestPoint(TestPoint testPoint) {
+        try {
+            updateTestPointBySql(testPoint.getId(), testPoint);
+            log.debug("更新测点成功：{}", testPoint.getId());
             return true;
         } catch (Exception e) {
-            throw new ServiceException("测点批量同步失败：" + e.getMessage());
+            log.error("更新测点失败：{}，错误：{}", testPoint.getId(), e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 插入新测点
+     */
+    private boolean insertNewTestPoint(TestPoint testPoint) {
+        try {
+            setDefaultThresholds(testPoint);
+            int result = baseMapper.insert(testPoint);
+            if (result > 0) {
+                log.debug("新增测点成功：{}", testPoint.getId());
+                return true;
+            } else {
+                log.error("新增测点失败：{}", testPoint.getId());
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("新增测点异常：{}，错误：{}", testPoint.getId(), e.getMessage());
+            return false;
         }
     }
 
@@ -302,56 +304,112 @@ public class TestPointServiceImpl implements ITestPointService {
     }
 
     /**
-     * 从JSON节点解析测点对象（批量导入版本，从JSON中解析equipmentId）
+     * 从JSON节点解析测点对象
      */
-    private TestPoint parseTestPointFromJsonAll(JsonNode testPointNode) {
+    private TestPoint parseTestPointFromJson(JsonNode testPointNode) {
+        if (testPointNode == null || testPointNode.isNull()) {
+            log.warn("测点JSON数据为空");
+            return null;
+        }
+
         try {
             TestPoint testPoint = new TestPoint();
 
-            // 直接使用SD400MP的ID作为主键（字符串转长整型）
-            if (testPointNode.has("id") && !testPointNode.get("id").isNull()) {
-                String idStr = testPointNode.get("id").asText();
-                try {
-                    testPoint.setId(Long.parseLong(idStr));
-                } catch (NumberFormatException e) {
-                    return null;
-                }
-            } else {
-                // 如果没有ID，跳过此测点
+            // 解析测点ID
+            Long testPointId = parseTestPointId(testPointNode);
+            if (testPointId == null) {
                 return null;
             }
+            testPoint.setId(testPointId);
 
-            // 从SD400MP的idEq字段解析设备ID
-            if (testPointNode.has("idEq") && !testPointNode.get("idEq").isNull()) {
-                testPoint.setEquipmentId(testPointNode.get("idEq").asLong());
-            }
+            // 解析设备ID
+            Long equipmentId = parseEquipmentId(testPointNode);
+            testPoint.setEquipmentId(equipmentId);
 
-            // KKS编码 - 对应SD400MP的key字段
-            if (testPointNode.has("key") && !testPointNode.get("key").isNull()) {
-                testPoint.setKksCode(testPointNode.get("key").asText());
-            }
+            // 解析KKS编码和名称
+            testPoint.setKksCode(getJsonStringValue(testPointNode, "key"));
+            testPoint.setKksName(getJsonStringValue(testPointNode, "name", testPoint.getKksCode()));
 
-            // KKS名称 - 对应SD400MP的name字段
-            if (testPointNode.has("name") && !testPointNode.get("name").isNull()) {
-                testPoint.setKksName(testPointNode.get("name").asText());
-            } else {
-                testPoint.setKksName("未命名测点");
-            }
+            // 解析监测类型
+            int mt = getJsonIntValue(testPointNode, "mt", -1);
+            testPoint.setMt(mt);
 
-            // 启用状态
-            if (testPointNode.has("enabled") && !testPointNode.get("enabled").isNull()) {
-                boolean enabled = testPointNode.get("enabled").asBoolean();
-                // 可以根据需要决定如何处理enabled状态
-            }
+            // 根据mt值自动设置测点类型
+            TestPointTypeEnum typeEnum = TestPointTypeEnum.getByMtValue(mt);
+            testPoint.setType(typeEnum.getCode());
 
-            // SD400MP的settings字段暂时不处理，因为它是复杂的嵌套结构
-            // 其他字段如lastMagnitude、lastSt等在SD400MP的testpoint接口中可能不包含
-            // 这些数据可能需要通过其他接口获取
+            log.debug("解析测点数据成功：ID={}, 设备ID={}, KKS编码={}, mt={}, type={} ({})",
+                testPoint.getId(), testPoint.getEquipmentId(),
+                testPoint.getKksCode(), testPoint.getMt(), testPoint.getType(), typeEnum.getName());
 
             return testPoint;
+
         } catch (Exception e) {
-            throw new ServiceException("解析测点数据失败：" + e.getMessage());
+            log.error("解析测点数据失败：{}", e.getMessage(), e);
+            return null;
         }
+    }
+
+    /**
+     * 解析测点ID
+     */
+    private Long parseTestPointId(JsonNode testPointNode) {
+        String idStr = getJsonStringValue(testPointNode, "id");
+        if (idStr == null || idStr.trim().isEmpty()) {
+            log.warn("测点缺少ID字段");
+            return null;
+        }
+
+        try {
+            return Long.parseLong(idStr);
+        } catch (NumberFormatException e) {
+            log.error("测点ID格式错误: {}", idStr);
+            return null;
+        }
+    }
+
+    /**
+     * 解析设备ID
+     */
+    private Long parseEquipmentId(JsonNode testPointNode) {
+        return getJsonLongValue(testPointNode, "idEq");
+    }
+
+    /**
+     * 获取JSON字符串值
+     */
+    private String getJsonStringValue(JsonNode node, String fieldName) {
+        return getJsonStringValue(node, fieldName, null);
+    }
+
+    /**
+     * 获取JSON字符串值（带默认值）
+     */
+    private String getJsonStringValue(JsonNode node, String fieldName, String defaultValue) {
+        if (node.has(fieldName) && !node.get(fieldName).isNull()) {
+            return node.get(fieldName).asText();
+        }
+        return defaultValue;
+    }
+
+    /**
+     * 获取JSON长整型值
+     */
+    private Long getJsonLongValue(JsonNode node, String fieldName) {
+        if (node.has(fieldName) && !node.get(fieldName).isNull()) {
+            return node.get(fieldName).asLong();
+        }
+        return null;
+    }
+
+    /**
+     * 获取JSON整型值（带默认值）
+     */
+    private int getJsonIntValue(JsonNode node, String fieldName, int defaultValue) {
+        if (node.has(fieldName) && !node.get(fieldName).isNull()) {
+            return node.get(fieldName).asInt();
+        }
+        return defaultValue;
     }
 
     /**
@@ -363,6 +421,9 @@ public class TestPointServiceImpl implements ITestPointService {
         updateWrapper.eq(TestPoint::getId, testPointId)
             .set(TestPoint::getKksCode, newData.getKksCode())
             .set(TestPoint::getKksName, newData.getKksName())
+            .set(TestPoint::getMt, newData.getMt())
+            .set(TestPoint::getType, newData.getType())
+            .set(TestPoint::getUpdateTime, DateUtil.dateSecond())
             .set(TestPoint::getEquipmentId, newData.getEquipmentId());
 
         baseMapper.update(null, updateWrapper);

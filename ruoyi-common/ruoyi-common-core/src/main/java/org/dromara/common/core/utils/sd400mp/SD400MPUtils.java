@@ -226,9 +226,26 @@ public class SD400MPUtils {
         return JSONUtil.parseObj(body);
     }
 
+    public static JSONObject data(Long testpointId, List<String> tags) {
+        Map<String, Object> map = new HashMap<>(2);
+        map.put("token", getToken());
+        Map<String, Object> dataMap = new HashMap<>(2);
+        Map<String, Object> idMap = new HashMap<>(2);
+        List<Map<String, Object>> list = new ArrayList<>();
+        idMap.put("id", testpointId);
+        list.add(idMap);
+        dataMap.put("testpoints", list);
+        dataMap.put("include", tags);
+        map.put("data", dataMap);
+        System.out.println(JSONUtil.toJsonStr(map));
+        String body = HttpUtil.createPost(URI + "/api/data")
+            .body(JSONUtil.toJsonStr(map))
+            .execute().body();
+        return JSONUtil.parseObj(body);
+    }
+
     /**
      * 位置比较
-     * @param requestData 比较请求数据
      * @return HTTP响应
      */
     public static JSONObject locationCompare(Map<String,Object> map) {
