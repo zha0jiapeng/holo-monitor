@@ -20,7 +20,6 @@ import org.dromara.hm.service.IEquipmentService;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +27,8 @@ import java.util.ArrayList;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 /**
  * 测点Service业务层处理
@@ -103,6 +104,22 @@ public class TestPointServiceImpl implements ITestPointService {
         TestPoint update = MapstructUtils.convert(bo, TestPoint.class);
         validEntityBeforeSave(update);
         return baseMapper.updateById(update) > 0;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Boolean updateBatchByBo(List<TestPointBo> bos) {
+        Boolean flag = true;
+        for (TestPointBo bo : bos) {
+            TestPoint update = MapstructUtils.convert(bo, TestPoint.class);
+            validEntityBeforeSave(update);
+            if(baseMapper.updateById(update)==0){
+                flag = false;
+                TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+                break;
+            }
+        }
+        return flag;
     }
 
     /**
@@ -272,6 +289,16 @@ public class TestPointServiceImpl implements ITestPointService {
         } catch (Exception e) {
             throw new ServiceException("测点批量同步失败：" + e.getMessage());
         }
+    }
+
+    @Override
+    public Boolean unbind(List<Long> testPointIds) {
+        LambdaUpdateWrapper<TestPoint> wrapper = Wrappers.lambdaUpdate();
+        wrapper.set(TestPoint::getPositionX, null);
+        wrapper.set(TestPoint::getPositionY, null);
+        wrapper.set(TestPoint::getPositionZ, null);
+        wrapper.in(TestPoint::getId, testPointIds);
+        return  baseMapper.update(wrapper) > 0;
     }
 
     /**

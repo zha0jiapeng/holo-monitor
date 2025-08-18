@@ -120,4 +120,13 @@ public class TestPoint extends TenantEntity {
      */
     private Integer offlineJudgmentThreshold;
 
+
+    private BigDecimal positionX;
+
+    private BigDecimal positionY;
+
+    private BigDecimal positionZ;
+
+
+
 }

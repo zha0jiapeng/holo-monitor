@@ -20,6 +20,7 @@ import org.dromara.hm.domain.bo.TestPointBo;
 import org.dromara.hm.domain.vo.TestPointVo;
 import org.dromara.hm.service.ITestPointService;
 import lombok.RequiredArgsConstructor;
+import org.dromara.hm.validate.BindGroup;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -144,6 +145,30 @@ public class TestPointController extends BaseController {
     public R<Void> edit(@Validated(EditGroup.class) @RequestBody TestPointBo bo) {
         return toAjax(testPointService.updateByBo(bo));
     }
+
+    /**
+     * 绑定测点坐标
+     */
+    @SaCheckPermission("hm:testpoint:edit")
+    @Log(title = "绑定测点坐标", businessType = BusinessType.UPDATE)
+    @RepeatSubmit
+    @PutMapping("/bind")
+    public R<Void> bind(@Validated(BindGroup.class) @RequestBody List<TestPointBo> bo) {
+        return toAjax(testPointService.updateBatchByBo(bo));
+    }
+
+    /**
+     * 绑定测点坐标
+     */
+    @SaCheckPermission("hm:testpoint:edit")
+    @Log(title = "解绑测点坐标", businessType = BusinessType.UPDATE)
+    @RepeatSubmit
+    @PutMapping("/unbind")
+    public R<Void> unbind(@RequestBody List<Long> ids) {
+        return toAjax(testPointService.unbind(ids));
+    }
+
+
 
     /**
      * 删除测点

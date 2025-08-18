@@ -1,15 +1,14 @@
 package org.dromara.hm.domain.bo;
 
-import org.dromara.common.core.validate.AddGroup;
-import org.dromara.common.core.validate.EditGroup;
 import org.dromara.common.mybatis.core.domain.BaseEntity;
 import org.dromara.hm.domain.TestPoint;
 import io.github.linpeilie.annotations.AutoMapper;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.dromara.hm.validate.BindGroup;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -28,25 +27,25 @@ public class TestPointBo extends BaseEntity {
     /**
      * 主键ID
      */
-    @NotNull(message = "主键不能为空", groups = {EditGroup.class})
+    @NotNull(message = "主键不能为空", groups = {BindGroup.class})
     private Long id;
 
     /**
      * 设备id
      */
-    @NotNull(message = "设备ID不能为空", groups = {AddGroup.class, EditGroup.class})
+    //@NotNull(message = "设备ID不能为空", groups = {AddGroup.class, EditGroup.class})
     private Long equipmentId;
 
     /**
      * 测点编码
      */
-    @NotBlank(message = "测点编码不能为空", groups = {AddGroup.class, EditGroup.class})
+    //@NotBlank(message = "测点编码不能为空", groups = {AddGroup.class, EditGroup.class})
     private String kksCode;
 
     /**
      * 测点名称
      */
-    @NotBlank(message = "测点名称不能为空", groups = {AddGroup.class, EditGroup.class})
+    //@NotBlank(message = "测点名称不能为空", groups = {AddGroup.class, EditGroup.class})
     private String kksName;
 
     /**
@@ -123,5 +122,14 @@ public class TestPointBo extends BaseEntity {
      * 离线判断（小时）
      */
     private Integer offlineJudgmentThreshold;
+
+    @NotNull(message = "位置坐标X不能为空", groups = {BindGroup.class})
+    private BigDecimal positionX;
+
+    @NotNull(message = "位置坐标Y不能为空", groups = {BindGroup.class})
+    private BigDecimal positionY;
+
+    @NotNull(message = "位置坐标Z不能为空", groups = {BindGroup.class})
+    private BigDecimal positionZ;
 
 }

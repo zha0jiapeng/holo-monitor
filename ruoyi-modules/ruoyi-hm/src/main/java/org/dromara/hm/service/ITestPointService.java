@@ -55,6 +55,8 @@ public interface ITestPointService {
      */
     Boolean updateByBo(TestPointBo bo);
 
+    Boolean updateBatchByBo(List<TestPointBo> bo);
+
     /**
      * 校验并删除数据
      *
@@ -92,4 +94,7 @@ public interface ITestPointService {
      * @return 导入结果
      */
     Boolean importFromJson(String jsonData);
+
+
+    Boolean unbind(List<Long> testPointIds);
 }

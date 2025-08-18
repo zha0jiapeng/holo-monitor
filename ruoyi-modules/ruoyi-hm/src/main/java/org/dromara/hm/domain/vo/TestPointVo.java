@@ -190,4 +190,13 @@ public class TestPointVo implements Serializable {
     @ExcelProperty(value = "更新人账号")
     private String updateByName;
 
+    @ExcelProperty(value = "位置坐标X")
+    private BigDecimal positionX;
+
+    @ExcelProperty(value = "位置坐标Y")
+    private BigDecimal positionY;
+
+    @ExcelProperty(value = "位置坐标Z")
+    private BigDecimal positionZ;
+
 }
