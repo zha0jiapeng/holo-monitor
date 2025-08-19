@@ -371,7 +371,7 @@ public class EquipmentServiceImpl implements IEquipmentService {
     @Override
     public List<Equipment> getEquipmentsByType(Integer type) {
         LambdaQueryWrapper<Equipment> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Equipment::getType, type);
+        wrapper.eq(type !=null,Equipment::getType, type);
         wrapper.orderByAsc(Equipment::getId);
         return baseMapper.selectList(wrapper);
     }

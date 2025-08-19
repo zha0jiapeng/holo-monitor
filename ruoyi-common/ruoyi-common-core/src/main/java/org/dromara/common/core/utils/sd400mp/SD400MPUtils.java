@@ -2,6 +2,7 @@ package org.dromara.common.core.utils.sd400mp;
 
 import cn.hutool.core.date.DatePattern;
 import cn.hutool.http.ContentType;
+import cn.hutool.http.Header;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONObject;
@@ -237,9 +238,28 @@ public class SD400MPUtils {
         dataMap.put("testpoints", list);
         dataMap.put("include", tags);
         map.put("data", dataMap);
-        System.out.println(JSONUtil.toJsonStr(map));
         String body = HttpUtil.createPost(URI + "/api/data")
             .body(JSONUtil.toJsonStr(map))
+            .execute().body();
+        return JSONUtil.parseObj(body);
+    }
+
+    public static JSONObject file(Long equipmentId) {
+        Map<String, Object> map = new HashMap<>(2);
+        map.put("token", getToken());
+        Map<String, Object> dataMap = new HashMap<>(2);
+        dataMap.put("id", equipmentId);
+        dataMap.put("needChildren", true);
+        map.put("data", dataMap);
+        String body = HttpUtil.createPost(URI + "/api/file")
+            .body(JSONUtil.toJsonStr(map))
+            .execute().body();
+        return JSONUtil.parseObj(body);
+    }
+
+    public static JSONObject modelInfo(Long fileId) {
+        String body = HttpUtil.createGet(URI + "/api/location/modelInfo?id="+fileId)
+            .header(Header.AUTHORIZATION,"GlbToken "+getToken())
             .execute().body();
         return JSONUtil.parseObj(body);
     }

@@ -25,14 +25,11 @@ import java.util.List;
 @JobExecutor(name = "TestpointDataExecutor")
 public class TestpointDataExecutor {
 
-    private final ITestPointService testPointService;
+    private final ITestPointDataService testPointService;
 
     private final IEquipmentService equipmentService;
 
     public ExecuteResult jobExecute(JobArgs jobArgs) {
-//        List<Testpoint> testpoints = testpointService.list();
-//        if (testpoints.isEmpty()) {
-//            log.info("数据库中未找到任何测点配置，任务结束。");
             return ExecuteResult.success();
 //        }
     }

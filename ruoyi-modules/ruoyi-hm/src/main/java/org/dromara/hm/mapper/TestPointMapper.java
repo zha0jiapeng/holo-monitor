@@ -55,10 +55,10 @@ public interface TestPointMapper extends BaseMapperPlus<TestPoint, TestPointVo> 
     List<TestPoint> selectByIds(@Param(Constants.COLL) Collection<? extends Serializable> idList);
 
     @Override
-    @DataPermission({
-        @DataColumn(key = "deptName", value = "dept_id"),
-        @DataColumn(key = "userName", value = "user_id")
-    })
+//    @DataPermission({
+//        @DataColumn(key = "deptName", value = "dept_id"),
+//        @DataColumn(key = "userName", value = "user_id")
+//    })
     int updateById(@Param(Constants.ENTITY) TestPoint entity);
 
 }
