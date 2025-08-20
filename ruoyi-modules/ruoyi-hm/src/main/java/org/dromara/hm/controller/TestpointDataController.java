@@ -15,10 +15,10 @@ import org.dromara.common.excel.core.ExcelResult;
 import org.dromara.common.excel.utils.ExcelUtil;
 import org.dromara.common.log.annotation.Log;
 import org.dromara.common.log.enums.BusinessType;
-import org.dromara.hm.domain.TestPointData;
-import org.dromara.hm.domain.bo.TestPointDataBo;
-import org.dromara.hm.domain.vo.TestPointDataVo;
-import org.dromara.hm.service.ITestPointDataService;
+import org.dromara.hm.domain.TestpointData;
+import org.dromara.hm.domain.bo.TestpointDataBo;
+import org.dromara.hm.domain.vo.TestpointDataVo;
+import org.dromara.hm.service.ITestpointDataService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
@@ -43,17 +43,17 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/hm/testpointdata")
-public class TestPointDataController extends BaseController {
+public class TestpointDataController extends BaseController {
 
-    private final ITestPointDataService testPointDataService;
+    private final ITestpointDataService testpointDataService;
 
     /**
      * 查询测点数据列表
      */
     @SaCheckPermission("hm:testpointdata:list")
     @GetMapping("/list")
-    public TableDataInfo<TestPointDataVo> list(@Validated(QueryGroup.class) TestPointDataBo bo, PageQuery pageQuery) {
-        return testPointDataService.queryPageList(bo, pageQuery);
+    public TableDataInfo<TestpointDataVo> list(@Validated(QueryGroup.class) TestpointDataBo bo, PageQuery pageQuery) {
+        return testpointDataService.queryPageList(bo, pageQuery);
     }
 
     /**
@@ -61,8 +61,8 @@ public class TestPointDataController extends BaseController {
      */
     @SaCheckPermission("hm:testpointdata:list")
     @GetMapping("/page")
-    public TableDataInfo<TestPointDataVo> page(@Validated(QueryGroup.class) TestPointDataBo bo, PageQuery pageQuery) {
-        return testPointDataService.customPageList(bo, pageQuery);
+    public TableDataInfo<TestpointDataVo> page(@Validated(QueryGroup.class) TestpointDataBo bo, PageQuery pageQuery) {
+        return testpointDataService.customPageList(bo, pageQuery);
     }
 
     /**
@@ -70,9 +70,9 @@ public class TestPointDataController extends BaseController {
      */
     @SaCheckPermission("hm:testpointdata:list")
     @GetMapping("/kks/{kksCode}")
-    public R<List<TestPointDataVo>> listByKksCode(@NotBlank(message = "KKS编码不能为空")
+    public R<List<TestpointDataVo>> listByKksCode(@NotBlank(message = "KKS编码不能为空")
                                                 @PathVariable("kksCode") String kksCode) {
-        return R.ok(testPointDataService.queryByKksCode(kksCode));
+        return R.ok(testpointDataService.queryByKksCode(kksCode));
     }
 
     /**
@@ -80,11 +80,11 @@ public class TestPointDataController extends BaseController {
      */
     @SaCheckPermission("hm:testpointdata:query")
     @GetMapping("/kks/{kksCode}/timerange")
-    public R<List<TestPointDataVo>> listByKksCodeAndTimeRange(
+    public R<List<TestpointDataVo>> listByKksCodeAndTimeRange(
             @NotBlank(message = "KKS编码不能为空") @PathVariable("kksCode") String kksCode,
             @RequestParam(required = false) String startTime,
             @RequestParam(required = false) String endTime) {
-        return R.ok(testPointDataService.queryByKksCodeAndTimeRange(kksCode, startTime, endTime));
+        return R.ok(testpointDataService.queryByKksCodeAndTimeRange(kksCode, startTime, endTime));
     }
 
     /**
@@ -92,10 +92,10 @@ public class TestPointDataController extends BaseController {
      */
     @SaCheckPermission("hm:testpointdata:query")
     @GetMapping("/alarm")
-    public R<List<TestPointDataVo>> listByAlarmStatus(
+    public R<List<TestpointDataVo>> listByAlarmStatus(
             @RequestParam(required = false) String alarmType,
             @RequestParam(required = false) Integer st) {
-        return R.ok(testPointDataService.queryByAlarmStatus(alarmType, st));
+        return R.ok(testpointDataService.queryByAlarmStatus(alarmType, st));
     }
 
     /**
@@ -103,9 +103,9 @@ public class TestPointDataController extends BaseController {
      */
     @SaCheckPermission("hm:testpointdata:query")
     @GetMapping("/latest/{kksCode}")
-    public R<TestPointDataVo> getLatest(@NotBlank(message = "KKS编码不能为空")
+    public R<TestpointDataVo> getLatest(@NotBlank(message = "KKS编码不能为空")
                                       @PathVariable("kksCode") String kksCode) {
-        return R.ok(testPointDataService.getLatestByKksCode(kksCode));
+        return R.ok(testpointDataService.getLatestByKksCode(kksCode));
     }
 
     /**
@@ -117,9 +117,9 @@ public class TestPointDataController extends BaseController {
     @SaCheckPermission("hm:testpointdata:import")
     @PostMapping(value = "/importData", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public R<Void> importData(@RequestPart("file") MultipartFile file) throws Exception {
-        ExcelResult<TestPointDataBo> excelResult = ExcelUtil.importExcel(file.getInputStream(), TestPointDataBo.class, true);
-        List<TestPointData> list = MapstructUtils.convert(excelResult.getList(), TestPointData.class);
-        testPointDataService.saveBatch(list);
+        ExcelResult<TestpointDataBo> excelResult = ExcelUtil.importExcel(file.getInputStream(), TestpointDataBo.class, true);
+        List<TestpointData> list = MapstructUtils.convert(excelResult.getList(), TestpointData.class);
+        testpointDataService.saveBatch(list);
         return R.ok(excelResult.getAnalysis());
     }
 
@@ -129,9 +129,9 @@ public class TestPointDataController extends BaseController {
     @SaCheckPermission("hm:testpointdata:export")
     @Log(title = "测点数据", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
-    public void export(@Validated TestPointDataBo bo, HttpServletResponse response) {
-        List<TestPointDataVo> list = testPointDataService.queryList(bo);
-        ExcelUtil.exportExcel(list, "测点数据", TestPointDataVo.class, response);
+    public void export(@Validated TestpointDataBo bo, HttpServletResponse response) {
+        List<TestpointDataVo> list = testpointDataService.queryList(bo);
+        ExcelUtil.exportExcel(list, "测点数据", TestpointDataVo.class, response);
     }
 
     /**
@@ -141,9 +141,9 @@ public class TestPointDataController extends BaseController {
      */
     @SaCheckPermission("hm:testpointdata:query")
     @GetMapping("/{id}")
-    public R<TestPointDataVo> getInfo(@NotNull(message = "主键不能为空")
+    public R<TestpointDataVo> getInfo(@NotNull(message = "主键不能为空")
                                     @PathVariable("id") Long id) {
-        return R.ok(testPointDataService.queryById(id));
+        return R.ok(testpointDataService.queryById(id));
     }
 
     /**
@@ -153,9 +153,9 @@ public class TestPointDataController extends BaseController {
     @Log(title = "测点数据", businessType = BusinessType.INSERT)
     @RepeatSubmit(interval = 2, timeUnit = TimeUnit.SECONDS, message = "{repeat.submit.message}")
     @PostMapping()
-    public R<Void> add(@RequestBody TestPointDataBo bo) {
+    public R<Void> add(@RequestBody TestpointDataBo bo) {
         ValidatorUtils.validate(bo, AddGroup.class);
-        return toAjax(testPointDataService.insertByBo(bo));
+        return toAjax(testpointDataService.insertByBo(bo));
     }
 
     /**
@@ -165,8 +165,8 @@ public class TestPointDataController extends BaseController {
     @Log(title = "测点数据", businessType = BusinessType.UPDATE)
     @RepeatSubmit
     @PutMapping()
-    public R<Void> edit(@Validated(EditGroup.class) @RequestBody TestPointDataBo bo) {
-        return toAjax(testPointDataService.updateByBo(bo));
+    public R<Void> edit(@Validated(EditGroup.class) @RequestBody TestpointDataBo bo) {
+        return toAjax(testpointDataService.updateByBo(bo));
     }
 
     /**
@@ -176,9 +176,9 @@ public class TestPointDataController extends BaseController {
     @Log(title = "测点数据", businessType = BusinessType.INSERT)
     @RepeatSubmit
     @PostMapping("/batch")
-    public R<Void> addBatch(@RequestBody List<TestPointDataBo> boList) {
-        List<TestPointData> list = MapstructUtils.convert(boList, TestPointData.class);
-        return toAjax(testPointDataService.saveBatch(list));
+    public R<Void> addBatch(@RequestBody List<TestpointDataBo> boList) {
+        List<TestpointData> list = MapstructUtils.convert(boList, TestpointData.class);
+        return toAjax(testpointDataService.saveBatch(list));
     }
 
     /**
@@ -191,6 +191,6 @@ public class TestPointDataController extends BaseController {
     @DeleteMapping("/{ids}")
     public R<Void> remove(@NotEmpty(message = "主键不能为空")
                           @PathVariable Long[] ids) {
-        return toAjax(testPointDataService.deleteWithValidByIds(Arrays.asList(ids), true));
+        return toAjax(testpointDataService.deleteWithValidByIds(Arrays.asList(ids), true));
     }
 }

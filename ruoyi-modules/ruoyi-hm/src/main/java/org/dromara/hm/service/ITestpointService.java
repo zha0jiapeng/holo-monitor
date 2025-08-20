@@ -4,9 +4,9 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
-import org.dromara.hm.domain.TestPoint;
-import org.dromara.hm.domain.bo.TestPointBo;
-import org.dromara.hm.domain.vo.TestPointVo;
+import org.dromara.hm.domain.Testpoint;
+import org.dromara.hm.domain.bo.TestpointBo;
+import org.dromara.hm.domain.vo.TestpointVo;
 
 import java.util.Collection;
 import java.util.List;
@@ -17,29 +17,29 @@ import java.util.List;
  * @author ruoyi
  * @date 2024-01-01
  */
-public interface ITestPointService extends IService<TestPoint> {
+public interface ITestpointService extends IService<Testpoint> {
 
     /**
      * 查询单个
      *
      * @return
      */
-    TestPointVo queryById(Long id);
+    TestpointVo queryById(Long id);
 
     /**
      * 查询列表
      */
-    TableDataInfo<TestPointVo> queryPageList(TestPointBo bo, PageQuery pageQuery);
+    TableDataInfo<TestpointVo> queryPageList(TestpointBo bo, PageQuery pageQuery);
 
     /**
      * 自定义分页查询
      */
-    TableDataInfo<TestPointVo> customPageList(TestPointBo bo, PageQuery pageQuery);
+    TableDataInfo<TestpointVo> customPageList(TestpointBo bo, PageQuery pageQuery);
 
     /**
      * 查询列表
      */
-    List<TestPointVo> queryList(TestPointBo bo);
+    List<TestpointVo> queryList(TestpointBo bo);
 
     /**
      * 根据新增业务对象插入测点
@@ -47,7 +47,7 @@ public interface ITestPointService extends IService<TestPoint> {
      * @param bo 测点新增业务对象
      * @return
      */
-    Boolean insertByBo(TestPointBo bo);
+    Boolean insertByBo(TestpointBo bo);
 
     /**
      * 根据编辑业务对象修改测点
@@ -55,9 +55,9 @@ public interface ITestPointService extends IService<TestPoint> {
      * @param bo 测点编辑业务对象
      * @return
      */
-    Boolean updateByBo(TestPointBo bo);
+    Boolean updateByBo(TestpointBo bo);
 
-    Boolean updateBatchByBo(List<TestPointBo> bo);
+    Boolean updateBatchByBo(List<TestpointBo> bo);
 
     /**
      * 校验并删除数据
@@ -71,7 +71,7 @@ public interface ITestPointService extends IService<TestPoint> {
     /**
      * 批量保存
      */
-    Boolean saveBatch(List<TestPoint> list);
+    Boolean saveBatch(List<Testpoint> list);
 
     /**
      * 根据设备ID查询测点列表
@@ -79,7 +79,7 @@ public interface ITestPointService extends IService<TestPoint> {
      * @param equipmentId 设备ID
      * @return 测点列表
      */
-    List<TestPointVo> queryByEquipmentId(Long equipmentId);
+    List<TestpointVo> queryByEquipmentId(Long equipmentId);
 
     /**
      * 根据KKS编码查询测点
@@ -87,7 +87,7 @@ public interface ITestPointService extends IService<TestPoint> {
      * @param kksCode KKS编码
      * @return 测点信息
      */
-    TestPointVo queryByKksCode(String kksCode);
+    TestpointVo queryByKksCode(String kksCode);
 
     /**
      * 从JSON数据导入单个测点

@@ -9,9 +9,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
 import org.dromara.hm.domain.Equipment;
-import org.dromara.hm.domain.bo.TestPointBo;
+import org.dromara.hm.domain.bo.TestpointBo;
 import org.dromara.hm.service.IEquipmentService;
-import org.dromara.hm.service.ITestPointService;
+import org.dromara.hm.service.ITestpointService;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -28,7 +28,7 @@ import java.util.*;
 @JobExecutor(name = "TestpointPositionExecutor")
 public class TestpointPositionExecutor {
 
-    private final ITestPointService testPointService;
+    private final ITestpointService testPointService;
 
     private final IEquipmentService equipmentService;
 
@@ -52,7 +52,7 @@ public class TestpointPositionExecutor {
                     }
                 }
                 if(fileId==null) continue;
-                List<TestPointBo> testPointList = new ArrayList<>();
+                List<TestpointBo> testPointList = new ArrayList<>();
                 JSONObject modelInfo = SD400MPUtils.modelInfo(Long.valueOf(fileId));
                 JSONObject model = modelInfo.getJSONObject("model");
                 JSONArray sensors = model.getJSONArray("sensors");
@@ -64,7 +64,7 @@ public class TestpointPositionExecutor {
                     Float x = pos.getFloat("x");
                     Float y = pos.getFloat("y");
                     Float z = pos.getFloat("z");
-                    TestPointBo testPoint = new TestPointBo();
+                    TestpointBo testPoint = new TestpointBo();
                     testPoint.setId(Long.valueOf(testPointId));
                     testPoint.setPositionX(new BigDecimal(x));
                     testPoint.setPositionY(new BigDecimal(y));

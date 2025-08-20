@@ -3,9 +3,10 @@ package org.dromara.hm.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
-import org.dromara.hm.domain.TestPointData;
-import org.dromara.hm.domain.bo.TestPointDataBo;
-import org.dromara.hm.domain.vo.TestPointDataVo;
+import org.dromara.hm.domain.TestpointData;
+import org.dromara.hm.domain.TestpointData;
+import org.dromara.hm.domain.bo.TestpointDataBo;
+import org.dromara.hm.domain.vo.TestpointDataVo;
 
 import java.util.Collection;
 import java.util.List;
@@ -16,7 +17,7 @@ import java.util.List;
  * @author ruoyi
  * @date 2024-01-01
  */
-public interface ITestPointDataService extends IService<TestPointData> {
+public interface ITestpointDataService extends IService<TestpointData> {
 
     /**
      * 查询单个
@@ -24,7 +25,7 @@ public interface ITestPointDataService extends IService<TestPointData> {
      * @param id 主键
      * @return 测点数据
      */
-    TestPointDataVo queryById(Long id);
+    TestpointDataVo queryById(Long id);
 
     /**
      * 查询列表
@@ -33,7 +34,7 @@ public interface ITestPointDataService extends IService<TestPointData> {
      * @param pageQuery 分页查询条件
      * @return 测点数据列表
      */
-    TableDataInfo<TestPointDataVo> queryPageList(TestPointDataBo bo, PageQuery pageQuery);
+    TableDataInfo<TestpointDataVo> queryPageList(TestpointDataBo bo, PageQuery pageQuery);
 
     /**
      * 自定义分页查询
@@ -42,7 +43,7 @@ public interface ITestPointDataService extends IService<TestPointData> {
      * @param pageQuery 分页查询条件
      * @return 测点数据列表
      */
-    TableDataInfo<TestPointDataVo> customPageList(TestPointDataBo bo, PageQuery pageQuery);
+    TableDataInfo<TestpointDataVo> customPageList(TestpointDataBo bo, PageQuery pageQuery);
 
     /**
      * 查询列表
@@ -50,7 +51,7 @@ public interface ITestPointDataService extends IService<TestPointData> {
      * @param bo 查询条件
      * @return 测点数据列表
      */
-    List<TestPointDataVo> queryList(TestPointDataBo bo);
+    List<TestpointDataVo> queryList(TestpointDataBo bo);
 
     /**
      * 根据新增业务对象插入测点数据
@@ -58,7 +59,7 @@ public interface ITestPointDataService extends IService<TestPointData> {
      * @param bo 测点数据新增业务对象
      * @return 是否成功
      */
-    Boolean insertByBo(TestPointDataBo bo);
+    Boolean insertByBo(TestpointDataBo bo);
 
     /**
      * 根据编辑业务对象修改测点数据
@@ -66,7 +67,7 @@ public interface ITestPointDataService extends IService<TestPointData> {
      * @param bo 测点数据编辑业务对象
      * @return 是否成功
      */
-    Boolean updateByBo(TestPointDataBo bo);
+    Boolean updateByBo(TestpointDataBo bo);
 
     /**
      * 校验并删除数据
@@ -83,7 +84,7 @@ public interface ITestPointDataService extends IService<TestPointData> {
      * @param list 测点数据列表
      * @return 是否成功
      */
-    Boolean saveBatch(List<TestPointData> list);
+    Boolean saveBatch(List<TestpointData> list);
 
     /**
      * 根据KKS编码查询测点数据列表
@@ -91,7 +92,7 @@ public interface ITestPointDataService extends IService<TestPointData> {
      * @param kksCode KKS编码
      * @return 测点数据列表
      */
-    List<TestPointDataVo> queryByKksCode(String kksCode);
+    List<TestpointDataVo> queryByKksCode(String kksCode);
 
     /**
      * 根据KKS编码和时间范围查询测点数据
@@ -101,7 +102,7 @@ public interface ITestPointDataService extends IService<TestPointData> {
      * @param endTime   结束时间
      * @return 测点数据列表
      */
-    List<TestPointDataVo> queryByKksCodeAndTimeRange(String kksCode, String startTime, String endTime);
+    List<TestpointDataVo> queryByKksCodeAndTimeRange(String kksCode, String startTime, String endTime);
 
     /**
      * 根据报警状态查询测点数据
@@ -110,7 +111,7 @@ public interface ITestPointDataService extends IService<TestPointData> {
      * @param st        SD400MP报警状态
      * @return 测点数据列表
      */
-    List<TestPointDataVo> queryByAlarmStatus(String alarmType, Integer st);
+    List<TestpointDataVo> queryByAlarmStatus(String alarmType, Integer st);
 
     /**
      * 获取最新的测点数据
@@ -118,6 +119,6 @@ public interface ITestPointDataService extends IService<TestPointData> {
      * @param kksCode KKS编码
      * @return 最新的测点数据
      */
-    TestPointDataVo getLatestByKksCode(String kksCode);
+    TestpointDataVo getLatestByKksCode(String kksCode);
 
 }

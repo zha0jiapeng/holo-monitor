@@ -13,12 +13,13 @@ import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
-import org.dromara.hm.domain.TestPoint;
-import org.dromara.hm.domain.bo.TestPointBo;
-import org.dromara.hm.domain.vo.TestPointVo;
-import org.dromara.hm.mapper.TestPointMapper;
-import org.dromara.hm.service.ITestPointService;
+import org.dromara.hm.domain.Testpoint;
+import org.dromara.hm.domain.bo.TestpointBo;
+import org.dromara.hm.domain.vo.TestpointVo;
+import org.dromara.hm.enums.TestpointTypeEnum;
+import org.dromara.hm.mapper.TestpointMapper;
 import org.dromara.hm.service.IEquipmentService;
+import org.dromara.hm.service.ITestpointService;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -26,7 +27,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import com.fasterxml.jackson.databind.JsonNode;
-import org.dromara.hm.enums.TestPointTypeEnum;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
@@ -39,20 +39,20 @@ import org.springframework.transaction.interceptor.TransactionAspectSupport;
 @RequiredArgsConstructor
 @Service
 @Slf4j
-public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint> implements ITestPointService {
+public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint> implements ITestpointService {
 
-    private final TestPointMapper baseMapper;
+    private final TestpointMapper baseMapper;
     private final IEquipmentService equipmentService;
 
     @Override
-    public TestPointVo queryById(Long id) {
+    public TestpointVo queryById(Long id) {
         return baseMapper.selectVoById(id);
     }
 
     @Override
-    public TableDataInfo<TestPointVo> queryPageList(TestPointBo bo, PageQuery pageQuery) {
-        LambdaQueryWrapper<TestPoint> lqw = buildQueryWrapper(bo);
-        Page<TestPointVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
+    public TableDataInfo<TestpointVo> queryPageList(TestpointBo bo, PageQuery pageQuery) {
+        LambdaQueryWrapper<Testpoint> lqw = buildQueryWrapper(bo);
+        Page<TestpointVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
         return TableDataInfo.build(result);
     }
 
@@ -60,38 +60,38 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
      * 自定义分页查询
      */
     @Override
-    public TableDataInfo<TestPointVo> customPageList(TestPointBo bo, PageQuery pageQuery) {
-        LambdaQueryWrapper<TestPoint> lqw = buildQueryWrapper(bo);
-        Page<TestPointVo> result = baseMapper.customPageList(pageQuery.build(), lqw);
+    public TableDataInfo<TestpointVo> customPageList(TestpointBo bo, PageQuery pageQuery) {
+        LambdaQueryWrapper<Testpoint> lqw = buildQueryWrapper(bo);
+        Page<TestpointVo> result = baseMapper.customPageList(pageQuery.build(), lqw);
         return TableDataInfo.build(result);
     }
 
     @Override
-    public List<TestPointVo> queryList(TestPointBo bo) {
+    public List<TestpointVo> queryList(TestpointBo bo) {
         return baseMapper.selectVoList(buildQueryWrapper(bo));
     }
 
-    private LambdaQueryWrapper<TestPoint> buildQueryWrapper(TestPointBo bo) {
+    private LambdaQueryWrapper<Testpoint> buildQueryWrapper(TestpointBo bo) {
         Map<String, Object> params = bo.getParams();
-        LambdaQueryWrapper<TestPoint> lqw = Wrappers.lambdaQuery();
-        lqw.eq(bo.getEquipmentId() != null, TestPoint::getEquipmentId, bo.getEquipmentId());
-        lqw.eq(bo.getType() != null, TestPoint::getType, bo.getType());
-        lqw.eq(bo.getMt() != null, TestPoint::getMt, bo.getMt());
-        lqw.eq(StringUtils.isNotBlank(bo.getKksCode()), TestPoint::getKksCode, bo.getKksCode());
-        lqw.like(StringUtils.isNotBlank(bo.getKksName()), TestPoint::getKksName, bo.getKksName());
-        lqw.eq(bo.getLastSt() != null, TestPoint::getLastSt, bo.getLastSt());
-        lqw.eq(bo.getLastAlarmType() != null, TestPoint::getLastAlarmType, bo.getLastAlarmType());
+        LambdaQueryWrapper<Testpoint> lqw = Wrappers.lambdaQuery();
+        lqw.eq(bo.getEquipmentId() != null, Testpoint::getEquipmentId, bo.getEquipmentId());
+        lqw.eq(bo.getType() != null, Testpoint::getType, bo.getType());
+        lqw.eq(bo.getMt() != null, Testpoint::getMt, bo.getMt());
+        lqw.eq(StringUtils.isNotBlank(bo.getKksCode()), Testpoint::getKksCode, bo.getKksCode());
+        lqw.like(StringUtils.isNotBlank(bo.getKksName()), Testpoint::getKksName, bo.getKksName());
+        lqw.eq(bo.getLastSt() != null, Testpoint::getLastSt, bo.getLastSt());
+        lqw.eq(bo.getLastAlarmType() != null, Testpoint::getLastAlarmType, bo.getLastAlarmType());
         lqw.between(params.get("beginLastAcquisitionTime") != null && params.get("endLastAcquisitionTime") != null,
-            TestPoint::getLastAcquisitionTime, params.get("beginLastAcquisitionTime"), params.get("endLastAcquisitionTime"));
+            Testpoint::getLastAcquisitionTime, params.get("beginLastAcquisitionTime"), params.get("endLastAcquisitionTime"));
         lqw.between(params.get("beginCreateTime") != null && params.get("endCreateTime") != null,
-            TestPoint::getCreateTime, params.get("beginCreateTime"), params.get("endCreateTime"));
-        lqw.orderByAsc(TestPoint::getId);
+            Testpoint::getCreateTime, params.get("beginCreateTime"), params.get("endCreateTime"));
+        lqw.orderByAsc(Testpoint::getId);
         return lqw;
     }
 
     @Override
-    public Boolean insertByBo(TestPointBo bo) {
-        TestPoint add = MapstructUtils.convert(bo, TestPoint.class);
+    public Boolean insertByBo(TestpointBo bo) {
+        Testpoint add = MapstructUtils.convert(bo, Testpoint.class);
         validEntityBeforeSave(add);
         setDefaultThresholds(add);
         boolean flag = baseMapper.insert(add) > 0;
@@ -102,18 +102,18 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
     }
 
     @Override
-    public Boolean updateByBo(TestPointBo bo) {
-        TestPoint update = MapstructUtils.convert(bo, TestPoint.class);
+    public Boolean updateByBo(TestpointBo bo) {
+        Testpoint update = MapstructUtils.convert(bo, Testpoint.class);
         validEntityBeforeSave(update);
         return baseMapper.updateById(update) > 0;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Boolean updateBatchByBo(List<TestPointBo> bos) {
+    public Boolean updateBatchByBo(List<TestpointBo> bos) {
         Boolean flag = true;
-        for (TestPointBo bo : bos) {
-            TestPoint update = MapstructUtils.convert(bo, TestPoint.class);
+        for (TestpointBo bo : bos) {
+            Testpoint update = MapstructUtils.convert(bo, Testpoint.class);
             validEntityBeforeSave(update);
             if(baseMapper.updateById(update)==0){
                 flag = false;
@@ -129,7 +129,7 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
      *
      * @param entity 实体类数据
      */
-    private void validEntityBeforeSave(TestPoint entity) {
+    private void validEntityBeforeSave(Testpoint entity) {
         // 校验设备是否存在
         if (entity.getEquipmentId() != null) {
             if (equipmentService.queryById(entity.getEquipmentId()) == null) {
@@ -139,10 +139,10 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
 
         // 校验KKS编码唯一性
         if (StringUtils.isNotBlank(entity.getKksCode())) {
-            LambdaQueryWrapper<TestPoint> wrapper = Wrappers.lambdaQuery();
-            wrapper.eq(TestPoint::getKksCode, entity.getKksCode());
+            LambdaQueryWrapper<Testpoint> wrapper = Wrappers.lambdaQuery();
+            wrapper.eq(Testpoint::getKksCode, entity.getKksCode());
             if (entity.getId() != null) {
-                wrapper.ne(TestPoint::getId, entity.getId());
+                wrapper.ne(Testpoint::getId, entity.getId());
             }
             if (baseMapper.exists(wrapper)) {
                 throw new ServiceException("测点编码已存在");
@@ -153,7 +153,7 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
     /**
      * 设置默认阈值
      */
-    private void setDefaultThresholds(TestPoint entity) {
+    private void setDefaultThresholds(Testpoint entity) {
         if (entity.getUhfIgnoreThreshold() == null) {
             entity.setUhfIgnoreThreshold(BigDecimal.valueOf(-20.00));
         }
@@ -187,7 +187,7 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
     public Boolean deleteWithValidByIds(Collection<Long> ids, Boolean isValid) {
         if (isValid) {
             // 校验删除权限
-            List<TestPoint> list = baseMapper.selectByIds(ids);
+            List<Testpoint> list = baseMapper.selectByIds(ids);
             if (list.size() != ids.size()) {
                 throw new ServiceException("您没有删除权限!");
             }
@@ -196,26 +196,26 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
     }
 
     @Override
-    public Boolean saveBatch(List<TestPoint> list) {
+    public Boolean saveBatch(List<Testpoint> list) {
         // 批量保存前设置默认值
-        for (TestPoint testPoint : list) {
+        for (Testpoint testPoint : list) {
             setDefaultThresholds(testPoint);
         }
         return baseMapper.insertBatch(list);
     }
 
     @Override
-    public List<TestPointVo> queryByEquipmentId(Long equipmentId) {
-        LambdaQueryWrapper<TestPoint> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(TestPoint::getEquipmentId, equipmentId);
-        wrapper.orderByAsc(TestPoint::getKksCode);
+    public List<TestpointVo> queryByEquipmentId(Long equipmentId) {
+        LambdaQueryWrapper<Testpoint> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Testpoint::getEquipmentId, equipmentId);
+        wrapper.orderByAsc(Testpoint::getKksCode);
         return baseMapper.selectVoList(wrapper);
     }
 
     @Override
-    public TestPointVo queryByKksCode(String kksCode) {
-        LambdaQueryWrapper<TestPoint> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(TestPoint::getKksCode, kksCode);
+    public TestpointVo queryByKksCode(String kksCode) {
+        LambdaQueryWrapper<Testpoint> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Testpoint::getKksCode, kksCode);
         wrapper.last("LIMIT 1");
         return baseMapper.selectVoOne(wrapper);
     }
@@ -224,7 +224,7 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
     @Transactional(rollbackFor = Exception.class)
     public Boolean importFromJson(JsonNode testPointJson) {
         try {
-            TestPoint testPoint = parseTestPointFromJson(testPointJson);
+            Testpoint testPoint = parseTestPointFromJson(testPointJson);
             if (!isValidTestPoint(testPoint)) {
                 log.warn("测点数据无效，跳过处理：{}", testPointJson);
                 return false;
@@ -241,7 +241,7 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
     /**
      * 验证测点数据有效性
      */
-    private boolean isValidTestPoint(TestPoint testPoint) {
+    private boolean isValidTestPoint(Testpoint testPoint) {
         return testPoint != null
             && testPoint.getId() != null
             && testPoint.getEquipmentId() != null;
@@ -250,8 +250,8 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
     /**
      * 处理测点数据（新增或更新）
      */
-    private boolean processTestPoint(TestPoint testPoint) {
-        TestPoint existing = baseMapper.selectById(testPoint.getId());
+    private boolean processTestPoint(Testpoint testPoint) {
+        Testpoint existing = baseMapper.selectById(testPoint.getId());
 
         if (existing != null) {
             return updateExistingTestPoint(testPoint);
@@ -263,13 +263,13 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
     /**
      * 更新现有测点
      */
-    private boolean updateExistingTestPoint(TestPoint testPoint) {
+    private boolean updateExistingTestPoint(Testpoint testpoint) {
         try {
-            updateTestPointBySql(testPoint.getId(), testPoint);
-            log.debug("更新测点成功：{}", testPoint.getId());
+            updateTestPointBySql(testpoint.getId(), testpoint);
+            log.debug("更新测点成功：{}", testpoint.getId());
             return true;
         } catch (Exception e) {
-            log.error("更新测点失败：{}，错误：{}", testPoint.getId(), e.getMessage());
+            log.error("更新测点失败：{}，错误：{}", testpoint.getId(), e.getMessage());
             return false;
         }
     }
@@ -277,7 +277,7 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
     /**
      * 插入新测点
      */
-    private boolean insertNewTestPoint(TestPoint testPoint) {
+    private boolean insertNewTestPoint(Testpoint testPoint) {
         try {
             setDefaultThresholds(testPoint);
             int result = baseMapper.insert(testPoint);
@@ -296,25 +296,25 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
 
     @Override
     public Boolean unbind(List<Long> testPointIds) {
-        LambdaUpdateWrapper<TestPoint> wrapper = Wrappers.lambdaUpdate();
-        wrapper.set(TestPoint::getPositionX, null);
-        wrapper.set(TestPoint::getPositionY, null);
-        wrapper.set(TestPoint::getPositionZ, null);
-        wrapper.in(TestPoint::getId, testPointIds);
+        LambdaUpdateWrapper<Testpoint> wrapper = Wrappers.lambdaUpdate();
+        wrapper.set(Testpoint::getPositionX, null);
+        wrapper.set(Testpoint::getPositionY, null);
+        wrapper.set(Testpoint::getPositionZ, null);
+        wrapper.in(Testpoint::getId, testPointIds);
         return  baseMapper.update(wrapper) > 0;
     }
 
     /**
      * 从JSON节点解析测点对象
      */
-    private TestPoint parseTestPointFromJson(JsonNode testPointNode) {
+    private Testpoint parseTestPointFromJson(JsonNode testPointNode) {
         if (testPointNode == null || testPointNode.isNull()) {
             log.warn("测点JSON数据为空");
             return null;
         }
 
         try {
-            TestPoint testPoint = new TestPoint();
+            Testpoint testPoint = new Testpoint();
 
             // 解析测点ID
             Long testPointId = parseTestPointId(testPointNode);
@@ -336,7 +336,7 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
             testPoint.setMt(mt);
 
             // 根据mt值自动设置测点类型
-            TestPointTypeEnum typeEnum = TestPointTypeEnum.getByMtValue(mt);
+            TestpointTypeEnum typeEnum = TestpointTypeEnum.getByMtValue(mt);
             testPoint.setType(typeEnum.getCode());
 
             log.debug("解析测点数据成功：ID={}, 设备ID={}, KKS编码={}, mt={}, type={} ({})",
@@ -417,15 +417,15 @@ public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint
      * 使用SQL更新测点配置信息（避免Sa-Token上下文问题）
      * 注意：只更新配置字段，不影响实时监测数据和阈值设置
      */
-    private void updateTestPointBySql(Long testPointId, TestPoint newData) {
-        LambdaUpdateWrapper<TestPoint> updateWrapper = Wrappers.lambdaUpdate();
-        updateWrapper.eq(TestPoint::getId, testPointId)
-            .set(TestPoint::getKksCode, newData.getKksCode())
-            .set(TestPoint::getKksName, newData.getKksName())
-            .set(TestPoint::getMt, newData.getMt())
-            .set(TestPoint::getType, newData.getType())
-            .set(TestPoint::getUpdateTime, DateUtil.dateSecond())
-            .set(TestPoint::getEquipmentId, newData.getEquipmentId());
+    private void updateTestPointBySql(Long testpointId, Testpoint newData) {
+        LambdaUpdateWrapper<Testpoint> updateWrapper = Wrappers.lambdaUpdate();
+        updateWrapper.eq(Testpoint::getId, testpointId)
+            .set(Testpoint::getKksCode, newData.getKksCode())
+            .set(Testpoint::getKksName, newData.getKksName())
+            .set(Testpoint::getMt, newData.getMt())
+            .set(Testpoint::getType, newData.getType())
+            .set(Testpoint::getUpdateTime, DateUtil.dateSecond())
+            .set(Testpoint::getEquipmentId, newData.getEquipmentId());
 
         baseMapper.update(null, updateWrapper);
         // 注意：不更新last_开头的实时数据字段和阈值配置，保持现有数据

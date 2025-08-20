@@ -1,6 +1,6 @@
 package org.dromara.hm.utils;
 
-import org.dromara.hm.enums.TestPointTypeEnum;
+import org.dromara.hm.enums.TestpointTypeEnum;
 import lombok.experimental.UtilityClass;
 
 import java.util.List;
@@ -9,12 +9,12 @@ import java.util.stream.Collectors;
 
 /**
  * 测点类型工具类
- * 
+ *
  * @author ruoyi
  * @date 2024-01-01
  */
 @UtilityClass
-public class TestPointTypeUtils {
+public class TestpointTypeUtils {
 
     /**
      * 判断是否为局部放电类型的测点
@@ -23,7 +23,7 @@ public class TestPointTypeUtils {
      * @return true 如果是局部放电类型
      */
     public static boolean isPartialDischargeType(Integer mt) {
-        return TestPointTypeEnum.isPartialDischarge(mt);
+        return TestpointTypeEnum.isPartialDischarge(mt);
     }
 
     /**
@@ -33,7 +33,7 @@ public class TestPointTypeUtils {
      * @return true 如果是局部放电类型
      */
     public static boolean isPartialDischargeTypeByCode(Integer type) {
-        return TestPointTypeEnum.PARTIAL_DISCHARGE.getCode().equals(type);
+        return TestpointTypeEnum.PARTIAL_DISCHARGE.getCode().equals(type);
     }
 
     /**
@@ -43,7 +43,7 @@ public class TestPointTypeUtils {
      * @return 类型描述
      */
     public static String getTypeDescription(Integer type) {
-        TestPointTypeEnum typeEnum = TestPointTypeEnum.getByCode(type);
+        TestpointTypeEnum typeEnum = TestpointTypeEnum.getByCode(type);
         return typeEnum != null ? typeEnum.getDescription() : "未知类型";
     }
 
@@ -54,7 +54,7 @@ public class TestPointTypeUtils {
      * @return 类型名称
      */
     public static String getTypeName(Integer type) {
-        TestPointTypeEnum typeEnum = TestPointTypeEnum.getByCode(type);
+        TestpointTypeEnum typeEnum = TestpointTypeEnum.getByCode(type);
         return typeEnum != null ? typeEnum.getName() : "未知";
     }
 
@@ -66,9 +66,9 @@ public class TestPointTypeUtils {
      */
     public static Map<String, Long> getTypeStatistics(List<Integer> mtValues) {
         return mtValues.stream()
-            .map(TestPointTypeEnum::getByMtValue)
+            .map(TestpointTypeEnum::getByMtValue)
             .collect(Collectors.groupingBy(
-                TestPointTypeEnum::getName,
+                TestpointTypeEnum::getName,
                 Collectors.counting()
             ));
     }
@@ -83,9 +83,9 @@ public class TestPointTypeUtils {
         if (mt == null) {
             return false;
         }
-        
-        TestPointTypeEnum typeEnum = TestPointTypeEnum.getByMtValue(mt);
-        return !TestPointTypeEnum.OTHER.equals(typeEnum) || TestPointTypeEnum.OTHER.getMtValues().contains(mt);
+
+        TestpointTypeEnum typeEnum = TestpointTypeEnum.getByMtValue(mt);
+        return !TestpointTypeEnum.OTHER.equals(typeEnum) || TestpointTypeEnum.OTHER.getMtValues().contains(mt);
     }
 
     /**
@@ -95,11 +95,11 @@ public class TestPointTypeUtils {
      * @return mt值范围描述
      */
     public static String getMtRangeDescription(Integer type) {
-        TestPointTypeEnum typeEnum = TestPointTypeEnum.getByCode(type);
+        TestpointTypeEnum typeEnum = TestpointTypeEnum.getByCode(type);
         if (typeEnum == null || typeEnum.getMtValues().isEmpty()) {
             return "无";
         }
-        
+
         return typeEnum.getMtValues().stream()
             .map(String::valueOf)
             .collect(Collectors.joining(", "));
@@ -116,14 +116,14 @@ public class TestPointTypeUtils {
         if (oldMt == null && newMt == null) {
             return false;
         }
-        
+
         if (oldMt == null || newMt == null) {
             return true;
         }
-        
-        TestPointTypeEnum oldType = TestPointTypeEnum.getByMtValue(oldMt);
-        TestPointTypeEnum newType = TestPointTypeEnum.getByMtValue(newMt);
-        
+
+        TestpointTypeEnum oldType = TestpointTypeEnum.getByMtValue(oldMt);
+        TestpointTypeEnum newType = TestpointTypeEnum.getByMtValue(newMt);
+
         return !oldType.equals(newType);
     }
 
@@ -135,9 +135,9 @@ public class TestPointTypeUtils {
      * @return 格式化的信息字符串
      */
     public static String formatTypeInfo(Integer mt, Integer type) {
-        TestPointTypeEnum typeEnum = TestPointTypeEnum.getByCode(type);
+        TestpointTypeEnum typeEnum = TestpointTypeEnum.getByCode(type);
         String typeName = typeEnum != null ? typeEnum.getName() : "未知";
-        
+
         return String.format("类型: %s (code=%d, mt=%d)", typeName, type, mt);
     }
 }

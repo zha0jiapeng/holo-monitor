@@ -15,12 +15,12 @@ import org.dromara.common.excel.core.ExcelResult;
 import org.dromara.common.excel.utils.ExcelUtil;
 import org.dromara.common.log.annotation.Log;
 import org.dromara.common.log.enums.BusinessType;
-import org.dromara.hm.domain.TestPoint;
-import org.dromara.hm.domain.bo.TestPointBo;
-import org.dromara.hm.domain.vo.TestPointVo;
-import org.dromara.hm.enums.TestPointTypeEnum;
-import org.dromara.hm.service.ITestPointService;
+import org.dromara.hm.domain.Testpoint;
+import org.dromara.hm.domain.bo.TestpointBo;
+import org.dromara.hm.domain.vo.TestpointVo;
 import lombok.RequiredArgsConstructor;
+import org.dromara.hm.enums.TestpointTypeEnum;
+import org.dromara.hm.service.ITestpointService;
 import org.dromara.hm.validate.BindGroup;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
@@ -44,17 +44,17 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/hm/testpoint")
-public class TestPointController extends BaseController {
+public class TestpointController extends BaseController {
 
-    private final ITestPointService testPointService;
+    private final ITestpointService testpointService;
 
     /**
      * 查询测点列表
      */
     @SaCheckPermission("hm:testpoint:list")
     @GetMapping("/list")
-    public TableDataInfo<TestPointVo> list(@Validated(QueryGroup.class) TestPointBo bo, PageQuery pageQuery) {
-        return testPointService.queryPageList(bo, pageQuery);
+    public TableDataInfo<TestpointVo> list(@Validated(QueryGroup.class) TestpointBo bo, PageQuery pageQuery) {
+        return testpointService.queryPageList(bo, pageQuery);
     }
 
     /**
@@ -62,8 +62,8 @@ public class TestPointController extends BaseController {
      */
     @SaCheckPermission("hm:testpoint:list")
     @GetMapping("/page")
-    public TableDataInfo<TestPointVo> page(@Validated(QueryGroup.class) TestPointBo bo, PageQuery pageQuery) {
-        return testPointService.customPageList(bo, pageQuery);
+    public TableDataInfo<TestpointVo> page(@Validated(QueryGroup.class) TestpointBo bo, PageQuery pageQuery) {
+        return testpointService.customPageList(bo, pageQuery);
     }
 
     /**
@@ -71,9 +71,9 @@ public class TestPointController extends BaseController {
      */
     @SaCheckPermission("hm:testpoint:list")
     @GetMapping("/equipment/{equipmentId}")
-    public R<List<TestPointVo>> listByEquipment(@NotNull(message = "设备ID不能为空")
+    public R<List<TestpointVo>> listByEquipment(@NotNull(message = "设备ID不能为空")
                                               @PathVariable("equipmentId") Long equipmentId) {
-        return R.ok(testPointService.queryByEquipmentId(equipmentId));
+        return R.ok(testpointService.queryByEquipmentId(equipmentId));
     }
 
     /**
@@ -81,9 +81,9 @@ public class TestPointController extends BaseController {
      */
     @SaCheckPermission("hm:testpoint:query")
     @GetMapping("/kks/{kksCode}")
-    public R<TestPointVo> getByKksCode(@NotNull(message = "KKS编码不能为空")
+    public R<TestpointVo> getByKksCode(@NotNull(message = "KKS编码不能为空")
                                      @PathVariable("kksCode") String kksCode) {
-        return R.ok(testPointService.queryByKksCode(kksCode));
+        return R.ok(testpointService.queryByKksCode(kksCode));
     }
 
     /**
@@ -92,7 +92,7 @@ public class TestPointController extends BaseController {
     @SaCheckPermission("hm:testpoint:list")
     @GetMapping("/types")
     public R<Map<Integer, String>> getTestPointTypes() {
-        Map<Integer, String> typeMap = TestPointTypeEnum.getTypeMap();
+        Map<Integer, String> typeMap = TestpointTypeEnum.getTypeMap();
         return R.ok(typeMap);
     }
 
@@ -105,9 +105,9 @@ public class TestPointController extends BaseController {
     @SaCheckPermission("hm:testpoint:import")
     @PostMapping(value = "/importData", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public R<Void> importData(@RequestPart("file") MultipartFile file) throws Exception {
-        ExcelResult<TestPointBo> excelResult = ExcelUtil.importExcel(file.getInputStream(), TestPointBo.class, true);
-        List<TestPoint> list = MapstructUtils.convert(excelResult.getList(), TestPoint.class);
-        testPointService.saveBatch(list);
+        ExcelResult<TestpointBo> excelResult = ExcelUtil.importExcel(file.getInputStream(), TestpointBo.class, true);
+        List<Testpoint> list = MapstructUtils.convert(excelResult.getList(), Testpoint.class);
+        testpointService.saveBatch(list);
         return R.ok(excelResult.getAnalysis());
     }
 
@@ -117,9 +117,9 @@ public class TestPointController extends BaseController {
     @SaCheckPermission("hm:testpoint:export")
     @Log(title = "测点", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
-    public void export(@Validated TestPointBo bo, HttpServletResponse response) {
-        List<TestPointVo> list = testPointService.queryList(bo);
-        ExcelUtil.exportExcel(list, "测点", TestPointVo.class, response);
+    public void export(@Validated TestpointBo bo, HttpServletResponse response) {
+        List<TestpointVo> list = testpointService.queryList(bo);
+        ExcelUtil.exportExcel(list, "测点", TestpointVo.class, response);
     }
 
     /**
@@ -129,9 +129,9 @@ public class TestPointController extends BaseController {
      */
     @SaCheckPermission("hm:testpoint:query")
     @GetMapping("/{id}")
-    public R<TestPointVo> getInfo(@NotNull(message = "主键不能为空")
+    public R<TestpointVo> getInfo(@NotNull(message = "主键不能为空")
                                  @PathVariable("id") Long id) {
-        return R.ok(testPointService.queryById(id));
+        return R.ok(testpointService.queryById(id));
     }
 
     /**
@@ -141,9 +141,9 @@ public class TestPointController extends BaseController {
     @Log(title = "测点", businessType = BusinessType.INSERT)
     @RepeatSubmit(interval = 2, timeUnit = TimeUnit.SECONDS, message = "{repeat.submit.message}")
     @PostMapping()
-    public R<Void> add(@RequestBody TestPointBo bo) {
+    public R<Void> add(@RequestBody TestpointBo bo) {
         ValidatorUtils.validate(bo, AddGroup.class);
-        return toAjax(testPointService.insertByBo(bo));
+        return toAjax(testpointService.insertByBo(bo));
     }
 
     /**
@@ -153,8 +153,8 @@ public class TestPointController extends BaseController {
     @Log(title = "测点", businessType = BusinessType.UPDATE)
     @RepeatSubmit
     @PutMapping()
-    public R<Void> edit(@Validated(EditGroup.class) @RequestBody TestPointBo bo) {
-        return toAjax(testPointService.updateByBo(bo));
+    public R<Void> edit(@Validated(EditGroup.class) @RequestBody TestpointBo bo) {
+        return toAjax(testpointService.updateByBo(bo));
     }
 
     /**
@@ -164,8 +164,8 @@ public class TestPointController extends BaseController {
     @Log(title = "绑定测点坐标", businessType = BusinessType.UPDATE)
     @RepeatSubmit
     @PutMapping("/bind")
-    public R<Void> bind(@Validated(BindGroup.class) @RequestBody List<TestPointBo> bo) {
-        return toAjax(testPointService.updateBatchByBo(bo));
+    public R<Void> bind(@Validated(BindGroup.class) @RequestBody List<TestpointBo> bo) {
+        return toAjax(testpointService.updateBatchByBo(bo));
     }
 
     /**
@@ -176,7 +176,7 @@ public class TestPointController extends BaseController {
     @RepeatSubmit
     @PutMapping("/unbind")
     public R<Void> unbind(@RequestBody List<Long> ids) {
-        return toAjax(testPointService.unbind(ids));
+        return toAjax(testpointService.unbind(ids));
     }
 
     /**
@@ -189,6 +189,6 @@ public class TestPointController extends BaseController {
     @DeleteMapping("/{ids}")
     public R<Void> remove(@NotEmpty(message = "主键不能为空")
                           @PathVariable Long[] ids) {
-        return toAjax(testPointService.deleteWithValidByIds(Arrays.asList(ids), true));
+        return toAjax(testpointService.deleteWithValidByIds(Arrays.asList(ids), true));
     }
 }

@@ -1,38 +1,43 @@
-package org.dromara.hm.domain;
+package org.dromara.hm.domain.bo;
 
-import com.baomidou.mybatisplus.annotation.*;
-import org.dromara.common.tenant.core.TenantEntity;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.TableField;
+import org.dromara.common.mybatis.core.domain.BaseEntity;
+import org.dromara.hm.domain.TestpointData;
+import io.github.linpeilie.annotations.AutoMapper;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
-import java.io.Serial;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import org.dromara.common.core.validate.AddGroup;
+import org.dromara.common.core.validate.EditGroup;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Date;
 
 /**
- * 测点数据对象 hm_testpoint_data
+ * 测点数据业务对象 hm_testpoint_data
  *
  * @author ruoyi
  * @date 2024-01-01
  */
 @Data
 @EqualsAndHashCode
-@TableName("hm_testpoint_data")
-public class TestPointData {
-
-    @Serial
-    private static final long serialVersionUID = 1L;
+@AutoMapper(target = TestpointData.class, reverseConvertGenerate = false)
+public class TestpointDataBo {
 
     /**
      * id
      */
-    @TableId(value = "id", type = IdType.AUTO)
+    @NotNull(message = "主键ID不能为空", groups = {EditGroup.class})
     private Long id;
 
     /**
      * kks编码
      */
+    @NotBlank(message = "kks编码不能为空", groups = {AddGroup.class, EditGroup.class})
     private String kksCode;
 
     /**
@@ -53,7 +58,7 @@ public class TestPointData {
     /**
      * 自计算报警状态
      */
-    private Integer alarmType;
+    private String alarmType;
 
     /**
      * SD400MP报警状态
@@ -73,7 +78,7 @@ public class TestPointData {
     /**
      * 站端诊断结果
      */
-    private byte[] pdexpertSite;
+    private byte[] pdexpertSide;
 
     /**
      * 平台诊断结果

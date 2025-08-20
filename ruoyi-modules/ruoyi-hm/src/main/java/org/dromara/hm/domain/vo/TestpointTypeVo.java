@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * 测点类型VO
- * 
+ *
  * @author ruoyi
  * @date 2024-01-01
  */
@@ -17,7 +17,7 @@ import java.util.Set;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class TestPointTypeVo {
+public class TestpointTypeVo {
 
     /**
      * 类型编码

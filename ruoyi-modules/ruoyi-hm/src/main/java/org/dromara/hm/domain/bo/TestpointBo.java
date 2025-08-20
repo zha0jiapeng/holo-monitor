@@ -1,12 +1,12 @@
 package org.dromara.hm.domain.bo;
 
 import org.dromara.common.mybatis.core.domain.BaseEntity;
-import org.dromara.hm.domain.TestPoint;
 import io.github.linpeilie.annotations.AutoMapper;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import jakarta.validation.constraints.NotNull;
+import org.dromara.hm.domain.Testpoint;
 import org.dromara.hm.validate.BindGroup;
 
 import java.math.BigDecimal;
@@ -21,8 +21,8 @@ import java.time.LocalDateTime;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@AutoMapper(target = TestPoint.class, reverseConvertGenerate = false)
-public class TestPointBo extends BaseEntity {
+@AutoMapper(target = Testpoint.class, reverseConvertGenerate = false)
+public class TestpointBo extends BaseEntity {
 
     /**
      * 主键ID

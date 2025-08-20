@@ -14,7 +14,7 @@ import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
 import org.dromara.hm.constant.Tag;
 import org.dromara.hm.domain.Equipment;
 import org.dromara.hm.service.IEquipmentService;
-import org.dromara.hm.service.ITestPointService;
+import org.dromara.hm.service.ITestpointService;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,7 +34,7 @@ import java.util.Optional;
 @JobExecutor(name = "TestpointExecutor")
 public class TestpointExecutor {
 
-    private final ITestPointService testPointService;
+    private final ITestpointService testPointService;
 
     private final IEquipmentService equipmentService;
 

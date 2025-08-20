@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
  */
 @Getter
 @RequiredArgsConstructor
-public enum TestPointTypeEnum {
+public enum TestpointTypeEnum {
 
     /**
      * 局部放电
@@ -59,7 +59,7 @@ public enum TestPointTypeEnum {
      * @param mt 监测类型值
      * @return 测点类型枚举，如果未找到则返回OTHER
      */
-    public static TestPointTypeEnum getByMtValue(Integer mt) {
+    public static TestpointTypeEnum getByMtValue(Integer mt) {
         if (mt == null) {
             return OTHER;
         }
@@ -76,7 +76,7 @@ public enum TestPointTypeEnum {
      * @param code 类型编码
      * @return 测点类型枚举，如果未找到则返回null
      */
-    public static TestPointTypeEnum getByCode(Integer code) {
+    public static TestpointTypeEnum getByCode(Integer code) {
         if (code == null) {
             return null;
         }
@@ -113,7 +113,7 @@ public enum TestPointTypeEnum {
      */
     public static Set<String> getAllTypeNames() {
         return Arrays.stream(values())
-            .map(TestPointTypeEnum::getName)
+            .map(TestpointTypeEnum::getName)
             .collect(Collectors.toSet());
     }
 
@@ -125,15 +125,15 @@ public enum TestPointTypeEnum {
     public static Map<Integer, String> getTypeMap() {
         return Arrays.stream(values())
             .collect(Collectors.toMap(
-                TestPointTypeEnum::getCode,
-                TestPointTypeEnum::getName,
+                TestpointTypeEnum::getCode,
+                TestpointTypeEnum::getName,
                 (existing, replacement) -> existing
             ));
     }
 
     @Override
     public String toString() {
-        return String.format("TestPointType{code=%d, name='%s', description='%s', mtValues=%s}",
+        return String.format("TestpointType{code=%d, name='%s', description='%s', mtValues=%s}",
             code, name, description, mtValues);
     }
 }

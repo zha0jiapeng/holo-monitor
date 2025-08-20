@@ -6,9 +6,9 @@ import cn.idev.excel.annotation.format.DateTimeFormat;
 import org.dromara.common.excel.annotation.ExcelRequired;
 import org.dromara.common.translation.annotation.Translation;
 import org.dromara.common.translation.constant.TransConstant;
-import org.dromara.hm.domain.TestPointData;
 import io.github.linpeilie.annotations.AutoMapper;
 import lombok.Data;
+import org.dromara.hm.domain.TestpointData;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -24,8 +24,8 @@ import java.util.Date;
  */
 @Data
 @ExcelIgnoreUnannotated
-@AutoMapper(target = TestPointData.class)
-public class TestPointDataVo implements Serializable {
+@AutoMapper(target = TestpointData.class)
+public class TestpointDataVo implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;

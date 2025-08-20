@@ -15,15 +15,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
 import org.dromara.hm.constant.ZdsFileConstants;
 import org.dromara.hm.domain.Equipment;
-import org.dromara.hm.domain.TestPoint;
-import org.dromara.hm.domain.TestPointData;
-import org.dromara.hm.domain.bo.TestPointBo;
-import org.dromara.hm.domain.vo.TestPointVo;
+import org.dromara.hm.domain.Testpoint;
+import org.dromara.hm.domain.TestpointData;
+import org.dromara.hm.domain.bo.TestpointBo;
+import org.dromara.hm.domain.vo.TestpointVo;
 import org.dromara.hm.dto.IndexFileDto;
 import org.dromara.hm.dto.TransformedIndexDataDto;
 import org.dromara.hm.service.IEquipmentService;
-import org.dromara.hm.service.ITestPointDataService;
-import org.dromara.hm.service.ITestPointService;
+import org.dromara.hm.service.ITestpointDataService;
+import org.dromara.hm.service.ITestpointService;
 import org.dromara.hm.utils.JsonTransformUtils;
 import org.dromara.hm.utils.ZdsUtils;
 import org.springframework.beans.factory.annotation.Value;
@@ -53,9 +53,9 @@ import java.util.concurrent.ConcurrentHashMap;
 @JobExecutor(name = "TestpointDataExecutor")
 public class TestpointDataExecutor {
 
-    private final ITestPointService testPointService;
+    private final ITestpointService testPointService;
 
-    private final ITestPointDataService testPointDataService;
+    private final ITestpointDataService testPointDataService;
 
     // 添加并发控制机制，防止同一数据点重复处理
     private final ConcurrentHashMap<String, Object> dataPointLocks = new ConcurrentHashMap<>();
@@ -66,8 +66,8 @@ public class TestpointDataExecutor {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
 
     public ExecuteResult jobExecute(JobArgs jobArgs) {
-        List<TestPoint> testpoints = testPointService.list();
-        for (TestPoint testpoint : testpoints) {
+        List<Testpoint> testpoints = testPointService.list();
+        for (Testpoint testpoint : testpoints) {
             try {
                 syncTestpointData(testpoint);
             } catch (Exception e) {
@@ -76,10 +76,10 @@ public class TestpointDataExecutor {
         }
         return ExecuteResult.success();
     }
-    private void syncTestpointData(TestPoint testpoint) throws Exception {
+    private void syncTestpointData(Testpoint testpoint) throws Exception {
         String kksCode = testpoint.getKksCode();
         LocalDateTime parse = LocalDateTime.parse(defaultStartTime, FORMATTER);
-        TestPointData lastData = getLastTestpointDataSafely(kksCode, parse);
+        TestpointData lastData = getLastTestpointDataSafely(kksCode, parse);
 
         LocalDateTime fromTime;
         if (lastData != null) {
@@ -113,7 +113,7 @@ public class TestpointDataExecutor {
     }
 
 
-    private void processDataPoint(TestPoint testpoint, String kksCode, String SD400APtestpointId, String timeStr) throws Exception {
+    private void processDataPoint(Testpoint testpoint, String kksCode, String SD400APtestpointId, String timeStr) throws Exception {
         LocalDateTime acquisitionTime = LocalDateTime.parse(timeStr, FORMATTER);
         if (!acquisitionTime.isBefore(DateUtil.parseLocalDateTime("2024-03-01 00:00:00"))) {
             return;
@@ -125,9 +125,9 @@ public class TestpointDataExecutor {
         synchronized (lock) {
             try {
                 // 在锁内再次检查数据是否已存在，防止重复插入
-                long count = testPointDataService.count(new LambdaQueryWrapper<TestPointData>()
-                    .eq(TestPointData::getKksCode, testpoint.getKksCode())
-                    .eq(TestPointData::getAcquisitionTime, acquisitionTime)
+                long count = testPointDataService.count(new LambdaQueryWrapper<TestpointData>()
+                    .eq(TestpointData::getKksCode, testpoint.getKksCode())
+                    .eq(TestpointData::getAcquisitionTime, acquisitionTime)
                 );
                 if (count > 0) {
                     log.info("数据已存在,跳过:KksCode={}, Time={}", testpoint.getKksCode(), timeStr);
@@ -147,7 +147,7 @@ public class TestpointDataExecutor {
     /**
      * 实际的数据处理逻辑，从原processDataPoint方法中提取
      */
-    private void processDataPointInternal(TestPoint testpoint, String kksCode, String SD400APtestpointId, String timeStr, LocalDateTime acquisitionTime) throws Exception {
+    private void processDataPointInternal(Testpoint testpoint, String kksCode, String SD400APtestpointId, String timeStr, LocalDateTime acquisitionTime) throws Exception {
         // 4. 获取并解压dataset
         byte[] dataset = SD400MPUtils.dataset(SD400APtestpointId, timeStr);
         if (dataset == null || dataset.length == 0) {
@@ -168,7 +168,7 @@ public class TestpointDataExecutor {
         IndexFileDto indexFile = JSONUtil.toBean(indexJsonStr, IndexFileDto.class);
         TransformedIndexDataDto transformedIndexJson = JsonTransformUtils.transformIndexJson(indexFile);
 
-        TestPointData newData = new TestPointData();
+        TestpointData newData = new TestpointData();
         newData.setKksCode(kksCode);
         newData.setAcquisitionTime(acquisitionTime);
         newData.setCreateTime(new Date());
@@ -224,10 +224,10 @@ public class TestpointDataExecutor {
                 // (3) 按报警设置界面中的"事件数阈值周期（小时）"滚动计算，
                 //     当（放电事件数之和）/（事件数阈值周期（小时）期间的数据条数）≥ 报警设置界面中的"放电事件数比例阈值%，
                 //     且最后一条数据的局放幅值≥报警设置界面中的"特高频注意阈值"，则输出"持续性一级报警"； 分子是（1）
-                List<TestPointData> list = testPointDataService.list(new LambdaQueryWrapper<TestPointData>()
-                    .between(TestPointData::getAcquisitionTime, dateBefore, nowDate)
-                    .ne(TestPointData::getAlarmType, 0)
-                    .orderByDesc(TestPointData::getAcquisitionTime)
+                List<TestpointData> list = testPointDataService.list(new LambdaQueryWrapper<TestpointData>()
+                    .between(TestpointData::getAcquisitionTime, dateBefore, nowDate)
+                    .ne(TestpointData::getAlarmType, 0)
+                    .orderByDesc(TestpointData::getAcquisitionTime)
                 );
                 if (  !list.isEmpty()) {
                     if (new BigDecimal(list.size()).divide(new BigDecimal(eventCountThresholdPeriod), 2, RoundingMode.HALF_UP).compareTo(dischargeEventRatioThreshold) >= 0) {
@@ -270,17 +270,17 @@ public class TestpointDataExecutor {
         }
     }
 
-    private TestPointData getLastTestpointDataSafely(String kksCode, LocalDateTime defaultStartTime) {
+    private TestpointData getLastTestpointDataSafely(String kksCode, LocalDateTime defaultStartTime) {
         try {
             // 优化查询策略：首先查询最近3个月的数据，避免大范围查询创建过多分表
             LocalDateTime threeMonthsAgo = LocalDateTime.now().minusMonths(3);
             LocalDateTime conservativeStartTime = threeMonthsAgo.isAfter(defaultStartTime) ? threeMonthsAgo : defaultStartTime;
 
             return testPointDataService.getOne(
-                new LambdaQueryWrapper<TestPointData>()
-                    .eq(TestPointData::getKksCode, kksCode)
-                    .between(TestPointData::getAcquisitionTime, conservativeStartTime.format(FORMATTER), DateUtil.now())
-                    .orderByDesc(TestPointData::getAcquisitionTime)
+                new LambdaQueryWrapper<TestpointData>()
+                    .eq(TestpointData::getKksCode, kksCode)
+                    .between(TestpointData::getAcquisitionTime, conservativeStartTime.format(FORMATTER), DateUtil.now())
+                    .orderByDesc(TestpointData::getAcquisitionTime)
                     .last("limit 1"), false);
         } catch (Exception e) {
             log.warn("使用保守查询获取测点 {} 最新数据时发生异常，尝试使用逐月查询策略: {}", kksCode, e.getMessage());
@@ -300,11 +300,11 @@ public class TestpointDataExecutor {
 
                     LocalDateTime actualStart = monthStart.isBefore(defaultStartTime) ? defaultStartTime : monthStart;
 
-                    TestPointData monthData = testPointDataService.getOne(
-                        new LambdaQueryWrapper<TestPointData>()
-                            .eq(TestPointData::getKksCode, kksCode)
-                            .between(TestPointData::getAcquisitionTime, actualStart.format(FORMATTER), monthEnd.format(FORMATTER))
-                            .orderByDesc(TestPointData::getAcquisitionTime)
+                    TestpointData monthData = testPointDataService.getOne(
+                        new LambdaQueryWrapper<TestpointData>()
+                            .eq(TestpointData::getKksCode, kksCode)
+                            .between(TestpointData::getAcquisitionTime, actualStart.format(FORMATTER), monthEnd.format(FORMATTER))
+                            .orderByDesc(TestpointData::getAcquisitionTime)
                             .last("limit 1"), false);
 
                     if (monthData != null) {

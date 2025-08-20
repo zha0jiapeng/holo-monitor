@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @TableName("hm_testpoint")
-public class TestPoint extends TenantEntity {
+public class Testpoint extends TenantEntity {
 
     @Serial
     private static final long serialVersionUID = 1L;

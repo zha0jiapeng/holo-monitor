@@ -8,8 +8,8 @@ import org.apache.ibatis.annotations.Param;
 import org.dromara.common.mybatis.annotation.DataColumn;
 import org.dromara.common.mybatis.annotation.DataPermission;
 import org.dromara.common.mybatis.core.mapper.BaseMapperPlus;
-import org.dromara.hm.domain.TestPointData;
-import org.dromara.hm.domain.vo.TestPointDataVo;
+import org.dromara.hm.domain.TestpointData;
+import org.dromara.hm.domain.vo.TestpointDataVo;
 
 import java.io.Serializable;
 import java.util.Collection;
@@ -21,20 +21,20 @@ import java.util.List;
  * @author ruoyi
  * @date 2024-01-01
  */
-public interface TestPointDataMapper extends BaseMapperPlus<TestPointData, TestPointDataVo> {
+public interface TestpointDataMapper extends BaseMapperPlus<TestpointData, TestpointDataVo> {
 
     @DataPermission({
         @DataColumn(key = "deptName", value = "dept_id"),
         @DataColumn(key = "userName", value = "user_id")
     })
-    Page<TestPointDataVo> customPageList(@Param("page") Page<TestPointData> page, @Param("ew") Wrapper<TestPointData> wrapper);
+    Page<TestpointDataVo> customPageList(@Param("page") Page<TestpointData> page, @Param("ew") Wrapper<TestpointData> wrapper);
 
     @Override
     @DataPermission({
         @DataColumn(key = "deptName", value = "dept_id"),
         @DataColumn(key = "userName", value = "user_id")
     })
-    default <P extends IPage<TestPointDataVo>> P selectVoPage(IPage<TestPointData> page, Wrapper<TestPointData> wrapper) {
+    default <P extends IPage<TestpointDataVo>> P selectVoPage(IPage<TestpointData> page, Wrapper<TestpointData> wrapper) {
         return selectVoPage(page, wrapper, this.currentVoClass());
     }
 
@@ -43,7 +43,7 @@ public interface TestPointDataMapper extends BaseMapperPlus<TestPointData, TestP
         @DataColumn(key = "deptName", value = "dept_id"),
         @DataColumn(key = "userName", value = "user_id")
     })
-    default List<TestPointDataVo> selectVoList(Wrapper<TestPointData> wrapper) {
+    default List<TestpointDataVo> selectVoList(Wrapper<TestpointData> wrapper) {
         return selectVoList(wrapper, this.currentVoClass());
     }
 
@@ -52,9 +52,9 @@ public interface TestPointDataMapper extends BaseMapperPlus<TestPointData, TestP
         @DataColumn(key = "deptName", value = "dept_id"),
         @DataColumn(key = "userName", value = "user_id")
     }, joinStr = "AND")
-    List<TestPointData> selectByIds(@Param(Constants.COLL) Collection<? extends Serializable> idList);
+    List<TestpointData> selectByIds(@Param(Constants.COLL) Collection<? extends Serializable> idList);
 
     @Override
-    int updateById(@Param(Constants.ENTITY) TestPointData entity);
+    int updateById(@Param(Constants.ENTITY) TestpointData entity);
 
 }
