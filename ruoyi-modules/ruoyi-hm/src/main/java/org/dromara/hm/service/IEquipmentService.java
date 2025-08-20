@@ -75,6 +75,11 @@ public interface IEquipmentService {
     Boolean importFromJson(String jsonData);
 
     /**
+     * 从JSON数据导入设备（新版本，只处理设备数据）
+     */
+    Boolean importEquipmentsFromJson(String jsonData);
+
+    /**
      * 根据设备类型查询设备列表
      *
      * @param type 设备类型

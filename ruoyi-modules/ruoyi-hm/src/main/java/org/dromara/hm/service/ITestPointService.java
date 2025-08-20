@@ -1,5 +1,6 @@
 package org.dromara.hm.service;
 
+import com.baomidou.mybatisplus.extension.service.IService;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
@@ -16,7 +17,7 @@ import java.util.List;
  * @author ruoyi
  * @date 2024-01-01
  */
-public interface ITestPointService {
+public interface ITestPointService extends IService<TestPoint> {
 
     /**
      * 查询单个

@@ -49,10 +49,10 @@ public class EquipmentVo implements Serializable {
     private String uniqueKey;
 
     /**
-     * 父级设备ID
+     * 层级id
      */
-    @ExcelProperty(value = "父级设备ID")
-    private Long idParent;
+    @ExcelProperty(value = "层级id")
+    private Long hierarchyId;
 
     /**
      * 设备名称
@@ -92,6 +92,23 @@ public class EquipmentVo implements Serializable {
     private Double lng;
 
     /**
+     * 设备类型
+     */
+    @ExcelProperty(value = "设备类型")
+    private Integer dut;
+
+    /**
+     * 设备大类
+     */
+    @ExcelProperty(value = "设备大类")
+    private Integer dutMajor;
+
+    /**
+     * 电压等级
+     */
+    @ExcelProperty(value = "电压等级")
+    private String voltageLevel;
+    /**
      * 创建时间
      */
     @ExcelRequired
@@ -130,5 +147,7 @@ public class EquipmentVo implements Serializable {
     @Translation(type = TransConstant.USER_ID_TO_NAME, mapper = "updateBy")
     @ExcelProperty(value = "更新人账号")
     private String updateByName;
+
+
 
 }

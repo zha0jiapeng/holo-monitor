@@ -38,9 +38,9 @@ public class Equipment extends TenantEntity {
     private String ossId;
 
     /**
-     * 父级设备ID
+     * 层级id
      */
-    private Long idParent;
+    private Long hierarchyId;
 
     /**
      * 设备名称
@@ -53,10 +53,6 @@ public class Equipment extends TenantEntity {
     @TableField("`desc`")
     private String desc;
 
-    /**
-     * 设备类型
-     */
-    private Integer type;
 
     /**
      * 设备设置
@@ -72,5 +68,20 @@ public class Equipment extends TenantEntity {
      * 经度
      */
     private Double lng;
+
+    /**
+     * 设备类型
+     */
+    private Integer dut;
+
+    /**
+     * 设备大类
+     */
+    private Integer dutMajor;
+
+    /**
+     * 电压等级
+     */
+    private String voltageLevel;
 
 }

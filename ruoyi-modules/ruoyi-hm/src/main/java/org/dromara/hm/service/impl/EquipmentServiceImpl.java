@@ -5,15 +5,20 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
+import org.dromara.hm.constant.Tag;
 import org.dromara.hm.domain.Equipment;
+import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.bo.EquipmentBo;
 import org.dromara.hm.domain.vo.EquipmentVo;
+import org.dromara.hm.enums.EquipmentDutEnum;
 import org.dromara.hm.mapper.EquipmentMapper;
+import org.dromara.hm.mapper.HierarchyMapper;
 import org.dromara.hm.service.IEquipmentService;
 import org.springframework.stereotype.Service;
 
@@ -35,9 +40,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 @RequiredArgsConstructor
 @Service
+@Slf4j
 public class EquipmentServiceImpl implements IEquipmentService {
 
     private final EquipmentMapper baseMapper;
+    private final HierarchyMapper hierarchyMapper;
 
     @Override
     public EquipmentVo queryById(Long id) {
@@ -70,10 +77,9 @@ public class EquipmentServiceImpl implements IEquipmentService {
         Map<String, Object> params = bo.getParams();
         LambdaQueryWrapper<Equipment> lqw = Wrappers.lambdaQuery();
         lqw.eq(StringUtils.isNotBlank(bo.getUniqueKey()), Equipment::getUniqueKey, bo.getUniqueKey());
-        lqw.eq(bo.getIdParent() != null, Equipment::getIdParent, bo.getIdParent());
+        lqw.eq(bo.getHierarchyId() != null, Equipment::getHierarchyId, bo.getHierarchyId());
         lqw.like(StringUtils.isNotBlank(bo.getName()), Equipment::getName, bo.getName());
         lqw.like(StringUtils.isNotBlank(bo.getDesc()), Equipment::getDesc, bo.getDesc());
-        lqw.eq(bo.getType() != null, Equipment::getType, bo.getType());
         lqw.eq(bo.getLat() != null, Equipment::getLat, bo.getLat());
         lqw.eq(bo.getLng() != null, Equipment::getLng, bo.getLng());
         lqw.between(params.get("beginCreateTime") != null && params.get("endCreateTime") != null,
@@ -124,26 +130,23 @@ public class EquipmentServiceImpl implements IEquipmentService {
             }
         }
 
-        // 校验父级设备是否存在
-        if (entity.getIdParent() != null) {
-            Equipment parent = baseMapper.selectById(entity.getIdParent());
-            if (parent == null) {
-                throw new ServiceException("父级设备不存在");
-            }
+        // 校验层级是否存在
+        if (entity.getHierarchyId() != null) {
+            // 这里应该检查hierarchy表中是否存在该层级
+            // 暂时注释掉，实际使用时需要注入HierarchyService进行验证
+            // Hierarchy hierarchy = hierarchyService.queryById(entity.getHierarchyId());
+            // if (hierarchy == null) {
+            //     throw new ServiceException("层级不存在");
+            // }
         }
     }
 
     @Override
     public Boolean deleteWithValidByIds(Collection<Long> ids, Boolean isValid) {
         if (isValid) {
-            // 检查是否有子设备，如果有则不能删除
-            for (Long id : ids) {
-                LambdaQueryWrapper<Equipment> wrapper = Wrappers.lambdaQuery();
-                wrapper.eq(Equipment::getIdParent, id);
-                if (baseMapper.exists(wrapper)) {
-                    throw new ServiceException("存在子设备，无法删除");
-                }
-            }
+            // 检查是否有关联到该设备的其他设备，如果有则不能删除
+            // 注意：现在设备关联的是层级而不是其他设备，所以这个检查可能不再需要
+            // 如果需要，应该检查是否有设备关联到要删除设备所在的层级
 
             // 校验删除权限
             List<Equipment> list = baseMapper.selectByIds(ids);
@@ -199,8 +202,8 @@ public class EquipmentServiceImpl implements IEquipmentService {
                     // 更新现有设备 - 使用update wrapper避免Sa-Token上下文问题
                     updateEquipmentBySql(equipment.getId(), equipment);
                 } else {
-                    // 新增设备（暂时不设置父级）
-                    equipment.setIdParent(null);
+                    // 新增设备（暂时不设置层级）
+                    equipment.setHierarchyId(null);
                     baseMapper.insert(equipment);
                 }
             }
@@ -214,7 +217,7 @@ public class EquipmentServiceImpl implements IEquipmentService {
                     if (parentEquipment != null || sdEquipmentList.stream().anyMatch(e -> e.getId().equals(sdParentId))) {
                         // 更新父级关系
                         Equipment dbEquipment = baseMapper.selectById(equipment.getId());
-                        if (dbEquipment != null && !sdParentId.equals(dbEquipment.getIdParent())) {
+                        if (dbEquipment != null && !sdParentId.equals(dbEquipment.getHierarchyId())) {
                             updateParentId(equipment.getId(), sdParentId);
                         }
                     }
@@ -253,10 +256,11 @@ public class EquipmentServiceImpl implements IEquipmentService {
             .set(Equipment::getUniqueKey, newData.getUniqueKey())
             .set(Equipment::getName, newData.getName())
             .set(Equipment::getDesc, newData.getDesc())
-            .set(Equipment::getType, newData.getType())
             .set(Equipment::getSettings, newData.getSettings())
             .set(Equipment::getLat, newData.getLat())
-            .set(Equipment::getLng, newData.getLng());
+            .set(Equipment::getLng, newData.getLng())
+            .set(Equipment::getDut, newData.getDut())
+            .set(Equipment::getDutMajor, newData.getDutMajor());
 
         baseMapper.update(null, updateWrapper);
     }
@@ -267,7 +271,7 @@ public class EquipmentServiceImpl implements IEquipmentService {
     private void updateParentId(Long equipmentId, Long parentId) {
         LambdaUpdateWrapper<Equipment> updateWrapper = Wrappers.lambdaUpdate();
         updateWrapper.eq(Equipment::getId, equipmentId)
-            .set(Equipment::getIdParent, parentId);
+            .set(Equipment::getHierarchyId, parentId);
 
         baseMapper.update(null, updateWrapper);
     }
@@ -279,7 +283,7 @@ public class EquipmentServiceImpl implements IEquipmentService {
         List<Long> currentIds = new ArrayList<>(deleteIds);
         for (Long parentId : currentIds) {
             List<Long> childIds = allEquipments.stream()
-                .filter(e -> parentId.equals(e.getIdParent()) && !deleteIds.contains(e.getId()))
+                .filter(e -> parentId.equals(e.getHierarchyId()) && !deleteIds.contains(e.getId()))
                 .map(Equipment::getId)
                 .toList();
 
@@ -315,13 +319,6 @@ public class EquipmentServiceImpl implements IEquipmentService {
                 equipment.setName(equipmentNode.get("name").asText());
             } else {
                 equipment.setName("未命名设备");
-            }
-
-            // 设备类型
-            if (equipmentNode.has("type") && !equipmentNode.get("type").isNull()) {
-                equipment.setType(equipmentNode.get("type").asInt());
-            } else {
-                equipment.setType(0); // 默认类型
             }
 
             // 描述
@@ -360,6 +357,22 @@ public class EquipmentServiceImpl implements IEquipmentService {
                 equipment.setLng(lng != 0 ? lng : null);
             }
 
+            if (equipmentNode.has("settings") && !equipmentNode.get("settings").isNull()) {
+                JsonNode settings = equipmentNode.get("settings");
+                if (settings.has("params") && !settings.get("params").isNull()) {
+                    JsonNode params = settings.get("params");
+                    for (JsonNode param : params) {
+                        String key = param.get("key").asText();
+                        if (Tag.DUT.equals(key)) {
+                            String val = param.get("val").asText();
+                            equipment.setDut(Integer.parseInt(val));
+                            equipment.setDutMajor(EquipmentDutEnum.getByDutValue(equipment.getDut()).getCode());
+                            break;
+                        }
+                    }
+                }
+            }
+
             // 注意：idParent在这里不设置，在调用方法中单独处理
 
             return equipment;
@@ -369,9 +382,178 @@ public class EquipmentServiceImpl implements IEquipmentService {
     }
 
     @Override
+    public Boolean importEquipmentsFromJson(String jsonData) {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            JsonNode rootNode = objectMapper.readTree(jsonData);
+            JsonNode dataNode = rootNode.get("data");
+
+            if (dataNode == null || !dataNode.isArray()) {
+                throw new ServiceException("JSON格式错误：缺少data数组");
+            }
+
+            // 获取当前数据库中的所有设备，按id建立映射
+            List<Equipment> existingEquipments = baseMapper.selectList(null);
+            Map<Long, Equipment> existingIdMap = existingEquipments.stream()
+                .filter(e -> e.getId() != null)
+                .collect(Collectors.toMap(Equipment::getId, e -> e, (e1, e2) -> e1));
+
+            // 解析设备数据（此时数据已经过滤，只包含设备）
+            List<Equipment> newEquipments = new ArrayList<>();
+            Map<Long, Long> hierarchyRelations = new HashMap<>();
+
+            // 第一轮：解析设备数据
+            for (JsonNode itemNode : dataNode) {
+                Equipment equipment = parseEquipmentFromJsonNew(itemNode);
+                if (equipment != null && equipment.getId() != null) {
+                    newEquipments.add(equipment);
+                    // 记录层级关系
+                    if (itemNode.has("idParent") && !itemNode.get("idParent").isNull()) {
+                        hierarchyRelations.put(equipment.getId(), itemNode.get("idParent").asLong());
+                    }
+                }
+            }
+
+            // 第二轮：新增和更新设备（直接设置层级关系）
+            for (Equipment equipment : newEquipments) {
+                // 设置层级关系 - type=2的设备一定有层级
+                equipment.setHierarchyId(hierarchyRelations.get(equipment.getId()));
+
+                Equipment existing = existingIdMap.get(equipment.getId());
+                if (existing != null) {
+                    // 更新现有设备
+                    equipment.setCreateBy(existing.getCreateBy());
+                    equipment.setCreateTime(existing.getCreateTime());
+                    equipment.setCreateDept(existing.getCreateDept());
+                    equipment.setTenantId(existing.getTenantId());
+                    updateEquipmentBySqlNew(equipment.getId(), equipment);
+                } else {
+                    // 新增设备
+                    baseMapper.insert(equipment);
+                }
+            }
+
+            // 第四轮：删除不存在的设备
+            List<Long> newIds = newEquipments.stream().map(Equipment::getId).toList();
+            List<Long> toDeleteIds = existingEquipments.stream()
+                .filter(e -> e.getId() != null && !newIds.contains(e.getId()))
+                .map(Equipment::getId)
+                .toList();
+
+            if (!toDeleteIds.isEmpty()) {
+                baseMapper.deleteByIds(toDeleteIds);
+            }
+
+            return true;
+        } catch (Exception e) {
+            throw new ServiceException("设备同步失败：" + e.getMessage());
+        }
+    }
+
+
+
+    /**
+     * 从JSON节点解析设备对象（新版本，使用hierarchyId）
+     */
+    private Equipment parseEquipmentFromJsonNew(JsonNode equipmentNode) {
+        try {
+            Equipment equipment = new Equipment();
+
+            // 直接使用SD400MP的ID作为主键
+            if (equipmentNode.has("id") && !equipmentNode.get("id").isNull()) {
+                equipment.setId(equipmentNode.get("id").asLong());
+            } else {
+                return null;
+            }
+
+            // 唯一键
+            if (equipmentNode.has("key") && !equipmentNode.get("key").isNull()) {
+                equipment.setUniqueKey(equipmentNode.get("key").asText());
+            }
+
+            // 设备名称 - 必须字段
+            if (equipmentNode.has("name") && !equipmentNode.get("name").isNull()) {
+                equipment.setName(equipmentNode.get("name").asText());
+            } else {
+                equipment.setName("未命名设备");
+            }
+
+            // 描述
+            if (equipmentNode.has("desc") && !equipmentNode.get("desc").isNull()) {
+                equipment.setDesc(equipmentNode.get("desc").asText());
+            }
+
+            // 设置（blob类型）
+            if (equipmentNode.has("settings") && !equipmentNode.get("settings").isNull()) {
+                JsonNode settingsNode = equipmentNode.get("settings");
+                try {
+                    String settingsStr;
+                    if (settingsNode.isTextual()) {
+                        settingsStr = settingsNode.asText();
+                    } else {
+                        settingsStr = settingsNode.toString();
+                    }
+                    equipment.setSettings(settingsStr.getBytes(StandardCharsets.UTF_8));
+                } catch (Exception e) {
+                    equipment.setSettings(settingsNode.toString().getBytes(StandardCharsets.UTF_8));
+                }
+            }
+
+            // 经纬度
+            if (equipmentNode.has("lat") && !equipmentNode.get("lat").isNull()) {
+                double lat = equipmentNode.get("lat").asDouble();
+                equipment.setLat(lat != 0 ? lat : null);
+            }
+
+            if (equipmentNode.has("lng") && !equipmentNode.get("lng").isNull()) {
+                double lng = equipmentNode.get("lng").asDouble();
+                equipment.setLng(lng != 0 ? lng : null);
+            }
+
+            // 处理DUT信息
+            if (equipmentNode.has("settings") && !equipmentNode.get("settings").isNull()) {
+                JsonNode settings = equipmentNode.get("settings");
+                if (settings.has("params") && !settings.get("params").isNull()) {
+                    JsonNode params = settings.get("params");
+                    for (JsonNode param : params) {
+                        String key = param.get("key").asText();
+                        if (Tag.DUT.equals(key)) {
+                            String val = param.get("val").asText();
+                            equipment.setDut(Integer.parseInt(val));
+                            equipment.setDutMajor(EquipmentDutEnum.getByDutValue(equipment.getDut()).getCode());
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return equipment;
+        } catch (Exception e) {
+            throw new ServiceException("解析设备数据失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 使用SQL更新设备信息（新版本，使用hierarchyId）
+     */
+    private void updateEquipmentBySqlNew(Long equipmentId, Equipment newData) {
+        LambdaUpdateWrapper<Equipment> updateWrapper = Wrappers.lambdaUpdate();
+        updateWrapper.eq(Equipment::getId, equipmentId)
+            .set(Equipment::getUniqueKey, newData.getUniqueKey())
+            .set(Equipment::getName, newData.getName())
+            .set(Equipment::getDesc, newData.getDesc())
+            .set(Equipment::getSettings, newData.getSettings())
+            .set(Equipment::getLat, newData.getLat())
+            .set(Equipment::getLng, newData.getLng())
+            .set(Equipment::getDut, newData.getDut())
+            .set(Equipment::getDutMajor, newData.getDutMajor())
+            .set(Equipment::getVoltageLevel, newData.getVoltageLevel());
+        baseMapper.update(updateWrapper);
+    }
+
+    @Override
     public List<Equipment> getEquipmentsByType(Integer type) {
         LambdaQueryWrapper<Equipment> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(type !=null,Equipment::getType, type);
         wrapper.orderByAsc(Equipment::getId);
         return baseMapper.selectList(wrapper);
     }

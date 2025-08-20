@@ -198,7 +198,7 @@ public class SD400MPUtils {
             dataMap.put("id", equipmentId);
         }
         dataMap.put("needChildren", flag);
-        // dataMap.put("needAllData", true);
+        dataMap.put("needAllData", true);
         // dataMap.put("fullscope", false);
         map.put("data",dataMap);
 

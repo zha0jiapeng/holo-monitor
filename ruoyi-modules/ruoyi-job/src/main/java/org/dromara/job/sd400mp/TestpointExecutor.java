@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
+import org.dromara.hm.constant.Tag;
 import org.dromara.hm.domain.Equipment;
 import org.dromara.hm.service.IEquipmentService;
 import org.dromara.hm.service.ITestPointService;
@@ -152,7 +153,7 @@ public class TestpointExecutor {
     private int fetchTestPointMt(String testPointId) {
         try {
             List<String> tags = new ArrayList<>();
-            tags.add("mont/pd/mt");
+            tags.add(Tag.MT);
             JSONObject dataResponse = SD400MPUtils.data(Long.valueOf(testPointId),tags);
             if (!isSuccessResponse(dataResponse)) {
                 log.warn("获取测点 [{}] 数据失败，响应码: {}", testPointId, dataResponse.getInt("code"));
@@ -195,7 +196,7 @@ public class TestpointExecutor {
 
                 for (Object itemObj : online) {
                     Map<String, Object> item = (Map<String, Object>) itemObj;
-                    if ("mont/pd/mt".equals(item.get("key"))) {
+                    if (Tag.MT.equals(item.get("key"))) {
                         Object val = item.get("val");
                         if (val != null) {
                             return Optional.of(Integer.valueOf(val.toString()));

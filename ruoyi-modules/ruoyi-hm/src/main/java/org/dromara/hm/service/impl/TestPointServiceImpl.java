@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.exception.ServiceException;
@@ -38,7 +39,7 @@ import org.springframework.transaction.interceptor.TransactionAspectSupport;
 @RequiredArgsConstructor
 @Service
 @Slf4j
-public class TestPointServiceImpl implements ITestPointService {
+public class TestPointServiceImpl extends ServiceImpl<TestPointMapper, TestPoint> implements ITestPointService {
 
     private final TestPointMapper baseMapper;
     private final IEquipmentService equipmentService;

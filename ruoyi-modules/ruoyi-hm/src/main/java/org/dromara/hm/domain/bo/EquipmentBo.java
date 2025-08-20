@@ -1,5 +1,6 @@
 package org.dromara.hm.domain.bo;
 
+import cn.idev.excel.annotation.ExcelProperty;
 import org.dromara.common.core.validate.AddGroup;
 import org.dromara.common.core.validate.EditGroup;
 import org.dromara.common.mybatis.core.domain.BaseEntity;
@@ -42,9 +43,9 @@ public class EquipmentBo extends BaseEntity {
     private String uniqueKey;
 
     /**
-     * 父级设备ID
+     * 层级id
      */
-    private Long idParent;
+    private Long hierarchyId;
 
     /**
      * 设备名称
@@ -57,11 +58,6 @@ public class EquipmentBo extends BaseEntity {
      */
     private String desc;
 
-    /**
-     * 设备类型
-     */
-    //@NotNull(message = "设备类型不能为空", groups = {AddGroup.class, EditGroup.class})
-    private Integer type;
 
     /**
      * 设备设置
@@ -77,5 +73,19 @@ public class EquipmentBo extends BaseEntity {
      * 经度
      */
     private Double lng;
+
+    /**
+     * 设备类型
+     */
+    private Integer dut;
+
+    /**
+     * 设备大类
+     */
+    private Integer dutMajor;
+    /**
+     * 电压等级
+     */
+    private String voltageLevel;
 
 }

@@ -277,3 +277,7 @@ glb:
   uri: https://192.168.110.10:1446
   username: admin
   password: Pd700@sdmt
+
+  # 同步任务配置
+sync:
+    default-start-time: 2024-01-01T00:00:00 # 默认数据同步开始时间 这个和分表自动创建表策略有关 所以要合理的时间
