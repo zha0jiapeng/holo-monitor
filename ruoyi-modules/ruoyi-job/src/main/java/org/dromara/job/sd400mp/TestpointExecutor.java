@@ -46,31 +46,6 @@ public class TestpointExecutor {
             log.info("开始执行测点数据同步任务，共 {} 个设备", equipmentList.size());
             String fileId = null;
             for (Equipment equipment : equipmentList) {
-                JSONObject file = SD400MPUtils.file(equipment.getId());
-                JSONArray data = file.getJSONArray("data");
-                e:for (Object datum : data) {
-                    JSONObject item = (JSONObject)datum;
-                    String name = item.getStr("name");
-                    if(name.contains("\\.")){
-                        String suffix = name.split("\\.")[1];
-                        if(suffix.equals("glblm")){
-                            fileId = item.getStr("id");
-                            break e;
-                        }
-                    }
-                }
-                JSONObject modelInfo = SD400MPUtils.modelInfo(Long.valueOf(fileId));
-                JSONObject model = modelInfo.getJSONObject("model");
-                JSONArray sensors = model.getJSONArray("sensors");
-                for (Object sensor : sensors) {
-                    JSONObject item = (JSONObject)sensor;
-                    JSONObject binding = item.getJSONObject("binding");
-                    JSONObject pos = binding.getJSONObject("pos");
-                    Double x = pos.getDouble("x");
-                    Double y = pos.getDouble("y");
-                    Double z = pos.getDouble("z");
-                }
-
                 processSingleEquipment(equipment, syncResult);
             }
 

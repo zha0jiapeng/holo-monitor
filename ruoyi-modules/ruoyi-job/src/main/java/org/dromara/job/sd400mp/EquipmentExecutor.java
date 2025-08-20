@@ -30,7 +30,6 @@ public class EquipmentExecutor {
 
     private final IEquipmentService equipmentService;
     private final IHierarchyService hierarchyService;
-    //private final ITestPointService testPointService;
 
     public ExecuteResult jobExecute(JobArgs jobArgs) {
         log.info("开始执行设备和层级数据同步任务...");
