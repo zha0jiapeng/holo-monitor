@@ -43,6 +43,11 @@ public class Hierarchy extends TenantEntity {
     private String name;
 
     /**
+     * 大屏显示名称
+     */
+    private String showName;
+
+    /**
      * 描述
      */
     @TableField("`desc`")

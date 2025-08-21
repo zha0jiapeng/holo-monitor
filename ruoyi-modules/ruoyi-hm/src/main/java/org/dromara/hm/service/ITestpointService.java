@@ -10,6 +10,7 @@ import org.dromara.hm.domain.vo.TestpointVo;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 测点Service接口
@@ -99,4 +100,20 @@ public interface ITestpointService extends IService<Testpoint> {
 
 
     Boolean unbind(List<Long> testPointIds);
+
+    /**
+     * 获取测点详情统计
+     * 
+     * @param hierarchyId 层级ID，如果传入则统计该层级及其子层级下的测点，如果为null则取根目录层级
+     * @return 测点统计数据，包括按测点类型分组的统计信息
+     */
+    Map<String, Object> getTestpointDetailStatistics(Long hierarchyId);
+
+    /**
+     * 获取报警详情统计
+     * 
+     * @param hierarchyId 层级ID，如果传入则统计该层级及其子层级下的测点报警，如果为null则取根目录层级
+     * @return 报警统计数据，包括按报警类型分组的统计信息
+     */
+    Map<String, Object> getReportDetailStatistics(Long hierarchyId);
 }

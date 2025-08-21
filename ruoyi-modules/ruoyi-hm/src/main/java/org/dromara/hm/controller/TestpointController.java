@@ -1,6 +1,7 @@
 package org.dromara.hm.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.dromara.common.core.domain.R;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.utils.ValidatorUtils;
@@ -55,6 +56,27 @@ public class TestpointController extends BaseController {
     @GetMapping("/list")
     public TableDataInfo<TestpointVo> list(@Validated(QueryGroup.class) TestpointBo bo, PageQuery pageQuery) {
         return testpointService.queryPageList(bo, pageQuery);
+    }
+
+    @SaCheckPermission("hm:testpoint:list")
+    @GetMapping("/positionList")
+    public R<List<Testpoint>> positionList(Long equipmentId) {
+        LambdaQueryWrapper<Testpoint> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.select(
+            Testpoint::getId,
+            Testpoint::getEquipmentId,
+            Testpoint::getKksCode,
+            Testpoint::getKksName,
+            Testpoint::getMt,
+            Testpoint::getType,
+            Testpoint::getKksName,
+            Testpoint::getPositionX,
+            Testpoint::getPositionY,
+            Testpoint::getPositionZ
+        );
+        queryWrapper.eq(Testpoint::getEquipmentId, equipmentId);
+        queryWrapper.isNotNull(Testpoint::getPositionX);
+        return R.ok(testpointService.list(queryWrapper));
     }
 
     /**

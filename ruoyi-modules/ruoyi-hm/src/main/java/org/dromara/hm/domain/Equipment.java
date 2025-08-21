@@ -48,6 +48,11 @@ public class Equipment extends TenantEntity {
     private String name;
 
     /**
+     * 大屏显示名称
+     */
+    private String showName;
+
+    /**
      * 设备描述
      */
     @TableField("`desc`")

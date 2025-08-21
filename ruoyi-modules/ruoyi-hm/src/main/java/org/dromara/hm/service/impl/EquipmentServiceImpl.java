@@ -421,14 +421,22 @@ public class EquipmentServiceImpl implements IEquipmentService {
 
                 Equipment existing = existingIdMap.get(equipment.getId());
                 if (existing != null) {
-                    // 更新现有设备
+                    // 更新现有设备 - 保留原有的show_name，不覆盖
                     equipment.setCreateBy(existing.getCreateBy());
                     equipment.setCreateTime(existing.getCreateTime());
                     equipment.setCreateDept(existing.getCreateDept());
                     equipment.setTenantId(existing.getTenantId());
+                    // 保留原有的show_name
+                    if (StringUtils.isNotBlank(existing.getShowName())) {
+                        equipment.setShowName(existing.getShowName());
+                    }
                     updateEquipmentBySqlNew(equipment.getId(), equipment);
                 } else {
-                    // 新增设备
+                    // 新增设备 - 初始化show_name为name
+                    // 如果show_name为空，设置为name
+                    if (StringUtils.isBlank(equipment.getShowName()) && StringUtils.isNotBlank(equipment.getName())) {
+                        equipment.setShowName(equipment.getName());
+                    }
                     baseMapper.insert(equipment);
                 }
             }
@@ -685,7 +693,6 @@ public class EquipmentServiceImpl implements IEquipmentService {
             Map<String, Object> item = new HashMap<>();
             item.put("name", EquipmentDutEnum.getByCode(entry.getKey()).getName()); // 可以添加设备大类名称映射
             item.put("count", entry.getValue());
-            item.put("code", entry.getKey());
             result.add(item);
         }
 
@@ -716,7 +723,7 @@ public class EquipmentServiceImpl implements IEquipmentService {
         for (Map.Entry<String, Long> entry : voltageLevelCount.entrySet()) {
             Map<String, Object> item = new HashMap<>();
             item.put("name", entry.getKey());
-            item.put("value", entry.getValue());
+            item.put("count", entry.getValue());
             result.add(item);
         }
 

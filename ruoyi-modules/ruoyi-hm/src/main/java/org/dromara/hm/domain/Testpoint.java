@@ -1,6 +1,7 @@
 package org.dromara.hm.domain;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.dromara.common.tenant.core.TenantEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -17,6 +18,7 @@ import java.time.LocalDateTime;
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @TableName("hm_testpoint")
 public class Testpoint extends TenantEntity {
 
@@ -44,6 +46,17 @@ public class Testpoint extends TenantEntity {
      * 测点名称
      */
     private String kksName;
+
+    /**
+     * 测点通用名称
+     */
+    private String name;
+
+    /**
+     * 大屏显示名称
+     */
+    private String showName;
+
 
     private Integer mt;
 

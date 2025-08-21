@@ -10,6 +10,7 @@ import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpRequest;
 
 import java.io.*;
 import java.util.*;

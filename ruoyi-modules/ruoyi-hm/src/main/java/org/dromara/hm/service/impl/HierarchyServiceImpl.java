@@ -216,15 +216,23 @@ public class HierarchyServiceImpl implements IHierarchyService {
             for (Hierarchy hierarchy : newHierarchies) {
                 Hierarchy existing = existingIdMap.get(hierarchy.getId());
                 if (existing != null) {
-                    // 更新现有层级
+                    // 更新现有层级 - 保留原有的show_name，不覆盖
                     hierarchy.setCreateBy(existing.getCreateBy());
                     hierarchy.setCreateTime(existing.getCreateTime());
                     hierarchy.setCreateDept(existing.getCreateDept());
                     hierarchy.setTenantId(existing.getTenantId());
+                    // 保留原有的show_name
+                    if (StringUtils.isNotBlank(existing.getShowName())) {
+                        hierarchy.setShowName(existing.getShowName());
+                    }
                     baseMapper.updateById(hierarchy);
                 } else {
-                    // 新增层级
+                    // 新增层级 - 初始化show_name为name
                     hierarchy.setIdParent(null);
+                    // 如果show_name为空，设置为name
+                    if (StringUtils.isBlank(hierarchy.getShowName()) && StringUtils.isNotBlank(hierarchy.getName())) {
+                        hierarchy.setShowName(hierarchy.getName());
+                    }
                     baseMapper.insert(hierarchy);
                 }
             }
