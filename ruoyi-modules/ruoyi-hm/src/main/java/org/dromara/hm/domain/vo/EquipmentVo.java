@@ -13,6 +13,7 @@ import lombok.Data;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.util.Date;
 
 
@@ -60,6 +61,10 @@ public class EquipmentVo implements Serializable {
     @ExcelRequired
     @ExcelProperty(value = "设备名称")
     private String name;
+
+    @ExcelRequired
+    @ExcelProperty(value = "展示名称")
+    private String showName;
 
     /**
      * 设备描述
@@ -148,6 +153,14 @@ public class EquipmentVo implements Serializable {
     @ExcelProperty(value = "更新人账号")
     private String updateByName;
 
+    @ExcelProperty(value = "位置坐标X")
+    private BigDecimal positionX;
+
+    @ExcelProperty(value = "位置坐标Y")
+    private BigDecimal positionY;
+
+    @ExcelProperty(value = "位置坐标Z")
+    private BigDecimal positionZ;
 
 
 }

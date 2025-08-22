@@ -127,6 +127,8 @@ tenant:
     - sys_user_role
     - sys_client
     - sys_oss_config
+    - hm_testpoint_data
+    - hm_testpoint_offline
 
 # MyBatisPlus配置
 # https://baomidou.com/config/

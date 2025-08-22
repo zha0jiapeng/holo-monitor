@@ -53,6 +53,8 @@ public class TestpointBo extends BaseEntity {
 
     private Integer type;
 
+    private Integer offlineFlag;
+
     /**
      * 最近幅值
      */

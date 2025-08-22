@@ -54,6 +54,8 @@ public class HierarchyVo implements Serializable {
     @ExcelProperty(value = "名称")
     private String name;
 
+    private String showName;
+
     /**
      * 描述
      */

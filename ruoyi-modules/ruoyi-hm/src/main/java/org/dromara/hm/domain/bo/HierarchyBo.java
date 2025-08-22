@@ -45,6 +45,8 @@ public class HierarchyBo extends BaseEntity {
     @NotBlank(message = "名称不能为空", groups = {AddGroup.class, EditGroup.class})
     private String name;
 
+    private String showName;
+
     /**
      * 描述
      */

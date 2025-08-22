@@ -13,12 +13,14 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.constant.Tag;
 import org.dromara.hm.domain.Equipment;
-import org.dromara.hm.domain.Hierarchy;
+
+import org.dromara.hm.domain.Testpoint;
 import org.dromara.hm.domain.bo.EquipmentBo;
+import org.dromara.hm.domain.bo.TestpointBo;
 import org.dromara.hm.domain.vo.EquipmentVo;
 import org.dromara.hm.enums.EquipmentDutEnum;
 import org.dromara.hm.mapper.EquipmentMapper;
-import org.dromara.hm.mapper.HierarchyMapper;
+
 import org.dromara.hm.service.IEquipmentService;
 import org.springframework.stereotype.Service;
 
@@ -31,6 +33,8 @@ import java.util.HashMap;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 /**
  * 设备Service业务层处理
@@ -44,7 +48,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class EquipmentServiceImpl implements IEquipmentService {
 
     private final EquipmentMapper baseMapper;
-    private final HierarchyMapper hierarchyMapper;
+
 
     @Override
     public EquipmentVo queryById(Long id) {
@@ -567,248 +571,29 @@ public class EquipmentServiceImpl implements IEquipmentService {
     }
 
     @Override
-    public Map<String, Object> getPowerPlantStatistics(Long hierarchyId) {
-        if(hierarchyId == null){
-            LambdaQueryWrapper<Hierarchy> rootWrapper = Wrappers.lambdaQuery();
-            rootWrapper.eq(Hierarchy::getType, 0);
-            Hierarchy rootHierarchies = hierarchyMapper.selectOne(rootWrapper,false);
-            if (rootHierarchies ==null) {
-                return null;
+    @Transactional(rollbackFor = Exception.class)
+    public Boolean updateBatchByBo(List<EquipmentBo> bos) {
+        Boolean flag = true;
+        for (EquipmentBo bo : bos) {
+            Equipment update = MapstructUtils.convert(bo, Equipment.class);
+            validEntityBeforeSave(update);
+            if(baseMapper.updateById(update)==0){
+                flag = false;
+                TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+                break;
             }
-            hierarchyId = rootHierarchies.getId();
         }
-        Map<String, Object> result = new HashMap<>();
-
-        // 1. 获取直接子层级列表（电厂列表）
-        List<Hierarchy> childHierarchies = getChildHierarchies(hierarchyId);
-
-        if (childHierarchies.isEmpty()) {
-            childHierarchies = new ArrayList<>();
-        }
-        result.put("branchFactoryCount", childHierarchies.size());
-
-        List<Map<String, Object>> voltageLevelPlantStats = getVoltageLevelPlantStatistics(hierarchyId,childHierarchies);
-        result.put("voltageLevelPlantStats", voltageLevelPlantStats);
-
-        return result;
+        return flag;
     }
 
     @Override
-    public Map<String, Object> getEquipmentDetailStatistics(Long hierarchyId) {
-        // 如果未传入层级ID，获取根目录层级
-        if (hierarchyId == null) {
-            LambdaQueryWrapper<Hierarchy> rootWrapper = Wrappers.lambdaQuery();
-            rootWrapper.eq(Hierarchy::getType, 0);
-            Hierarchy rootHierarchy = hierarchyMapper.selectOne(rootWrapper, false);
-            if (rootHierarchy == null) {
-                return Map.of("dutMajorStats", new ArrayList<>());
-            }
-            hierarchyId = rootHierarchy.getId();
-        }
-
-        Map<String, Object> result = new HashMap<>();
-
-        // 统计设备大类分组数据
-        List<Map<String, Object>> dutMajorStats = getDutMajorStatistics(hierarchyId);
-        result.put("dutMajorStats", dutMajorStats);
-
-        return result;
+    public Boolean unbind(List<Long> equipmentIds) {
+        LambdaUpdateWrapper<Equipment> wrapper = Wrappers.lambdaUpdate();
+        wrapper.set(Equipment::getPositionX, null);
+        wrapper.set(Equipment::getPositionY, null);
+        wrapper.set(Equipment::getPositionZ, null);
+        wrapper.in(Equipment::getId, equipmentIds);
+        return  baseMapper.update(wrapper) > 0;
     }
 
-
-    /**
-     * 获取指定层级及其所有子层级的ID列表（递归）
-     *
-     * @param hierarchyId 层级ID
-     * @return 层级ID列表，包含当前层级和所有子层级
-     */
-    private List<Long> getAllHierarchyIds(Long hierarchyId) {
-        List<Long> allIds = new ArrayList<>();
-
-        // 添加当前层级ID
-        allIds.add(hierarchyId);
-
-        // 递归获取所有子层级ID
-        getChildHierarchyIds(hierarchyId, allIds);
-
-        return allIds;
-    }
-
-    /**
-     * 递归获取子层级ID
-     *
-     * @param parentId 父层级ID
-     * @param allIds 用于收集所有层级ID的列表
-     */
-    private void getChildHierarchyIds(Long parentId, List<Long> allIds) {
-        // 查询直接子层级
-        LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
-        wrapper.select(Hierarchy::getId);
-        wrapper.eq(Hierarchy::getIdParent, parentId);
-
-        List<Hierarchy> children = hierarchyMapper.selectList(wrapper);
-
-        for (Hierarchy child : children) {
-            allIds.add(child.getId());
-            // 递归查询子层级的子层级
-            getChildHierarchyIds(child.getId(), allIds);
-        }
-    }
-
-    /**
-     * 获取设备大类统计
-     *
-     * @param hierarchyId 层级ID
-     * @return 设备大类统计列表
-     */
-    private List<Map<String, Object>> getDutMajorStatistics(Long hierarchyId) {
-        Map<Integer, Long> dutMajorStats = new HashMap<>();
-
-        // 获取层级及其所有子层级的ID列表
-        List<Long> hierarchyIds = getAllHierarchyIds(hierarchyId);
-
-        if (hierarchyIds.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        // 构建设备查询条件
-        LambdaQueryWrapper<Equipment> wrapper = Wrappers.lambdaQuery();
-        wrapper.select(Equipment::getDutMajor);
-        wrapper.in(Equipment::getHierarchyId, hierarchyIds);
-        wrapper.isNotNull(Equipment::getDutMajor);
-
-        List<Equipment> equipments = baseMapper.selectList(wrapper);
-
-        // 统计每个设备大类的数量
-        for (Equipment equipment : equipments) {
-            Integer dutMajor = equipment.getDutMajor();
-            if (dutMajor != null) {
-                dutMajorStats.put(dutMajor, dutMajorStats.getOrDefault(dutMajor, 0L) + 1);
-            }
-        }
-
-        // 转换为期望的数据格式
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Map.Entry<Integer, Long> entry : dutMajorStats.entrySet()) {
-            Map<String, Object> item = new HashMap<>();
-            item.put("name", EquipmentDutEnum.getByCode(entry.getKey()).getName()); // 可以添加设备大类名称映射
-            item.put("count", entry.getValue());
-            result.add(item);
-        }
-
-        return result;
-    }
-
-    /**
-     * 获取电压等级电厂统计
-     *
-     * @param hierarchyId 层级ID
-     * @return 按电压等级分组的电厂统计
-     */
-    private List<Map<String, Object>> getVoltageLevelPlantStatistics(Long hierarchyId,List<Hierarchy> childHierarchies) {
-
-
-        // 2. 计算每个电厂的最高电压等级
-        Map<String, Long> voltageLevelCount = new HashMap<>();
-
-        for (Hierarchy child : childHierarchies) {
-            String maxVoltageLevel = getMaxVoltageLevelForPlant(child.getId());
-            if (StringUtils.isNotBlank(maxVoltageLevel)) {
-                voltageLevelCount.put(maxVoltageLevel, voltageLevelCount.getOrDefault(maxVoltageLevel, 0L) + 1);
-            }
-        }
-
-        // 3. 转换为期望的数据格式
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Map.Entry<String, Long> entry : voltageLevelCount.entrySet()) {
-            Map<String, Object> item = new HashMap<>();
-            item.put("name", entry.getKey());
-            item.put("count", entry.getValue());
-            result.add(item);
-        }
-
-        return result;
-    }
-
-    /**
-     * 获取直接子层级列表
-     *
-     * @param hierarchyId 层级ID
-     * @return 子层级列表
-     */
-    private List<Hierarchy> getChildHierarchies(Long hierarchyId) {
-        LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Hierarchy::getIdParent, hierarchyId);
-        wrapper.orderByAsc(Hierarchy::getId);
-        return hierarchyMapper.selectList(wrapper);
-    }
-
-    /**
-     * 获取单个电厂的最高电压等级
-     *
-     * @param plantHierarchyId 电厂层级ID
-     * @return 最高电压等级
-     */
-    private String getMaxVoltageLevelForPlant(Long plantHierarchyId) {
-        // 获取该电厂及其所有子层级的ID列表
-        List<Long> hierarchyIds = getAllHierarchyIds(plantHierarchyId);
-
-        if (hierarchyIds.isEmpty()) {
-            return null;
-        }
-
-        // 构建设备查询条件
-        LambdaQueryWrapper<Equipment> wrapper = Wrappers.lambdaQuery();
-        wrapper.select(Equipment::getVoltageLevel);
-        wrapper.in(Equipment::getHierarchyId, hierarchyIds);
-        wrapper.isNotNull(Equipment::getVoltageLevel);
-        wrapper.ne(Equipment::getVoltageLevel, "");
-
-        List<Equipment> equipments = baseMapper.selectList(wrapper);
-
-        if (equipments.isEmpty()) {
-            return null;
-        }
-
-        // 找出最高电压等级
-        String maxVoltageLevel = null;
-        Double maxVoltageValue = 0.0;
-
-        for (Equipment equipment : equipments) {
-            String voltageLevel = equipment.getVoltageLevel();
-            if (StringUtils.isNotBlank(voltageLevel)) {
-                Double voltageValue = parseVoltageLevel(voltageLevel);
-                if (voltageValue != null && voltageValue > maxVoltageValue) {
-                    maxVoltageValue = voltageValue;
-                    maxVoltageLevel = voltageLevel;
-                }
-            }
-        }
-
-        return maxVoltageLevel;
-    }
-
-    /**
-     * 解析电压等级数值
-     *
-     * @param voltageLevel 电压等级字符串，如 "220kV", "110kV"
-     * @return 电压数值
-     */
-    private Double parseVoltageLevel(String voltageLevel) {
-        if (StringUtils.isBlank(voltageLevel)) {
-            return null;
-        }
-
-        try {
-            // 移除单位和空格，提取数字
-            String numStr = voltageLevel.replaceAll("[^0-9.]", "");
-            if (StringUtils.isNotBlank(numStr)) {
-                return Double.parseDouble(numStr);
-            }
-        } catch (NumberFormatException e) {
-            log.warn("无法解析电压等级: {}", voltageLevel);
-        }
-
-        return null;
-    }
 }

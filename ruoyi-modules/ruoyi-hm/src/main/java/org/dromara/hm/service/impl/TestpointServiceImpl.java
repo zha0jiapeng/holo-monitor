@@ -17,22 +17,15 @@ import org.dromara.hm.domain.Testpoint;
 import org.dromara.hm.domain.bo.TestpointBo;
 import org.dromara.hm.domain.vo.TestpointVo;
 import org.dromara.hm.enums.TestpointTypeEnum;
-import org.dromara.hm.enums.AlarmTypeEnum;
 import org.dromara.hm.mapper.TestpointMapper;
 import org.dromara.hm.service.IEquipmentService;
 import org.dromara.hm.service.ITestpointService;
-import org.dromara.hm.domain.Equipment;
-import org.dromara.hm.domain.Hierarchy;
-import org.dromara.hm.mapper.HierarchyMapper;
-import org.dromara.hm.mapper.EquipmentMapper;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
-import java.util.HashMap;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.interceptor.TransactionAspectSupport;
@@ -50,8 +43,6 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
 
     private final TestpointMapper baseMapper;
     private final IEquipmentService equipmentService;
-    private final HierarchyMapper hierarchyMapper;
-    private final EquipmentMapper equipmentMapper;
 
     @Override
     public TestpointVo queryById(Long id) {
@@ -296,8 +287,8 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
             setDefaultThresholds(testPoint);
             // 新增测点 - 初始化show_name为name
             // 如果show_name为空，设置为name
-            if (StringUtils.isBlank(testPoint.getShowName()) && StringUtils.isNotBlank(testPoint.getName())) {
-                testPoint.setShowName(testPoint.getName());
+            if (StringUtils.isBlank(testPoint.getShowName()) && StringUtils.isNotBlank(testPoint.getKksName())) {
+                testPoint.setShowName(testPoint.getKksName());
             }
             int result = baseMapper.insert(testPoint);
             if (result > 0) {
@@ -448,267 +439,5 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
 
         baseMapper.update(null, updateWrapper);
         // 注意：不更新last_开头的实时数据字段和阈值配置，保持现有数据
-    }
-
-    @Override
-    public Map<String, Object> getTestpointDetailStatistics(Long hierarchyId) {
-        // 如果未传入层级ID，获取根目录层级
-        if (hierarchyId == null) {
-            LambdaQueryWrapper<Hierarchy> rootWrapper = Wrappers.lambdaQuery();
-            rootWrapper.eq(Hierarchy::getType, 0);
-            Hierarchy rootHierarchy = hierarchyMapper.selectOne(rootWrapper, false);
-            if (rootHierarchy == null) {
-                return Map.of("testpointTypeStats", new ArrayList<>());
-            }
-            hierarchyId = rootHierarchy.getId();
-        }
-        
-        Map<String, Object> result = new HashMap<>();
-        
-        // 统计测点类型分组数据
-        List<Map<String, Object>> testpointTypeStats = getTestpointTypeStatistics(hierarchyId);
-        result.put("testpointTypeStats", testpointTypeStats);
-        
-        return result;
-    }
-    
-    /**
-     * 获取测点类型统计
-     * 
-     * @param hierarchyId 层级ID
-     * @return 测点类型统计列表
-     */
-    private List<Map<String, Object>> getTestpointTypeStatistics(Long hierarchyId) {
-        Map<Integer, Long> typeStats = new HashMap<>();
-        
-        // 1. 获取层级及其所有子层级的ID列表
-        List<Long> hierarchyIds = getAllHierarchyIds(hierarchyId);
-        
-        if (hierarchyIds.isEmpty()) {
-            return new ArrayList<>();
-        }
-        
-        // 2. 查询这些层级下的所有设备ID
-        LambdaQueryWrapper<Equipment> equipmentWrapper = Wrappers.lambdaQuery();
-        equipmentWrapper.select(Equipment::getId);
-        equipmentWrapper.in(Equipment::getHierarchyId, hierarchyIds);
-        List<Equipment> equipments = equipmentMapper.selectList(equipmentWrapper);
-        
-        if (equipments.isEmpty()) {
-            return new ArrayList<>();
-        }
-        
-        List<Long> equipmentIds = equipments.stream().map(Equipment::getId).toList();
-        
-        // 3. 查询这些设备下的测点
-        LambdaQueryWrapper<Testpoint> wrapper = Wrappers.lambdaQuery();
-        wrapper.select(Testpoint::getType);
-        wrapper.in(Testpoint::getEquipmentId, equipmentIds);
-        wrapper.isNotNull(Testpoint::getType);
-        
-        List<Testpoint> testpoints = baseMapper.selectList(wrapper);
-        
-        // 4. 统计每个测点类型的数量
-        for (Testpoint testpoint : testpoints) {
-            Integer type = testpoint.getType();
-            if (type != null) {
-                typeStats.put(type, typeStats.getOrDefault(type, 0L) + 1);
-            }
-        }
-        
-        // 5. 转换为期望的数据格式
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Map.Entry<Integer, Long> entry : typeStats.entrySet()) {
-            Map<String, Object> item = new HashMap<>();
-            // 使用 TestpointTypeEnum 转换类型名称
-            TestpointTypeEnum typeEnum = TestpointTypeEnum.getByCode(entry.getKey());
-            String typeName = typeEnum != null ? typeEnum.getName() : "未知类型";
-            item.put("name", typeName);
-            item.put("count", entry.getValue());
-            result.add(item);
-        }
-        
-        return result;
-    }
-    
-    /**
-     * 获取指定层级及其所有子层级的ID列表（递归）
-     * 
-     * @param hierarchyId 层级ID
-     * @return 层级ID列表，包含当前层级和所有子层级
-     */
-    private List<Long> getAllHierarchyIds(Long hierarchyId) {
-        List<Long> allIds = new ArrayList<>();
-        
-        // 添加当前层级ID
-        allIds.add(hierarchyId);
-        
-        // 递归获取所有子层级ID
-        getChildHierarchyIds(hierarchyId, allIds);
-        
-        return allIds;
-    }
-    
-    /**
-     * 递归获取子层级ID
-     * 
-     * @param parentId 父层级ID
-     * @param allIds 用于收集所有层级ID的列表
-     */
-    private void getChildHierarchyIds(Long parentId, List<Long> allIds) {
-        // 查询直接子层级
-        LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
-        wrapper.select(Hierarchy::getId);
-        wrapper.eq(Hierarchy::getIdParent, parentId);
-        
-        List<Hierarchy> children = hierarchyMapper.selectList(wrapper);
-        
-        for (Hierarchy child : children) {
-            allIds.add(child.getId());
-            // 递归查询子层级的子层级
-            getChildHierarchyIds(child.getId(), allIds);
-        }
-    }
-
-    @Override
-    public Map<String, Object> getReportDetailStatistics(Long hierarchyId) {
-        // 如果未传入层级ID，获取根目录层级
-        if (hierarchyId == null) {
-            LambdaQueryWrapper<Hierarchy> rootWrapper = Wrappers.lambdaQuery();
-            rootWrapper.eq(Hierarchy::getType, 0);
-            Hierarchy rootHierarchy = hierarchyMapper.selectOne(rootWrapper, false);
-            if (rootHierarchy == null) {
-                return Map.of("alarmTypeStats", new ArrayList<>());
-            }
-            hierarchyId = rootHierarchy.getId();
-        }
-        
-        Map<String, Object> result = new HashMap<>();
-        
-        // 统计报警类型分组数据（按子层级统计最高报警等级）
-        List<Map<String, Object>> alarmTypeStats = getHierarchyAlarmStatistics(hierarchyId);
-        result.put("alarmTypeStats", alarmTypeStats);
-        
-        return result;
-    }
-    
-    /**
-     * 获取层级报警统计（按子层级统计所有报警等级）
-     * 
-     * @param hierarchyId 层级ID
-     * @return 报警统计列表
-     */
-    private List<Map<String, Object>> getHierarchyAlarmStatistics(Long hierarchyId) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        
-        // 1. 获取直接子层级列表
-        List<Hierarchy> childHierarchies = getChildHierarchies(hierarchyId);
-        
-        if (childHierarchies.isEmpty()) {
-            return result;
-        }
-        
-        // 2. 对每个子层级统计其所有报警等级
-        for (Hierarchy childHierarchy : childHierarchies) {
-            Map<Integer, Long> alarmStats = getAllAlarmLevelsForHierarchy(childHierarchy.getId());
-            
-            // 为该子层级创建一个item，包含name和alarmDetails列表
-            Map<String, Object> hierarchyItem = new HashMap<>();
-            // 优先使用show_name，如果为空则使用name
-            String displayName = getDisplayName(childHierarchy.getShowName(), childHierarchy.getName());
-            hierarchyItem.put("name", displayName);
-            
-            // 创建该子层级的报警详情列表
-            List<Map<String, Object>> alarmDetails = new ArrayList<>();
-            for (Map.Entry<Integer, Long> entry : alarmStats.entrySet()) {
-                Map<String, Object> alarmItem = new HashMap<>();
-                
-                // 使用 AlarmTypeEnum 转换报警类型名称
-                AlarmTypeEnum alarmTypeEnum = AlarmTypeEnum.getByCode(entry.getKey());
-                String alarmTypeName = alarmTypeEnum != null ? alarmTypeEnum.getName() : "未知报警类型";
-                alarmItem.put("alarmTypeName", alarmTypeName);
-                alarmItem.put("alarmLevel", entry.getKey());
-                alarmItem.put("count", entry.getValue());
-                
-                alarmDetails.add(alarmItem);
-            }
-            
-            hierarchyItem.put("alarmDetails", alarmDetails);
-            result.add(hierarchyItem);
-        }
-        
-        return result;
-    }
-    
-    /**
-     * 获取直接子层级列表
-     * 
-     * @param hierarchyId 父层级ID
-     * @return 子层级列表
-     */
-    private List<Hierarchy> getChildHierarchies(Long hierarchyId) {
-        LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
-        // 查询所有字段，确保包含show_name
-        wrapper.eq(Hierarchy::getIdParent, hierarchyId);
-        wrapper.orderByAsc(Hierarchy::getId);
-        return hierarchyMapper.selectList(wrapper);
-    }
-    
-    /**
-     * 获取指定层级下设备的所有报警等级统计
-     * 
-     * @param hierarchyId 层级ID
-     * @return 报警等级统计Map（key=报警等级，value=数量）
-     */
-    private Map<Integer, Long> getAllAlarmLevelsForHierarchy(Long hierarchyId) {
-        Map<Integer, Long> alarmStats = new HashMap<>();
-        
-        // 1. 获取层级及其所有子层级的ID列表（递归）
-        List<Long> hierarchyIds = getAllHierarchyIds(hierarchyId);
-        
-        if (hierarchyIds.isEmpty()) {
-            return alarmStats;
-        }
-        
-        // 2. 查询这些层级下的所有设备ID
-        LambdaQueryWrapper<Equipment> equipmentWrapper = Wrappers.lambdaQuery();
-        equipmentWrapper.select(Equipment::getId);
-        equipmentWrapper.in(Equipment::getHierarchyId, hierarchyIds);
-        List<Equipment> equipments = equipmentMapper.selectList(equipmentWrapper);
-        
-        if (equipments.isEmpty()) {
-            return alarmStats;
-        }
-        
-        List<Long> equipmentIds = equipments.stream().map(Equipment::getId).toList();
-        
-        // 3. 查询这些设备下的测点报警信息，统计每个报警等级的数量
-        LambdaQueryWrapper<Testpoint> wrapper = Wrappers.lambdaQuery();
-        wrapper.select(Testpoint::getLastAlarmType);
-        wrapper.in(Testpoint::getEquipmentId, equipmentIds);
-        wrapper.isNotNull(Testpoint::getLastAlarmType);
-        
-        List<Testpoint> testpoints = baseMapper.selectList(wrapper);
-        
-        // 4. 统计每个报警等级的数量
-        for (Testpoint testpoint : testpoints) {
-            Integer alarmType = testpoint.getLastAlarmType();
-            if (alarmType != null) {
-                alarmStats.put(alarmType, alarmStats.getOrDefault(alarmType, 0L) + 1);
-            }
-        }
-        
-        return alarmStats;
-    }
-    
-    /**
-     * 获取显示名称，优先使用show_name，如果为空则使用name
-     * 
-     * @param showName 显示名称
-     * @param name 原始名称
-     * @return 最终显示名称
-     */
-    private String getDisplayName(String showName, String name) {
-        return StringUtils.isNotBlank(showName) ? showName : name;
     }
 }

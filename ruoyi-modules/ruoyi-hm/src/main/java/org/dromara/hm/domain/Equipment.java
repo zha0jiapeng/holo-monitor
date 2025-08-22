@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.io.Serial;
+import java.math.BigDecimal;
 
 /**
  * 设备对象 hm_equipment
@@ -88,5 +89,11 @@ public class Equipment extends TenantEntity {
      * 电压等级
      */
     private String voltageLevel;
+
+    private BigDecimal positionX;
+
+    private BigDecimal positionY;
+
+    private BigDecimal positionZ;
 
 }

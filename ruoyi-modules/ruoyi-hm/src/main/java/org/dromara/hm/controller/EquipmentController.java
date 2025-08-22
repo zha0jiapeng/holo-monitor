@@ -17,9 +17,11 @@ import org.dromara.common.log.annotation.Log;
 import org.dromara.common.log.enums.BusinessType;
 import org.dromara.hm.domain.Equipment;
 import org.dromara.hm.domain.bo.EquipmentBo;
+import org.dromara.hm.domain.bo.TestpointBo;
 import org.dromara.hm.domain.vo.EquipmentVo;
 import org.dromara.hm.service.IEquipmentService;
 import lombok.RequiredArgsConstructor;
+import org.dromara.hm.validate.BindGroup;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -146,5 +148,27 @@ public class EquipmentController extends BaseController {
     @PostMapping("/importFromJson")
     public R<Void> importFromJson(@RequestBody String jsonData) {
         return toAjax(equipmentService.importFromJson(jsonData));
+    }
+
+    /**
+     * 绑定测点坐标
+     */
+    @SaCheckPermission("hm:equipment:edit")
+    @Log(title = "绑定测点坐标", businessType = BusinessType.UPDATE)
+    @RepeatSubmit
+    @PutMapping("/bind")
+    public R<Void> bind(@Validated(BindGroup.class) @RequestBody List<EquipmentBo> bo) {
+        return toAjax(equipmentService.updateBatchByBo(bo));
+    }
+
+    /**
+     * 解绑测点坐标
+     */
+    @SaCheckPermission("hm:equipment:edit")
+    @Log(title = "解绑测点坐标", businessType = BusinessType.UPDATE)
+    @RepeatSubmit
+    @PutMapping("/unbind")
+    public R<Void> unbind(@RequestBody List<Long> ids) {
+        return toAjax(equipmentService.unbind(ids));
     }
 }

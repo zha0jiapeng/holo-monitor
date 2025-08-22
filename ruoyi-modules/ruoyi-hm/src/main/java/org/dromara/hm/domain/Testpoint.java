@@ -48,11 +48,6 @@ public class Testpoint extends TenantEntity {
     private String kksName;
 
     /**
-     * 测点通用名称
-     */
-    private String name;
-
-    /**
      * 大屏显示名称
      */
     private String showName;
@@ -63,6 +58,8 @@ public class Testpoint extends TenantEntity {
 
     private Integer type;
 
+
+    private Integer offlineFlag;
 
     /**
      * 最近幅值

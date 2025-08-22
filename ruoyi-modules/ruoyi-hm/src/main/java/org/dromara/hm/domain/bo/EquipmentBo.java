@@ -11,6 +11,9 @@ import lombok.EqualsAndHashCode;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.dromara.hm.validate.BindGroup;
+
+import java.math.BigDecimal;
 
 /**
  * 设备业务对象 hm_equipment
@@ -53,6 +56,8 @@ public class EquipmentBo extends BaseEntity {
     //@NotBlank(message = "设备名称不能为空", groups = {AddGroup.class, EditGroup.class})
     private String name;
 
+    private String showName;
+
     /**
      * 设备描述
      */
@@ -87,5 +92,14 @@ public class EquipmentBo extends BaseEntity {
      * 电压等级
      */
     private String voltageLevel;
+
+    @NotNull(message = "位置坐标X不能为空", groups = {BindGroup.class})
+    private BigDecimal positionX;
+
+    @NotNull(message = "位置坐标Y不能为空", groups = {BindGroup.class})
+    private BigDecimal positionY;
+
+    @NotNull(message = "位置坐标Z不能为空", groups = {BindGroup.class})
+    private BigDecimal positionZ;
 
 }

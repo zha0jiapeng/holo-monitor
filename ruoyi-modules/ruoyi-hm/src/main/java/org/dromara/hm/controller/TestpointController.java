@@ -191,7 +191,7 @@ public class TestpointController extends BaseController {
     }
 
     /**
-     * 绑定测点坐标
+     * 解绑测点坐标
      */
     @SaCheckPermission("hm:testpoint:edit")
     @Log(title = "解绑测点坐标", businessType = BusinessType.UPDATE)

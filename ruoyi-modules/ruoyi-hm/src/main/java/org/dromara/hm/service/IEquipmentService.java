@@ -4,11 +4,12 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.Equipment;
 import org.dromara.hm.domain.bo.EquipmentBo;
+import org.dromara.hm.domain.bo.TestpointBo;
 import org.dromara.hm.domain.vo.EquipmentVo;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
+
 
 /**
  * 设备Service接口
@@ -88,19 +89,9 @@ public interface IEquipmentService {
      */
     List<Equipment> getEquipmentsByType(Integer type);
 
-        /**
-     * 获取电厂详情统计
-     * 
-     * @param hierarchyId 层级ID，如果传入则统计该层级下的子层级数量，如果为null则统计根目录下的子层级数量
-     * @return 电厂统计数据，包括子层级数量和电压等级统计
-     */
-    Map<String, Object> getPowerPlantStatistics(Long hierarchyId);
+    Boolean updateBatchByBo(List<EquipmentBo> bo);
 
-    /**
-     * 获取设备详情统计
-     * 
-     * @param hierarchyId 层级ID，如果传入则统计该层级及其子层级下的设备，如果为null则取根目录层级
-     * @return 设备统计数据，包括按设备大类分组的统计信息
-     */
-    Map<String, Object> getEquipmentDetailStatistics(Long hierarchyId);
+    Boolean unbind(List<Long> equipmentds);
+
+
 }
