@@ -11,17 +11,17 @@ import lombok.Getter;
  */
 @Getter
 @AllArgsConstructor
-public enum StatisticsCountTypeEnum {
+public enum PositionSourceEnum {
 
     /**
-     * 设备数量
+     * SD400MP
      */
-    EQUIPMENT(0, "设备数量"),
+    SD400MP(0, "SD400MP同步"),
 
     /**
-     * 测点数量
+     * 4D
      */
-    TESTPOINT(1, "测点数量");
+    LOCAL(1, "4D定位");
 
     private final Integer code;
     private final String name;
@@ -32,8 +32,8 @@ public enum StatisticsCountTypeEnum {
      * @param code 编码
      * @return 枚举
      */
-    public static StatisticsCountTypeEnum getByCode(Integer code) {
-        for (StatisticsCountTypeEnum value : values()) {
+    public static PositionSourceEnum getByCode(Integer code) {
+        for (PositionSourceEnum value : values()) {
             if (value.getCode().equals(code)) {
                 return value;
             }
@@ -47,8 +47,8 @@ public enum StatisticsCountTypeEnum {
      * @param name 名称
      * @return 枚举
      */
-    public static StatisticsCountTypeEnum getByName(String name) {
-        for (StatisticsCountTypeEnum value : values()) {
+    public static PositionSourceEnum getByName(String name) {
+        for (PositionSourceEnum value : values()) {
             if (value.getName().equals(name)) {
                 return value;
             }

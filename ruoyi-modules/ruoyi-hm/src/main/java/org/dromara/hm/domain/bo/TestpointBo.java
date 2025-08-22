@@ -139,4 +139,6 @@ public class TestpointBo extends BaseEntity {
     @NotNull(message = "位置坐标Z不能为空", groups = {BindGroup.class})
     private BigDecimal positionZ;
 
+    private Integer positionSource;
+
 }

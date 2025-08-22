@@ -212,4 +212,7 @@ public class TestpointVo implements Serializable {
 
     @ExcelProperty(value = "位置坐标Z")
     private BigDecimal positionZ;
+
+    @ExcelProperty(value = "位置坐标来源")
+    private Integer positionSource;
 }

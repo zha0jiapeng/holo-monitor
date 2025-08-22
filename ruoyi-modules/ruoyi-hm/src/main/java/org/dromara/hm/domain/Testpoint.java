@@ -143,6 +143,8 @@ public class Testpoint extends TenantEntity {
 
     private BigDecimal positionZ;
 
+    private Integer positionSource;
+
 
 
 }

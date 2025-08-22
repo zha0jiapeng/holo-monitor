@@ -16,6 +16,7 @@ import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.Testpoint;
 import org.dromara.hm.domain.bo.TestpointBo;
 import org.dromara.hm.domain.vo.TestpointVo;
+import org.dromara.hm.enums.PositionSourceEnum;
 import org.dromara.hm.enums.TestpointTypeEnum;
 import org.dromara.hm.mapper.TestpointMapper;
 import org.dromara.hm.service.IEquipmentService;
@@ -115,6 +116,7 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
         for (TestpointBo bo : bos) {
             Testpoint update = MapstructUtils.convert(bo, Testpoint.class);
             validEntityBeforeSave(update);
+            if(update.getPositionSource()!=null) update.setPositionSource(PositionSourceEnum.LOCAL.getCode());
             if(baseMapper.updateById(update)==0){
                 flag = false;
                 TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();

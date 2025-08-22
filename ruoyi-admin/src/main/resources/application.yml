@@ -129,6 +129,7 @@ tenant:
     - sys_oss_config
     - hm_testpoint_data
     - hm_testpoint_offline
+    - hm_equipment_file
 
 # MyBatisPlus配置
 # https://baomidou.com/config/
