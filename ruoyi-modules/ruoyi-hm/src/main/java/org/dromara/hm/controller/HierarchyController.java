@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * 层级Controller
  *
- * @author ruoyi
+ * @author Mashir0
  * @date 2024-01-01
  */
 @Validated
@@ -109,8 +109,7 @@ public class HierarchyController extends BaseController {
     @Log(title = "层级", businessType = BusinessType.INSERT)
     @RepeatSubmit(interval = 2, timeUnit = TimeUnit.SECONDS, message = "{repeat.submit.message}")
     @PostMapping()
-    public R<Void> add(@RequestBody HierarchyBo bo) {
-        ValidatorUtils.validate(bo, AddGroup.class);
+    public R<Void> add(@Validated(AddGroup.class) @RequestBody HierarchyBo bo) {
         return toAjax(hierarchyService.insertByBo(bo));
     }
 
@@ -139,14 +138,14 @@ public class HierarchyController extends BaseController {
     }
 
     /**
-     * 根据层级类型查询层级列表
+     * 根据层级类型ID查询层级列表
      *
-     * @param type 层级类型
+     * @param typeId 层级类型ID
      */
     @SaCheckPermission("hm:hierarchy:list")
-    @GetMapping("/type/{type}")
-    public R<List<Hierarchy>> getHierarchiesByType(@PathVariable("type") Integer type) {
-        return R.ok(hierarchyService.getHierarchiesByType(type));
+    @GetMapping("/type/{typeId}")
+    public R<List<HierarchyVo>> getHierarchiesByTypeId(@PathVariable("typeId") Long typeId) {
+        return R.ok(hierarchyService.getHierarchiesByTypeId(typeId));
     }
 
     /**

@@ -6,14 +6,14 @@ import lombok.Data;
 import java.io.Serial;
 
 /**
- * 层级对象 hm_hierarchy
+ * 层级类型对象 hm_hierarchy_type
  *
- * @author ruoyi
+ * @author Mashir0
  * @date 2024-01-01
  */
 @Data
-@TableName("hm_hierarchy")
-public class Hierarchy {
+@TableName("hm_hierarchy_type")
+public class HierarchyType {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -24,19 +24,15 @@ public class Hierarchy {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
-    /**
-     * 层级类型id
-     */
-    private Long typeId;
 
     /**
-     * 父级ID
-     */
-    private Long parentId;
-
-    /**
-     * 层级名称
+     * 层级类型名称
      */
     private String name;
+
+    /**
+     * 级联父级id
+     */
+    private Long cascadeParentId;
 
 }

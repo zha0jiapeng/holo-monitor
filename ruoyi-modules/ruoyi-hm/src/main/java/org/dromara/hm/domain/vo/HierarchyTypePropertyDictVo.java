@@ -3,7 +3,7 @@ package org.dromara.hm.domain.vo;
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
 import org.dromara.common.excel.annotation.ExcelRequired;
-import org.dromara.hm.domain.Hierarchy;
+import org.dromara.hm.domain.HierarchyTypePropertyDict;
 import io.github.linpeilie.annotations.AutoMapper;
 import lombok.Data;
 
@@ -11,15 +11,15 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * 层级视图对象 hm_hierarchy
+ * 层级类型属性字典视图对象 hm_hierarchy_type_property_dict
  *
  * @author Mashir0
  * @date 2024-01-01
  */
 @Data
 @ExcelIgnoreUnannotated
-@AutoMapper(target = Hierarchy.class)
-public class HierarchyVo implements Serializable {
+@AutoMapper(target = HierarchyTypePropertyDict.class)
+public class HierarchyTypePropertyDictVo implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -31,24 +31,16 @@ public class HierarchyVo implements Serializable {
     private Long id;
 
     /**
-     * 层级类型id
+     * 属性字典名称
      */
     @ExcelRequired
-    @ExcelProperty(value = "层级类型id")
-    private Long typeId;
+    @ExcelProperty(value = "属性字典名称")
+    private String dictName;
 
     /**
-     * 父级ID
+     * 属性类型
      */
-    @ExcelProperty(value = "父级ID")
-    private Long parentId;
-
-    /**
-     * 层级名称
-     */
-    @ExcelRequired
-    @ExcelProperty(value = "层级名称")
-    private String name;
-
+    @ExcelProperty(value = "属性类型")
+    private Integer dataType;
 
 }

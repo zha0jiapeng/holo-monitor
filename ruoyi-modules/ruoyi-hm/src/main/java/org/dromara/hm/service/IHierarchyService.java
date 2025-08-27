@@ -12,7 +12,7 @@ import java.util.List;
 /**
  * 层级Service接口
  *
- * @author ruoyi
+ * @author Mashir0
  * @date 2024-01-01
  */
 public interface IHierarchyService {
@@ -20,7 +20,8 @@ public interface IHierarchyService {
     /**
      * 查询单个
      *
-     * @return
+     * @param id 主键ID
+     * @return 层级视图对象
      */
     HierarchyVo queryById(Long id);
 
@@ -43,7 +44,7 @@ public interface IHierarchyService {
      * 根据新增业务对象插入层级
      *
      * @param bo 层级新增业务对象
-     * @return
+     * @return 是否成功
      */
     Boolean insertByBo(HierarchyBo bo);
 
@@ -51,7 +52,7 @@ public interface IHierarchyService {
      * 根据编辑业务对象修改层级
      *
      * @param bo 层级编辑业务对象
-     * @return
+     * @return 是否成功
      */
     Boolean updateByBo(HierarchyBo bo);
 
@@ -60,7 +61,7 @@ public interface IHierarchyService {
      *
      * @param ids     主键集合
      * @param isValid 是否校验,true-删除前校验,false-不校验
-     * @return
+     * @return 是否成功
      */
     Boolean deleteWithValidByIds(Collection<Long> ids, Boolean isValid);
 
@@ -70,27 +71,19 @@ public interface IHierarchyService {
     Boolean saveBatch(List<Hierarchy> list);
 
     /**
-     * 根据层级类型查询层级列表
+     * 根据层级类型ID查询层级列表
      *
-     * @param type 层级类型
+     * @param typeId 层级类型ID
      * @return 层级列表
      */
-    List<Hierarchy> getHierarchiesByType(Integer type);
+    List<HierarchyVo> getHierarchiesByTypeId(Long typeId);
 
     /**
      * 根据父级ID查询子层级列表
      *
-     * @param idParent 父级ID
+     * @param parentId 父级ID
      * @return 子层级列表
      */
-    List<HierarchyVo> getChildrenByParentId(Long idParent);
-
-    /**
-     * 从JSON数据导入层级
-     *
-     * @param jsonData JSON数据
-     * @return 导入结果
-     */
-    Boolean importFromJson(String jsonData);
+    List<HierarchyVo> getChildrenByParentId(Long parentId);
 
 }

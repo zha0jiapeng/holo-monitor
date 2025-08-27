@@ -18,9 +18,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public enum TestpointTypeEnum {
 
-    /**
-     * 局部放电
-     */
+
     PARTIAL_DISCHARGE(1, "局部放电", "监测设备的局部放电信号", Set.of(11, 12, 21, 22, 23, 31, 41)),
 
     SF6(2, "SF6密度微水", "SF6密度微水", Set.of(111)),
@@ -28,19 +26,12 @@ public enum TestpointTypeEnum {
     CIRCUIT_BREAKER_CHARACTERISTICS(3, "断路器特性", "断路器特性", Set.of(211)),
 
     GAS_LEAK(4, "气体泄露", "气体泄露", Set.of(311)),
-    /**
-     * 位置类型
-     */
+
     OTHER(-1, "未知", "其他未分类的监测类型", Set.of());
 
-    /**
-     * 类型编码
-     */
+
     private final Integer code;
 
-    /**
-     * 类型名称
-     */
     private final String name;
 
     /**

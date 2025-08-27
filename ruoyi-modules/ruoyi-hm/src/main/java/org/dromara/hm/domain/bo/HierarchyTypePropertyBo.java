@@ -2,7 +2,7 @@ package org.dromara.hm.domain.bo;
 
 import org.dromara.common.core.validate.AddGroup;
 import org.dromara.common.core.validate.EditGroup;
-import org.dromara.hm.domain.Hierarchy;
+import org.dromara.hm.domain.HierarchyTypeProperty;
 import io.github.linpeilie.annotations.AutoMapper;
 import lombok.Data;
 
@@ -10,15 +10,15 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 /**
- * 层级业务对象 hm_hierarchy
+ * 层级类型属性业务对象 hm_hierarchy_type_property
  *
  * @author Mashir0
  * @date 2024-01-01
  */
 
 @Data
-@AutoMapper(target = Hierarchy.class, reverseConvertGenerate = false)
-public class HierarchyBo {
+@AutoMapper(target = HierarchyTypeProperty.class, reverseConvertGenerate = false)
+public class HierarchyTypePropertyBo {
 
     /**
      * 主键ID
@@ -33,14 +33,14 @@ public class HierarchyBo {
     private Long typeId;
 
     /**
-     * 父级ID
+     * 字典id
      */
-    private Long parentId;
+    @NotBlank(message = "字典id不能为空", groups = {AddGroup.class, EditGroup.class})
+    private Long propertyDictId;
 
     /**
-     * 层级名称
+     * 是否必填
      */
-    @NotBlank(message = "层级名称不能为空", groups = {AddGroup.class, EditGroup.class})
-    private String name;
+    private Integer required;
 
 }

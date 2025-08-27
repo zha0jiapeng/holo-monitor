@@ -2,7 +2,7 @@ package org.dromara.hm.domain.bo;
 
 import org.dromara.common.core.validate.AddGroup;
 import org.dromara.common.core.validate.EditGroup;
-import org.dromara.hm.domain.Hierarchy;
+import org.dromara.hm.domain.HierarchyType;
 import io.github.linpeilie.annotations.AutoMapper;
 import lombok.Data;
 
@@ -10,15 +10,15 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 /**
- * 层级业务对象 hm_hierarchy
+ * 层级类型业务对象 hm_hierarchy_type
  *
  * @author Mashir0
  * @date 2024-01-01
  */
 
 @Data
-@AutoMapper(target = Hierarchy.class, reverseConvertGenerate = false)
-public class HierarchyBo {
+@AutoMapper(target = HierarchyType.class, reverseConvertGenerate = false)
+public class HierarchyTypeBo {
 
     /**
      * 主键ID
@@ -27,20 +27,14 @@ public class HierarchyBo {
     private Long id;
 
     /**
-     * 层级类型id
+     * 层级类型名称
      */
-    @NotNull(message = "层级类型id不能为空", groups = {AddGroup.class, EditGroup.class})
-    private Long typeId;
-
-    /**
-     * 父级ID
-     */
-    private Long parentId;
-
-    /**
-     * 层级名称
-     */
-    @NotBlank(message = "层级名称不能为空", groups = {AddGroup.class, EditGroup.class})
+    @NotBlank(message = "层级类型名称不能为空", groups = {AddGroup.class, EditGroup.class})
     private String name;
+
+    /**
+     * 级联父级id
+     */
+    private Long cascadeParentId;
 
 }

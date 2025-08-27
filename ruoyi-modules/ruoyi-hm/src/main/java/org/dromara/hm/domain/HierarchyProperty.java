@@ -6,14 +6,14 @@ import lombok.Data;
 import java.io.Serial;
 
 /**
- * 层级对象 hm_hierarchy
+ * 层级属性对象 hm_hierarchy_property
  *
- * @author ruoyi
+ * @author Mashir0
  * @date 2024-01-01
  */
 @Data
-@TableName("hm_hierarchy")
-public class Hierarchy {
+@TableName("hm_hierarchy_property")
+public class HierarchyProperty {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -25,18 +25,18 @@ public class Hierarchy {
     private Long id;
 
     /**
-     * 层级类型id
+     * 层级id
      */
-    private Long typeId;
+    private Long hierarchyId;
 
     /**
-     * 父级ID
+     * 属性key
      */
-    private Long parentId;
+    private String typePropertyId;
 
     /**
-     * 层级名称
+     * 属性值
      */
-    private String name;
+    private byte[] propertyValue;
 
 }

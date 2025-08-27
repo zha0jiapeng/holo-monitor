@@ -3,7 +3,7 @@ package org.dromara.hm.domain.vo;
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
 import org.dromara.common.excel.annotation.ExcelRequired;
-import org.dromara.hm.domain.Hierarchy;
+import org.dromara.hm.domain.HierarchyTypeProperty;
 import io.github.linpeilie.annotations.AutoMapper;
 import lombok.Data;
 
@@ -11,15 +11,15 @@ import java.io.Serial;
 import java.io.Serializable;
 
 /**
- * 层级视图对象 hm_hierarchy
+ * 层级类型属性视图对象 hm_hierarchy_type_property
  *
  * @author Mashir0
  * @date 2024-01-01
  */
 @Data
 @ExcelIgnoreUnannotated
-@AutoMapper(target = Hierarchy.class)
-public class HierarchyVo implements Serializable {
+@AutoMapper(target = HierarchyTypeProperty.class)
+public class HierarchyTypePropertyVo implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -38,17 +38,16 @@ public class HierarchyVo implements Serializable {
     private Long typeId;
 
     /**
-     * 父级ID
-     */
-    @ExcelProperty(value = "父级ID")
-    private Long parentId;
-
-    /**
-     * 层级名称
+     * 字典id
      */
     @ExcelRequired
-    @ExcelProperty(value = "层级名称")
-    private String name;
+    @ExcelProperty(value = "字典id")
+    private String propertyDictId;
 
+    /**
+     * 是否必填
+     */
+    @ExcelProperty(value = "是否必填")
+    private Integer required;
 
 }
