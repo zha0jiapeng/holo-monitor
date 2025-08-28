@@ -85,7 +85,9 @@ public enum DataTypeEnum {
     /**
      * 对象类型
      */
-    OBJECT(14, "对象");
+    OBJECT(14, "对象"),
+
+    Hierarchy(15,"层级");
 
     /**
      * 数据类型编码

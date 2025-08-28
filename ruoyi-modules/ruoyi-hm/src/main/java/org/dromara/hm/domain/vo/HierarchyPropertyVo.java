@@ -48,6 +48,6 @@ public class HierarchyPropertyVo implements Serializable {
      * 属性值
      */
     @ExcelProperty(value = "属性值")
-    private byte[] propertyValue;
+    private String propertyValue;
 
 }

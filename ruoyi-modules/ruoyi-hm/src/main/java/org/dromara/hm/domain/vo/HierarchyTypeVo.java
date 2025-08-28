@@ -2,13 +2,17 @@ package org.dromara.hm.domain.vo;
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import com.baomidou.mybatisplus.annotation.TableField;
 import org.dromara.common.excel.annotation.ExcelRequired;
 import org.dromara.hm.domain.HierarchyType;
 import io.github.linpeilie.annotations.AutoMapper;
 import lombok.Data;
+import org.dromara.hm.domain.HierarchyTypeProperty;
+import org.dromara.hm.domain.HierarchyTypeShow;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * 层级类型视图对象 hm_hierarchy_type
@@ -42,5 +46,11 @@ public class HierarchyTypeVo implements Serializable {
      */
     @ExcelProperty(value = "级联父级id")
     private Long cascadeParentId;
+
+    @TableField(exist = false)
+    private List<HierarchyTypeProperty> properties;
+
+    @TableField(exist = false)
+    private List<HierarchyTypeShow> showHierarchyList;
 
 }

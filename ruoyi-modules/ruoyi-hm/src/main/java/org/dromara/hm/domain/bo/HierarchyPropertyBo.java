@@ -41,6 +41,6 @@ public class HierarchyPropertyBo {
     /**
      * 属性值
      */
-    private byte[] propertyValue;
+    private String propertyValue;
 
 }

@@ -10,11 +10,14 @@ import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.Hierarchy;
+import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.bo.HierarchyBo;
 import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.mapper.HierarchyMapper;
+import org.dromara.hm.mapper.HierarchyPropertyMapper;
 import org.dromara.hm.service.IHierarchyService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
@@ -30,6 +33,7 @@ import java.util.List;
 public class HierarchyServiceImpl implements IHierarchyService {
 
     private final HierarchyMapper baseMapper;
+    private final HierarchyPropertyMapper hierarchyPropertyMapper;
 
     @Override
     public HierarchyVo queryById(Long id) {
@@ -68,6 +72,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean insertByBo(HierarchyBo bo) {
         Hierarchy add = MapstructUtils.convert(bo, Hierarchy.class);
         if (add != null) {
@@ -78,6 +83,10 @@ public class HierarchyServiceImpl implements IHierarchyService {
             if (add != null) {
                 bo.setId(add.getId());
             }
+            for (HierarchyProperty property : bo.getProperties()) {
+                property.setHierarchyId(add.getId());
+            }
+            hierarchyPropertyMapper.insertBatch(bo.getProperties());
         }
         return flag;
     }
@@ -131,6 +140,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
             if (list.size() != ids.size()) {
                 throw new ServiceException("您没有删除权限!");
             }
+            hierarchyPropertyMapper.delete(Wrappers.<HierarchyProperty>lambdaQuery().in(HierarchyProperty::getHierarchyId, ids));
         }
         return baseMapper.deleteByIds(ids) > 0;
     }
@@ -138,14 +148,6 @@ public class HierarchyServiceImpl implements IHierarchyService {
     @Override
     public Boolean saveBatch(List<Hierarchy> list) {
         return baseMapper.insertBatch(list);
-    }
-
-    @Override
-    public List<HierarchyVo> getHierarchiesByTypeId(Long typeId) {
-        LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(typeId != null, Hierarchy::getTypeId, typeId);
-        wrapper.orderByAsc(Hierarchy::getId);
-        return baseMapper.selectVoList(wrapper);
     }
 
     @Override

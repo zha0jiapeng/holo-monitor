@@ -2,7 +2,6 @@ package org.dromara.hm.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -11,18 +10,20 @@ import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
-import org.dromara.hm.domain.Hierarchy;
-import org.dromara.hm.domain.HierarchyType;
+import org.dromara.hm.domain.*;
 import org.dromara.hm.domain.bo.HierarchyTypeBo;
 import org.dromara.hm.domain.vo.HierarchyTypeVo;
-import org.dromara.hm.mapper.HierarchyMapper;
-import org.dromara.hm.mapper.HierarchyTypeMapper;
+import org.dromara.hm.mapper.*;
 import org.dromara.hm.service.IHierarchyTypeService;
+import org.dromara.hm.service.IHierarchyTypeShowService;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * 层级类型Service业务层处理
@@ -36,16 +37,42 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
 
     private final HierarchyTypeMapper baseMapper;
     private final HierarchyMapper hierarchyMapper;
+    private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
+    private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
+    private final HierarchyTypeShowMapper hierarchyTypeShowMapper;
 
     @Override
     public HierarchyTypeVo queryById(Long id) {
-        return baseMapper.selectVoById(id);
+        HierarchyTypeVo hierarchyTypeVo = baseMapper.selectVoById(id);
+        initVo(hierarchyTypeVo);
+        return hierarchyTypeVo;
+    }
+
+    private void initVo(HierarchyTypeVo hierarchyTypeVo) {
+        List<HierarchyTypeProperty> hierarchyTypeProperties = hierarchyTypePropertyMapper.selectList(
+            new LambdaQueryWrapper<HierarchyTypeProperty>().eq(HierarchyTypeProperty::getTypeId, hierarchyTypeVo.getId()
+            ));
+        for (HierarchyTypeProperty hierarchyTypeProperty : hierarchyTypeProperties) {
+            HierarchyTypePropertyDict hierarchyTypePropertyDict = hierarchyTypePropertyDictMapper.selectById(hierarchyTypeProperty.getPropertyDictId());
+            if(hierarchyTypePropertyDict!=null){
+                hierarchyTypeProperty.setDataType(hierarchyTypePropertyDict.getDataType());
+                hierarchyTypeProperty.setDictName(hierarchyTypePropertyDict.getDictName());
+                hierarchyTypeProperty.setDictValues(hierarchyTypePropertyDict.getDictValues());
+            }
+        }
+        hierarchyTypeVo.setProperties(hierarchyTypeProperties);
+        List<HierarchyTypeShow> hierarchyTypeShows = hierarchyTypeShowMapper.selectList(new LambdaQueryWrapper<HierarchyTypeShow>().eq(HierarchyTypeShow::getTypeId, hierarchyTypeVo.getId()));
+        hierarchyTypeVo.setShowHierarchyList(hierarchyTypeShows);
     }
 
     @Override
     public TableDataInfo<HierarchyTypeVo> queryPageList(HierarchyTypeBo bo, PageQuery pageQuery) {
         LambdaQueryWrapper<HierarchyType> lqw = buildQueryWrapper(bo);
         Page<HierarchyTypeVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
+        List<HierarchyTypeVo> records = result.getRecords();
+        for (HierarchyTypeVo hierarchyTypeVo : records) {
+            initVo(hierarchyTypeVo);
+        }
         return TableDataInfo.build(result);
     }
 
@@ -73,6 +100,7 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean insertByBo(HierarchyTypeBo bo) {
         HierarchyType add = MapstructUtils.convert(bo, HierarchyType.class);
         if (add != null) {
@@ -83,11 +111,21 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
             if (add != null) {
                 bo.setId(add.getId());
             }
+            List<Long> Ids = bo.getHierarchyTypeShowIds();
+            List<HierarchyTypeShow> hierarchyTypeShowBos = new ArrayList<>();
+            for (Long Id : Ids) {
+                HierarchyTypeShow hierarchyTypeShow = new HierarchyTypeShow();
+                hierarchyTypeShow.setTypeId(add.getId());
+                hierarchyTypeShow.setShowTypeId(Id);
+                hierarchyTypeShowBos.add(hierarchyTypeShow);
+            }
+            hierarchyTypeShowMapper.insertBatch(hierarchyTypeShowBos);
         }
         return flag;
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean updateByBo(HierarchyTypeBo bo) {
         // 获取原始数据
         HierarchyType original = baseMapper.selectById(bo.getId());
@@ -101,7 +139,8 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
         boolean hasHierarchyData = hierarchyMapper.exists(hierarchyWrapper);
 
         if (hasHierarchyData) {
-            if (!Objects.equals(original.getCascadeParentId(), bo.getCascadeParentId())) {
+            if (!Objects.equals(original.getCascadeParentId(), bo.getCascadeParentId())
+            ) {
                 throw new ServiceException("该层级类型下存在层级数据，只能修改名称字段，无法修改级联父级");
             }
         }
@@ -109,6 +148,18 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
         HierarchyType update = MapstructUtils.convert(bo, HierarchyType.class);
         if (update != null) {
             validEntityBeforeSave(update);
+            LambdaQueryWrapper<HierarchyTypeShow> objectLambdaQueryWrapper = Wrappers.lambdaQuery();
+            hierarchyTypeShowMapper.delete(objectLambdaQueryWrapper.eq(HierarchyTypeShow::getTypeId, bo.getId()));
+            List<Long> Ids = bo.getHierarchyTypeShowIds();
+            List<HierarchyTypeShow> hierarchyTypeShowBos = new ArrayList<>();
+            for (Long Id : Ids) {
+                HierarchyTypeShow hierarchyTypeShow = new HierarchyTypeShow();
+                hierarchyTypeShow.setTypeId(bo.getId());
+                hierarchyTypeShow.setShowTypeId(Id);
+                hierarchyTypeShowBos.add(hierarchyTypeShow);
+            }
+            hierarchyTypeShowMapper.insertBatch(hierarchyTypeShowBos);
+
             // 使用UpdateWrapper来确保null值也能被更新
             LambdaUpdateWrapper<HierarchyType> updateWrapper = new LambdaUpdateWrapper<>();
             updateWrapper.eq(HierarchyType::getId, bo.getId());

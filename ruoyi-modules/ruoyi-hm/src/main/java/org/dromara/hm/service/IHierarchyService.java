@@ -70,13 +70,6 @@ public interface IHierarchyService {
      */
     Boolean saveBatch(List<Hierarchy> list);
 
-    /**
-     * 根据层级类型ID查询层级列表
-     *
-     * @param typeId 层级类型ID
-     * @return 层级列表
-     */
-    List<HierarchyVo> getHierarchiesByTypeId(Long typeId);
 
     /**
      * 根据父级ID查询子层级列表

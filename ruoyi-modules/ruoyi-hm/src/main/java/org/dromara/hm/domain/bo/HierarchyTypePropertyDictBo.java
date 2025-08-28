@@ -37,4 +37,6 @@ public class HierarchyTypePropertyDictBo {
      */
     private Integer dataType;
 
+    private String dictValues;
+
 }

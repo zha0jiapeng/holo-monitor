@@ -136,18 +136,6 @@ public class HierarchyController extends BaseController {
                           @PathVariable Long[] ids) {
         return toAjax(hierarchyService.deleteWithValidByIds(Arrays.asList(ids), true));
     }
-
-    /**
-     * 根据层级类型ID查询层级列表
-     *
-     * @param typeId 层级类型ID
-     */
-    @SaCheckPermission("hm:hierarchy:list")
-    @GetMapping("/type/{typeId}")
-    public R<List<HierarchyVo>> getHierarchiesByTypeId(@PathVariable("typeId") Long typeId) {
-        return R.ok(hierarchyService.getHierarchiesByTypeId(typeId));
-    }
-
     /**
      * 根据父级ID查询子层级列表
      *

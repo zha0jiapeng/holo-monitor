@@ -1,5 +1,6 @@
 package org.dromara.hm.domain.bo;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import org.dromara.common.core.validate.AddGroup;
 import org.dromara.common.core.validate.EditGroup;
 import org.dromara.hm.domain.Hierarchy;
@@ -8,6 +9,9 @@ import lombok.Data;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.dromara.hm.domain.HierarchyProperty;
+
+import java.util.List;
 
 /**
  * 层级业务对象 hm_hierarchy
@@ -42,5 +46,9 @@ public class HierarchyBo {
      */
     @NotBlank(message = "层级名称不能为空", groups = {AddGroup.class, EditGroup.class})
     private String name;
+
+
+    @TableField(exist = false)
+    private List<HierarchyProperty> properties;
 
 }

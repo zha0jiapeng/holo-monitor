@@ -2,6 +2,7 @@ package org.dromara.hm.domain;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
+import org.dromara.hm.domain.vo.HierarchyTypeVo;
 
 import java.io.Serial;
 
@@ -38,5 +39,14 @@ public class HierarchyTypeProperty {
      * 是否必填
      */
     private Integer required;
+
+    @TableField(exist = false)
+    private Integer dataType;
+
+    @TableField(exist = false)
+    private String dictName;
+
+    @TableField(exist = false)
+    private String dictValues;
 
 }

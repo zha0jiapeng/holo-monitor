@@ -6,16 +6,19 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.MapstructUtils;
-import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
+import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.HierarchyTypeProperty;
 import org.dromara.hm.domain.bo.HierarchyTypePropertyBo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
+import org.dromara.hm.mapper.HierarchyPropertyMapper;
 import org.dromara.hm.mapper.HierarchyTypePropertyMapper;
 import org.dromara.hm.service.IHierarchyTypePropertyService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -30,6 +33,7 @@ import java.util.List;
 public class HierarchyTypePropertyServiceImpl implements IHierarchyTypePropertyService {
 
     private final HierarchyTypePropertyMapper baseMapper;
+    private final HierarchyPropertyMapper hierarchyPropertyMapper;
 
     @Override
     public HierarchyTypePropertyVo queryById(Long id) {
@@ -114,14 +118,123 @@ public class HierarchyTypePropertyServiceImpl implements IHierarchyTypePropertyS
     @Override
     public Boolean deleteWithValidByIds(Collection<Long> ids, Boolean isValid) {
         if (isValid) {
-            // 可以在这里添加删除前校验逻辑，比如检查是否有其他地方引用了这些属性
+
         }
         return baseMapper.deleteByIds(ids) > 0;
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean saveBatch(List<HierarchyTypeProperty> list) {
-        return baseMapper.insertBatch(list);
+        if (list == null || list.isEmpty()) {
+            return true;
+        }
+
+        // 获取前端传来的第一个记录的typeId，作为本次操作的层级类型ID
+        Long typeId = list.get(0).getTypeId();
+        if (typeId == null) {
+            throw new ServiceException("层级类型ID不能为空");
+        }
+
+        // 校验所有记录的typeId必须一致
+        for (HierarchyTypeProperty item : list) {
+            if (!typeId.equals(item.getTypeId())) {
+                throw new ServiceException("批量操作的所有记录必须属于同一层级类型");
+            }
+            if (item.getPropertyDictId() == null) {
+                throw new ServiceException("属性字典ID不能为空");
+            }
+        }
+
+        // 获取数据库中现有的所有记录
+        LambdaQueryWrapper<HierarchyTypeProperty> existingWrapper = Wrappers.lambdaQuery();
+        existingWrapper.eq(HierarchyTypeProperty::getTypeId, typeId);
+        List<HierarchyTypeProperty> existingList = baseMapper.selectList(existingWrapper);
+
+        // 分析需要执行的操作
+        List<HierarchyTypeProperty> insertList = new ArrayList<>();
+        List<HierarchyTypeProperty> updateList = new ArrayList<>();
+        List<Long> deleteIds = new ArrayList<>();
+
+        // 找出需要删除的记录（现有记录中不在前端数据中的）
+        for (HierarchyTypeProperty existing : existingList) {
+            boolean found = false;
+            for (HierarchyTypeProperty item : list) {
+                if (existing.getPropertyDictId().equals(item.getPropertyDictId())) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                deleteIds.add(existing.getId());
+            }
+        }
+
+        // 找出需要更新或新增的记录
+        for (HierarchyTypeProperty item : list) {
+            HierarchyTypeProperty existing = null;
+            for (HierarchyTypeProperty existItem : existingList) {
+                if (existItem.getPropertyDictId().equals(item.getPropertyDictId())) {
+                    existing = existItem;
+                    break;
+                }
+            }
+
+            if (existing != null) {
+                // 存在，则准备修改
+                // 检查hm_hierarchy_property表中是否存在引用
+                LambdaQueryWrapper<HierarchyProperty> refWrapper = Wrappers.lambdaQuery();
+                refWrapper.eq(HierarchyProperty::getTypePropertyId, item.getPropertyDictId());
+                long referenceCount = hierarchyPropertyMapper.selectCount(refWrapper);
+
+                if (referenceCount > 0) {
+                    throw new ServiceException("属性字典ID [" + item.getPropertyDictId() + "] 已被使用，无法修改");
+                }
+
+                // 设置ID用于更新
+                item.setId(existing.getId());
+                updateList.add(item);
+            } else {
+                // 不存在，则准备新增
+                insertList.add(item);
+            }
+        }
+
+        // 执行删除操作
+        if (!deleteIds.isEmpty()) {
+            // 检查要删除的记录是否有引用
+            for (Long deleteId : deleteIds) {
+                HierarchyTypeProperty deleteItem = baseMapper.selectById(deleteId);
+                if (deleteItem != null) {
+                    LambdaQueryWrapper<HierarchyProperty> refWrapper = Wrappers.lambdaQuery();
+                    refWrapper.eq(HierarchyProperty::getTypePropertyId, deleteItem.getPropertyDictId());
+                    long referenceCount = hierarchyPropertyMapper.selectCount(refWrapper);
+
+                    if (referenceCount > 0) {
+                        throw new ServiceException("属性字典ID [" + deleteItem.getPropertyDictId() + "] 已被使用，无法删除");
+                    }
+                }
+            }
+            baseMapper.deleteByIds(deleteIds);
+        }
+
+        // 批量执行新增
+        if (!insertList.isEmpty()) {
+            for (HierarchyTypeProperty insertItem : insertList) {
+                validEntityBeforeSave(insertItem);
+                baseMapper.insert(insertItem);
+            }
+        }
+
+        // 批量执行修改
+        if (!updateList.isEmpty()) {
+            for (HierarchyTypeProperty updateItem : updateList) {
+                validEntityBeforeSave(updateItem);
+                baseMapper.updateById(updateItem);
+            }
+        }
+
+        return true;
     }
 
     @Override

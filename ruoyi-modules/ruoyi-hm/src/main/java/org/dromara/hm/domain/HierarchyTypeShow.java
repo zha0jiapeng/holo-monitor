@@ -6,14 +6,14 @@ import lombok.Data;
 import java.io.Serial;
 
 /**
- * 层级类型属性字典对象 hm_hierarchy_type_property_dict
+ * 层级类型展示对象 hm_hierarchy_type_show
  *
- * @author Mashir0
+ * @author ruoyi
  * @date 2024-01-01
  */
 @Data
-@TableName("hm_hierarchy_type_property_dict")
-public class HierarchyTypePropertyDict {
+@TableName("hm_hierarchy_type_show")
+public class HierarchyTypeShow {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -25,15 +25,13 @@ public class HierarchyTypePropertyDict {
     private Long id;
 
     /**
-     * 属性字典名称
+     * 层级id
      */
-    private String dictName;
+    private Long typeId;
 
     /**
-     * 属性类型
+     * 展示类型id
      */
-    private Integer dataType;
-
-    private String dictValues;
+    private Long showTypeId;
 
 }

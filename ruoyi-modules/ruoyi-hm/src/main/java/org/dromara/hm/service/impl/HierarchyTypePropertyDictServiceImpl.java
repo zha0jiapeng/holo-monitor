@@ -129,7 +129,7 @@ public class HierarchyTypePropertyDictServiceImpl implements IHierarchyTypePrope
             // 校验是否存在引用
             for (HierarchyTypePropertyDict dict : list) {
                 LambdaQueryWrapper<HierarchyTypeProperty> wrapper = Wrappers.lambdaQuery();
-                wrapper.eq(HierarchyTypeProperty::getPropertyDictId, dict.getId().toString());
+                wrapper.eq(HierarchyTypeProperty::getPropertyDictId, dict.getId());
                 if (hierarchyTypePropertyMapper.exists(wrapper)) {
                     throw new ServiceException("字典项【" + dict.getDictName() + "】正在被使用，无法删除!");
                 }

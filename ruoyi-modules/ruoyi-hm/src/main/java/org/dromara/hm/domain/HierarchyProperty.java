@@ -37,6 +37,6 @@ public class HierarchyProperty {
     /**
      * 属性值
      */
-    private byte[] propertyValue;
+    private String propertyValue;
 
 }

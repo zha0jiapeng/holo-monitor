@@ -43,4 +43,6 @@ public class HierarchyTypePropertyDictVo implements Serializable {
     @ExcelProperty(value = "属性类型")
     private Integer dataType;
 
+    private String dictValues;
+
 }
