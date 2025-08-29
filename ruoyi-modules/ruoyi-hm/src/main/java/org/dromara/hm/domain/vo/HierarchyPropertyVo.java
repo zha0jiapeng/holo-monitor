@@ -50,4 +50,5 @@ public class HierarchyPropertyVo implements Serializable {
     @ExcelProperty(value = "属性值")
     private String propertyValue;
 
+    private HierarchyTypePropertyVo typeProperty;
 }

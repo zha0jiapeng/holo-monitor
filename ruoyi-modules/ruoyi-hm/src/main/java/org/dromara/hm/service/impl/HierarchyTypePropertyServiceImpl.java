@@ -10,9 +10,11 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.HierarchyTypeProperty;
+import org.dromara.hm.domain.HierarchyTypePropertyDict;
 import org.dromara.hm.domain.bo.HierarchyTypePropertyBo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
 import org.dromara.hm.mapper.HierarchyPropertyMapper;
+import org.dromara.hm.mapper.HierarchyTypePropertyDictMapper;
 import org.dromara.hm.mapper.HierarchyTypePropertyMapper;
 import org.dromara.hm.service.IHierarchyTypePropertyService;
 import org.springframework.stereotype.Service;
@@ -37,7 +39,7 @@ public class HierarchyTypePropertyServiceImpl implements IHierarchyTypePropertyS
 
     @Override
     public HierarchyTypePropertyVo queryById(Long id) {
-        return baseMapper.selectVoById(id);
+        return  baseMapper.selectVoById(id);
     }
 
     @Override

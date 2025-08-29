@@ -9,12 +9,21 @@ import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
+import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.HierarchyProperty;
+import org.dromara.hm.domain.HierarchyTypePropertyDict;
 import org.dromara.hm.domain.bo.HierarchyPropertyBo;
 import org.dromara.hm.domain.vo.HierarchyPropertyVo;
+import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
+import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
+import org.dromara.hm.enums.DataTypeEnum;
+import org.dromara.hm.mapper.HierarchyMapper;
 import org.dromara.hm.mapper.HierarchyPropertyMapper;
+import org.dromara.hm.mapper.HierarchyTypePropertyDictMapper;
+import org.dromara.hm.mapper.HierarchyTypePropertyMapper;
 import org.dromara.hm.service.IHierarchyPropertyService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
@@ -30,16 +39,29 @@ import java.util.List;
 public class HierarchyPropertyServiceImpl implements IHierarchyPropertyService {
 
     private final HierarchyPropertyMapper baseMapper;
+    private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
+    private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
 
     @Override
     public HierarchyPropertyVo queryById(Long id) {
-        return baseMapper.selectVoById(id);
+        HierarchyPropertyVo hierarchyPropertyVo = baseMapper.selectVoById(id);
+        HierarchyTypePropertyVo hierarchyTypePropertyVo = hierarchyTypePropertyMapper.selectVoById(hierarchyPropertyVo.getTypePropertyId());
+        HierarchyTypePropertyDictVo hierarchyTypePropertyDictVo = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypePropertyVo.getPropertyDictId());
+        hierarchyTypePropertyVo.setDict(hierarchyTypePropertyDictVo);
+        hierarchyPropertyVo.setTypeProperty(hierarchyTypePropertyVo);
+        return hierarchyPropertyVo;
     }
 
     @Override
     public TableDataInfo<HierarchyPropertyVo> queryPageList(HierarchyPropertyBo bo, PageQuery pageQuery) {
         LambdaQueryWrapper<HierarchyProperty> lqw = buildQueryWrapper(bo);
         Page<HierarchyPropertyVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
+        for (HierarchyPropertyVo record : result.getRecords()) {
+            HierarchyTypePropertyVo hierarchyTypePropertyVo = hierarchyTypePropertyMapper.selectVoById(record.getTypePropertyId());
+            HierarchyTypePropertyDictVo hierarchyTypePropertyDictVo = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypePropertyVo.getPropertyDictId());
+            hierarchyTypePropertyVo.setDict(hierarchyTypePropertyDictVo);
+            record.setTypeProperty(hierarchyTypePropertyVo);
+        }
         return TableDataInfo.build(result);
     }
 
@@ -67,6 +89,7 @@ public class HierarchyPropertyServiceImpl implements IHierarchyPropertyService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean insertByBo(HierarchyPropertyBo bo) {
         HierarchyProperty add = MapstructUtils.convert(bo, HierarchyProperty.class);
         if (add != null) {

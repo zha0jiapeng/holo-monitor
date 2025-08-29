@@ -15,7 +15,6 @@ import org.dromara.hm.domain.bo.HierarchyTypeBo;
 import org.dromara.hm.domain.vo.HierarchyTypeVo;
 import org.dromara.hm.mapper.*;
 import org.dromara.hm.service.IHierarchyTypeService;
-import org.dromara.hm.service.IHierarchyTypeShowService;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
@@ -23,7 +22,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
  * 层级类型Service业务层处理

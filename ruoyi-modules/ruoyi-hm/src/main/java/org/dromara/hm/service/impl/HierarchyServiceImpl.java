@@ -12,9 +12,14 @@ import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.bo.HierarchyBo;
+import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
+import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
 import org.dromara.hm.domain.vo.HierarchyVo;
+import org.dromara.hm.enums.DataTypeEnum;
 import org.dromara.hm.mapper.HierarchyMapper;
 import org.dromara.hm.mapper.HierarchyPropertyMapper;
+import org.dromara.hm.mapper.HierarchyTypePropertyDictMapper;
+import org.dromara.hm.mapper.HierarchyTypePropertyMapper;
 import org.dromara.hm.service.IHierarchyService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +39,8 @@ public class HierarchyServiceImpl implements IHierarchyService {
 
     private final HierarchyMapper baseMapper;
     private final HierarchyPropertyMapper hierarchyPropertyMapper;
+    private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
+    private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
 
     @Override
     public HierarchyVo queryById(Long id) {
@@ -85,6 +92,17 @@ public class HierarchyServiceImpl implements IHierarchyService {
             }
             for (HierarchyProperty property : bo.getProperties()) {
                 property.setHierarchyId(add.getId());
+
+                HierarchyTypePropertyVo hierarchyTypePropertyVo = hierarchyTypePropertyMapper.selectVoById(property.getTypePropertyId());
+                if(hierarchyTypePropertyVo!=null){
+                    HierarchyTypePropertyDictVo hierarchyTypePropertyDictVo = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypePropertyVo.getPropertyDictId());
+                    if(hierarchyTypePropertyDictVo.getDataType().equals(DataTypeEnum.Hierarchy.getCode())){
+                        Hierarchy hierarchy = new Hierarchy();
+                        hierarchy.setId(bo.getId());
+                        hierarchy.setParentId(Long.valueOf(property.getPropertyValue()));
+                        baseMapper.updateById(hierarchy);
+                    }
+                }
             }
             hierarchyPropertyMapper.insertBatch(bo.getProperties());
         }
