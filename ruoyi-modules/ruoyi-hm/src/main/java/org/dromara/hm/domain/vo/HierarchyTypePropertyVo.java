@@ -43,7 +43,7 @@ public class HierarchyTypePropertyVo implements Serializable {
      */
     @ExcelRequired
     @ExcelProperty(value = "字典id")
-    private String propertyDictId;
+    private Long propertyDictId;
 
     /**
      * 是否必填

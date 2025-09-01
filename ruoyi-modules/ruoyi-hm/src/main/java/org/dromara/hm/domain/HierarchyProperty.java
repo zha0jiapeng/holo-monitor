@@ -32,7 +32,7 @@ public class HierarchyProperty {
     /**
      * 属性key
      */
-    private String typePropertyId;
+    private Long typePropertyId;
 
     /**
      * 属性值

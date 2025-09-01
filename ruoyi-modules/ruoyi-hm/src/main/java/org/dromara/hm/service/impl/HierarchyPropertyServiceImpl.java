@@ -120,7 +120,7 @@ public class HierarchyPropertyServiceImpl implements IHierarchyPropertyService {
      */
     private void validEntityBeforeSave(HierarchyProperty entity) {
         // 校验属性key在同一层级下不能重复
-        if (StringUtils.isNotBlank(entity.getTypePropertyId()) && entity.getHierarchyId() != null) {
+        if ( entity.getHierarchyId() != null) {
             LambdaQueryWrapper<HierarchyProperty> wrapper = Wrappers.lambdaQuery();
             wrapper.eq(HierarchyProperty::getHierarchyId, entity.getHierarchyId());
             wrapper.eq(HierarchyProperty::getTypePropertyId, entity.getTypePropertyId());

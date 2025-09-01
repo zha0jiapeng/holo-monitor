@@ -11,15 +11,14 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.HierarchyProperty;
+import org.dromara.hm.domain.HierarchyType;
+import org.dromara.hm.domain.HierarchyTypeProperty;
 import org.dromara.hm.domain.bo.HierarchyBo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
 import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.enums.DataTypeEnum;
-import org.dromara.hm.mapper.HierarchyMapper;
-import org.dromara.hm.mapper.HierarchyPropertyMapper;
-import org.dromara.hm.mapper.HierarchyTypePropertyDictMapper;
-import org.dromara.hm.mapper.HierarchyTypePropertyMapper;
+import org.dromara.hm.mapper.*;
 import org.dromara.hm.service.IHierarchyService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +38,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
 
     private final HierarchyMapper baseMapper;
     private final HierarchyPropertyMapper hierarchyPropertyMapper;
+    private final HierarchyTypeMapper hierarchyTypeMapper;
     private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
     private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
 
@@ -90,13 +90,14 @@ public class HierarchyServiceImpl implements IHierarchyService {
             if (add != null) {
                 bo.setId(add.getId());
             }
-            for (HierarchyProperty property : bo.getProperties()) {
-                property.setHierarchyId(add.getId());
 
-                HierarchyTypePropertyVo hierarchyTypePropertyVo = hierarchyTypePropertyMapper.selectVoById(property.getTypePropertyId());
-                if(hierarchyTypePropertyVo!=null){
-                    HierarchyTypePropertyDictVo hierarchyTypePropertyDictVo = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypePropertyVo.getPropertyDictId());
-                    if(hierarchyTypePropertyDictVo.getDataType().equals(DataTypeEnum.Hierarchy.getCode())){
+            for (HierarchyProperty property : bo.getProperties()) {
+                property.setHierarchyId(add != null ? add.getId() : null);
+                HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectById(property.getTypePropertyId());
+                HierarchyTypePropertyDictVo hierarchyTypePropertyDictVo = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypeProperty.getPropertyDictId());
+                if (hierarchyTypePropertyDictVo.getDataType().equals(DataTypeEnum.Hierarchy.getCode())) {
+                    HierarchyType hierarchyType = hierarchyTypeMapper.selectById(Long.valueOf(hierarchyTypePropertyDictVo.getDictValues()));
+                    if(hierarchyType.getCascadeParentId()!=null){
                         Hierarchy hierarchy = new Hierarchy();
                         hierarchy.setId(bo.getId());
                         hierarchy.setParentId(Long.valueOf(property.getPropertyValue()));
