@@ -37,7 +37,6 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
     private final HierarchyMapper hierarchyMapper;
     private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
     private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
-    private final HierarchyTypeShowMapper hierarchyTypeShowMapper;
 
     @Override
     public HierarchyTypeVo queryById(Long id) {
@@ -59,8 +58,6 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
             }
         }
         hierarchyTypeVo.setProperties(hierarchyTypeProperties);
-        List<HierarchyTypeShow> hierarchyTypeShows = hierarchyTypeShowMapper.selectList(new LambdaQueryWrapper<HierarchyTypeShow>().eq(HierarchyTypeShow::getTypeId, hierarchyTypeVo.getId()));
-        hierarchyTypeVo.setShowHierarchyList(hierarchyTypeShows);
     }
 
     @Override
@@ -109,15 +106,6 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
             if (add != null) {
                 bo.setId(add.getId());
             }
-            List<Long> Ids = bo.getHierarchyTypeShowIds();
-            List<HierarchyTypeShow> hierarchyTypeShowBos = new ArrayList<>();
-            for (Long Id : Ids) {
-                HierarchyTypeShow hierarchyTypeShow = new HierarchyTypeShow();
-                hierarchyTypeShow.setTypeId(add.getId());
-                hierarchyTypeShow.setShowTypeId(Id);
-                hierarchyTypeShowBos.add(hierarchyTypeShow);
-            }
-            hierarchyTypeShowMapper.insertBatch(hierarchyTypeShowBos);
         }
         return flag;
     }
@@ -146,17 +134,6 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
         HierarchyType update = MapstructUtils.convert(bo, HierarchyType.class);
         if (update != null) {
             validEntityBeforeSave(update);
-            LambdaQueryWrapper<HierarchyTypeShow> objectLambdaQueryWrapper = Wrappers.lambdaQuery();
-            hierarchyTypeShowMapper.delete(objectLambdaQueryWrapper.eq(HierarchyTypeShow::getTypeId, bo.getId()));
-            List<Long> Ids = bo.getHierarchyTypeShowIds();
-            List<HierarchyTypeShow> hierarchyTypeShowBos = new ArrayList<>();
-            for (Long Id : Ids) {
-                HierarchyTypeShow hierarchyTypeShow = new HierarchyTypeShow();
-                hierarchyTypeShow.setTypeId(bo.getId());
-                hierarchyTypeShow.setShowTypeId(Id);
-                hierarchyTypeShowBos.add(hierarchyTypeShow);
-            }
-            hierarchyTypeShowMapper.insertBatch(hierarchyTypeShowBos);
 
             // 使用UpdateWrapper来确保null值也能被更新
             LambdaUpdateWrapper<HierarchyType> updateWrapper = new LambdaUpdateWrapper<>();

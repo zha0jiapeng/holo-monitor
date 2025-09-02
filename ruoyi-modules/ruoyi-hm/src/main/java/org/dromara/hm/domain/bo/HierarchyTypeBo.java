@@ -8,7 +8,6 @@ import lombok.Data;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import org.dromara.hm.domain.HierarchyTypeShow;
 
 import java.util.List;
 
@@ -40,6 +39,6 @@ public class HierarchyTypeBo {
      */
     private Long cascadeParentId;
 
-    private List<Long> hierarchyTypeShowIds;
+    private Boolean cascadeFlag;
 
 }

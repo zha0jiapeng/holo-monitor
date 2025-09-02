@@ -34,7 +34,9 @@ public class TestpointBo extends BaseEntity {
      * 设备id
      */
     //@NotNull(message = "设备ID不能为空", groups = {AddGroup.class, EditGroup.class})
-    private Long equipmentId;
+    private Long hierarchyId;
+
+    private Long hierarchyOwnerId;
 
     /**
      * 测点编码
@@ -49,7 +51,6 @@ public class TestpointBo extends BaseEntity {
     private String kksName;
 
     private Integer mt;
-
 
     private Integer type;
 

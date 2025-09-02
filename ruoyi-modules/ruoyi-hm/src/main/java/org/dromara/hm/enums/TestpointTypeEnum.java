@@ -21,11 +21,11 @@ public enum TestpointTypeEnum {
 
     PARTIAL_DISCHARGE(1, "局部放电", "监测设备的局部放电信号", Set.of(11, 12, 21, 22, 23, 31, 41)),
 
-    SF6(2, "SF6密度微水", "SF6密度微水", Set.of(111)),
+    SF6(2, "SF6密度微水", "SF6密度微水", Set.of(51)),
 
-    CIRCUIT_BREAKER_CHARACTERISTICS(3, "断路器特性", "断路器特性", Set.of(211)),
+    CIRCUIT_BREAKER_CHARACTERISTICS(3, "断路器特性", "断路器特性", Set.of(62)),
 
-    GAS_LEAK(4, "气体泄露", "气体泄露", Set.of(311)),
+    GAS_LEAK(4, "气体泄露", "气体泄露", Set.of(52)),
 
     OTHER(-1, "未知", "其他未分类的监测类型", Set.of());
 

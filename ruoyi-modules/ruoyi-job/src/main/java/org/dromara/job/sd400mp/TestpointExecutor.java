@@ -36,21 +36,18 @@ public class TestpointExecutor {
 
     private final ITestpointService testPointService;
 
-    private final IEquipmentService equipmentService;
-
     public ExecuteResult jobExecute(JobArgs jobArgs) {
         SyncResult syncResult = new SyncResult();
 
         try {
-            List<Equipment> equipmentList = equipmentService.getEquipmentsByType(2);
-            log.info("开始执行测点数据同步任务，共 {} 个设备", equipmentList.size());
-            String fileId = null;
-            for (Equipment equipment : equipmentList) {
-                processSingleEquipment(equipment, syncResult);
+            JSONObject entries = SD400MPUtils.equipmentList(null, false);
+            JSONArray data = entries.getJSONArray("data");
+            for (Object equipment : data) {
+                processSingleEquipment((JSONObject)equipment, syncResult);
             }
 
             String resultMessage = String.format("测点数据同步完成，共处理 %d 个设备，同步 %d 个测点，成功 %d 个，失败 %d 个",
-                equipmentList.size(), syncResult.totalTestPoints, syncResult.successCount, syncResult.errorCount);
+                data.size(), syncResult.totalTestPoints, syncResult.successCount, syncResult.errorCount);
 
             log.info(resultMessage);
             return ExecuteResult.success(resultMessage);
@@ -64,34 +61,34 @@ public class TestpointExecutor {
     /**
      * 处理单个设备的所有测点
      */
-    private void processSingleEquipment(Equipment equipment, SyncResult syncResult) {
+    private void processSingleEquipment(JSONObject equipment, SyncResult syncResult) {
         try {
-            log.info("开始处理设备 [{}] 的测点数据", equipment.getName());
+            log.info("开始处理设备 [{}] 的测点数据", equipment.get("name"));
 
-            JSONObject testPointListResponse = SD400MPUtils.testPointList(equipment.getId());
+            JSONObject testPointListResponse = SD400MPUtils.testPointList(Long.valueOf(equipment.get("id").toString()));
             if (!isSuccessResponse(testPointListResponse)) {
                 log.warn("设备 [{}] 获取测点列表失败，响应码: {}",
-                    equipment.getName(), testPointListResponse.getInt("code"));
+                    equipment.get("name"), testPointListResponse.getInt("code"));
                 return;
             }
 
             JSONArray testPoints = testPointListResponse.getJSONArray("data");
             syncResult.totalTestPoints += testPoints.size();
-            log.info("设备 [{}] 共有 {} 个测点", equipment.getName(), testPoints.size());
+            log.info("设备 [{}] 共有 {} 个测点",  equipment.get("name"), testPoints.size());
 
             for (Object testPointObj : testPoints) {
                 processSingleTestPoint((JSONObject) testPointObj, equipment, syncResult);
             }
 
         } catch (Exception e) {
-            log.error("处理设备 [{}] 时发生异常: {}", equipment.getName(), e.getMessage(), e);
+            log.error("处理设备 [{}] 时发生异常: {}",  equipment.get("name"), e.getMessage(), e);
         }
     }
 
     /**
      * 处理单个测点
      */
-    private void processSingleTestPoint(JSONObject testPoint, Equipment equipment, SyncResult syncResult) {
+    private void processSingleTestPoint(JSONObject testPoint, JSONObject equipment, SyncResult syncResult) {
         try {
             String testPointId = testPoint.getStr("id");
             if (testPointId == null) {

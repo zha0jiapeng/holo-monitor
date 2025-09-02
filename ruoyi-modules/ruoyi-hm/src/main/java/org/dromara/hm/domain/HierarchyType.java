@@ -34,4 +34,6 @@ public class HierarchyType {
      * 级联父级id
      */
     private Long cascadeParentId;
+
+    private Boolean cascadeFlag;
 }

@@ -43,4 +43,6 @@ public class HierarchyPropertyBo {
      */
     private String propertyValue;
 
+    private Integer scope;
+
 }

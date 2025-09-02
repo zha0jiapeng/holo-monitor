@@ -64,17 +64,17 @@ public class TestpointController extends BaseController {
         LambdaQueryWrapper<Testpoint> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.select(
             Testpoint::getId,
-            Testpoint::getEquipmentId,
+            Testpoint::getHierarchyId,
             Testpoint::getKksCode,
             Testpoint::getKksName,
             Testpoint::getMt,
-            Testpoint::getType,
+            //Testpoint::getType,
             Testpoint::getKksName,
             Testpoint::getPositionX,
             Testpoint::getPositionY,
             Testpoint::getPositionZ
         );
-        queryWrapper.eq(Testpoint::getEquipmentId, equipmentId);
+        queryWrapper.eq(Testpoint::getHierarchyId, equipmentId);
         queryWrapper.isNotNull(Testpoint::getPositionX);
         return R.ok(testpointService.list(queryWrapper));
     }

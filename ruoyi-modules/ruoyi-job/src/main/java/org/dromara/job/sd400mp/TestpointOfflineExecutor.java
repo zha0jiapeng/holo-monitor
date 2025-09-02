@@ -113,7 +113,7 @@ public class TestpointOfflineExecutor {
 
         if (isOffline) {
             // 记录离线
-            testpointOfflineService.recordOffline(testpoint.getEquipmentId(),testpoint.getKksCode(), offlineThreshold, offlineTime);
+            testpointOfflineService.recordOffline(testpoint.getHierarchyId(),testpoint.getKksCode(), offlineThreshold, offlineTime);
 
             // 更新测点的离线标识
             updateTestpointOfflineFlag(testpoint, 1);

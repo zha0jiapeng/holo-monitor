@@ -8,11 +8,13 @@ import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
+import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.HierarchyTypeProperty;
 import org.dromara.hm.domain.HierarchyTypePropertyDict;
 import org.dromara.hm.domain.bo.HierarchyTypePropertyBo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
+import org.dromara.hm.mapper.HierarchyMapper;
 import org.dromara.hm.mapper.HierarchyPropertyMapper;
 import org.dromara.hm.mapper.HierarchyTypePropertyDictMapper;
 import org.dromara.hm.mapper.HierarchyTypePropertyMapper;
@@ -36,6 +38,7 @@ public class HierarchyTypePropertyServiceImpl implements IHierarchyTypePropertyS
 
     private final HierarchyTypePropertyMapper baseMapper;
     private final HierarchyPropertyMapper hierarchyPropertyMapper;
+    private final HierarchyMapper hierarchyMapper;
 
     @Override
     public HierarchyTypePropertyVo queryById(Long id) {
@@ -155,7 +158,7 @@ public class HierarchyTypePropertyServiceImpl implements IHierarchyTypePropertyS
 
         // 分析需要执行的操作
         List<HierarchyTypeProperty> insertList = new ArrayList<>();
-        List<HierarchyTypeProperty> updateList = new ArrayList<>();
+        //List<HierarchyTypeProperty> updateList = new ArrayList<>();
         List<Long> deleteIds = new ArrayList<>();
 
         // 找出需要删除的记录（现有记录中不在前端数据中的）
@@ -182,21 +185,7 @@ public class HierarchyTypePropertyServiceImpl implements IHierarchyTypePropertyS
                 }
             }
 
-            if (existing != null) {
-                // 存在，则准备修改
-                // 检查hm_hierarchy_property表中是否存在引用
-                LambdaQueryWrapper<HierarchyProperty> refWrapper = Wrappers.lambdaQuery();
-                refWrapper.eq(HierarchyProperty::getTypePropertyId, item.getPropertyDictId());
-                long referenceCount = hierarchyPropertyMapper.selectCount(refWrapper);
-
-                if (referenceCount > 0) {
-                    throw new ServiceException("属性字典ID [" + item.getPropertyDictId() + "] 已被使用，无法修改");
-                }
-
-                // 设置ID用于更新
-                item.setId(existing.getId());
-                updateList.add(item);
-            } else {
+            if (existing == null) {
                 // 不存在，则准备新增
                 insertList.add(item);
             }
@@ -225,14 +214,25 @@ public class HierarchyTypePropertyServiceImpl implements IHierarchyTypePropertyS
             for (HierarchyTypeProperty insertItem : insertList) {
                 validEntityBeforeSave(insertItem);
                 baseMapper.insert(insertItem);
-            }
-        }
-
-        // 批量执行修改
-        if (!updateList.isEmpty()) {
-            for (HierarchyTypeProperty updateItem : updateList) {
-                validEntityBeforeSave(updateItem);
-                baseMapper.updateById(updateItem);
+                
+                // 为所有该类型下的层级实例添加新属性
+                List<Hierarchy> hierarchies = hierarchyMapper.selectList(
+                    new LambdaQueryWrapper<Hierarchy>().eq(Hierarchy::getTypeId, insertItem.getTypeId())
+                );
+                
+                List<HierarchyProperty> newProperties = new ArrayList<>();
+                for (Hierarchy hierarchy : hierarchies) {
+                    HierarchyProperty property = new HierarchyProperty();
+                    property.setHierarchyId(hierarchy.getId());
+                    property.setTypePropertyId(insertItem.getId());
+                    property.setPropertyValue(null);
+                    property.setScope(1); // 默认设置为可见
+                    newProperties.add(property);
+                }
+                
+                if (!newProperties.isEmpty()) {
+                    hierarchyPropertyMapper.insertBatch(newProperties);
+                }
             }
         }
 

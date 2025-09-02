@@ -2,6 +2,7 @@ package org.dromara.hm.domain;
 
 import com.baomidou.mybatisplus.annotation.*;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import org.dromara.common.mybatis.core.domain.BaseEntity;
 import org.dromara.common.tenant.core.TenantEntity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -20,7 +21,7 @@ import java.time.LocalDateTime;
 @EqualsAndHashCode(callSuper = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @TableName("hm_testpoint")
-public class Testpoint extends TenantEntity {
+public class Testpoint extends BaseEntity {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -34,7 +35,9 @@ public class Testpoint extends TenantEntity {
     /**
      * 设备id
      */
-    private Long equipmentId;
+    private Long hierarchyId;
+
+    private Long hierarchyOwnerId;
 
 
     /**
@@ -54,7 +57,6 @@ public class Testpoint extends TenantEntity {
 
 
     private Integer mt;
-
 
     private Integer type;
 

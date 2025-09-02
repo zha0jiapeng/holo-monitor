@@ -58,9 +58,11 @@ public class HierarchyPropertyServiceImpl implements IHierarchyPropertyService {
         Page<HierarchyPropertyVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
         for (HierarchyPropertyVo record : result.getRecords()) {
             HierarchyTypePropertyVo hierarchyTypePropertyVo = hierarchyTypePropertyMapper.selectVoById(record.getTypePropertyId());
-            HierarchyTypePropertyDictVo hierarchyTypePropertyDictVo = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypePropertyVo.getPropertyDictId());
-            hierarchyTypePropertyVo.setDict(hierarchyTypePropertyDictVo);
-            record.setTypeProperty(hierarchyTypePropertyVo);
+            if(hierarchyTypePropertyVo!=null){
+                HierarchyTypePropertyDictVo hierarchyTypePropertyDictVo = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypePropertyVo.getPropertyDictId());
+                hierarchyTypePropertyVo.setDict(hierarchyTypePropertyDictVo);
+                record.setTypeProperty(hierarchyTypePropertyVo);
+            }
         }
         return TableDataInfo.build(result);
     }

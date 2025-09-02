@@ -75,8 +75,10 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
     private LambdaQueryWrapper<Testpoint> buildQueryWrapper(TestpointBo bo) {
         Map<String, Object> params = bo.getParams();
         LambdaQueryWrapper<Testpoint> lqw = Wrappers.lambdaQuery();
-        lqw.eq(bo.getEquipmentId() != null, Testpoint::getEquipmentId, bo.getEquipmentId());
-        lqw.eq(bo.getType() != null, Testpoint::getType, bo.getType());
+        lqw.eq(bo.getHierarchyId() != null, Testpoint::getHierarchyId, bo.getHierarchyId());
+        lqw.eq(bo.getHierarchyOwnerId() != null && bo.getHierarchyOwnerId() != -1, Testpoint::getHierarchyOwnerId, bo.getHierarchyOwnerId());
+        lqw.isNull(bo.getHierarchyOwnerId() == -1, Testpoint::getHierarchyOwnerId);
+       // lqw.eq(bo.getType() != null, Testpoint::getType, bo.getType());
         lqw.eq(bo.getMt() != null, Testpoint::getMt, bo.getMt());
         lqw.eq(StringUtils.isNotBlank(bo.getKksCode()), Testpoint::getKksCode, bo.getKksCode());
         lqw.like(StringUtils.isNotBlank(bo.getKksName()), Testpoint::getKksName, bo.getKksName());
@@ -133,8 +135,8 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
      */
     private void validEntityBeforeSave(Testpoint entity) {
         // 校验设备是否存在
-        if (entity.getEquipmentId() != null) {
-            if (equipmentService.queryById(entity.getEquipmentId()) == null) {
+        if (entity.getHierarchyId() != null) {
+            if (equipmentService.queryById(entity.getHierarchyId()) == null) {
                 throw new ServiceException("关联的设备不存在");
             }
         }
@@ -209,7 +211,7 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
     @Override
     public List<TestpointVo> queryByEquipmentId(Long equipmentId) {
         LambdaQueryWrapper<Testpoint> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Testpoint::getEquipmentId, equipmentId);
+        wrapper.eq(Testpoint::getHierarchyId, equipmentId);
         wrapper.orderByAsc(Testpoint::getKksCode);
         return baseMapper.selectVoList(wrapper);
     }
@@ -246,7 +248,7 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
     private boolean isValidTestPoint(Testpoint testPoint) {
         return testPoint != null
             && testPoint.getId() != null
-            && testPoint.getEquipmentId() != null;
+            && testPoint.getHierarchyId() != null;
     }
 
     /**
@@ -337,7 +339,7 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
 
             // 解析设备ID
             Long equipmentId = parseEquipmentId(testPointNode);
-            testPoint.setEquipmentId(equipmentId);
+            testPoint.setHierarchyId(equipmentId);
 
             // 解析KKS编码和名称
             testPoint.setKksCode(getJsonStringValue(testPointNode, "key"));
@@ -351,9 +353,9 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
             TestpointTypeEnum typeEnum = TestpointTypeEnum.getByMtValue(mt);
             testPoint.setType(typeEnum.getCode());
 
-            log.debug("解析测点数据成功：ID={}, 设备ID={}, KKS编码={}, mt={}, type={} ({})",
-                testPoint.getId(), testPoint.getEquipmentId(),
-                testPoint.getKksCode(), testPoint.getMt(), testPoint.getType(), typeEnum.getName());
+            log.debug("解析测点数据成功：ID={}, 设备ID={}, KKS编码={}, mt={} ({})",
+                testPoint.getId(), testPoint.getHierarchyId(),
+                testPoint.getKksCode(), testPoint.getMt(), typeEnum.getName());
 
             return testPoint;
 
@@ -435,9 +437,9 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
             .set(Testpoint::getKksCode, newData.getKksCode())
             .set(Testpoint::getKksName, newData.getKksName())
             .set(Testpoint::getMt, newData.getMt())
-            .set(Testpoint::getType, newData.getType())
+            //.set(Testpoint::getType, newData.getType())
             .set(Testpoint::getUpdateTime, DateUtil.dateSecond())
-            .set(Testpoint::getEquipmentId, newData.getEquipmentId());
+            .set(Testpoint::getHierarchyId, newData.getHierarchyId());
 
         baseMapper.update(null, updateWrapper);
         // 注意：不更新last_开头的实时数据字段和阈值配置，保持现有数据

@@ -51,4 +51,6 @@ public class HierarchyPropertyVo implements Serializable {
     private String propertyValue;
 
     private HierarchyTypePropertyVo typeProperty;
+
+    private Integer scope;
 }

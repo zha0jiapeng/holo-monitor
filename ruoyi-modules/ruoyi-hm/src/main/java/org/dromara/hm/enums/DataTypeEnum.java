@@ -87,7 +87,15 @@ public enum DataTypeEnum {
      */
     OBJECT(14, "对象"),
 
-    Hierarchy(15,"层级");
+    HIERARCHY(1001,"层级"),
+
+    ASSOCIATION(1002,"关联"),
+
+    OSS(1003,"OSS"),
+
+    LOCATION_ID(1004,"SD400MP定位文件"),
+
+    ;
 
     /**
      * 数据类型编码

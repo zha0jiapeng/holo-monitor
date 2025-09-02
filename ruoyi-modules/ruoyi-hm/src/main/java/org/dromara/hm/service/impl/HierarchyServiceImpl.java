@@ -1,6 +1,7 @@
 package org.dromara.hm.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -9,11 +10,9 @@ import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
-import org.dromara.hm.domain.Hierarchy;
-import org.dromara.hm.domain.HierarchyProperty;
-import org.dromara.hm.domain.HierarchyType;
-import org.dromara.hm.domain.HierarchyTypeProperty;
+import org.dromara.hm.domain.*;
 import org.dromara.hm.domain.bo.HierarchyBo;
+import org.dromara.hm.domain.vo.HierarchyPropertyVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
 import org.dromara.hm.domain.vo.HierarchyVo;
@@ -23,6 +22,7 @@ import org.dromara.hm.service.IHierarchyService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
@@ -41,6 +41,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
     private final HierarchyTypeMapper hierarchyTypeMapper;
     private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
     private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
+    private final TestpointMapper testpointMapper;
 
     @Override
     public HierarchyVo queryById(Long id) {
@@ -51,6 +52,23 @@ public class HierarchyServiceImpl implements IHierarchyService {
     public TableDataInfo<HierarchyVo> queryPageList(HierarchyBo bo, PageQuery pageQuery) {
         LambdaQueryWrapper<Hierarchy> lqw = buildQueryWrapper(bo);
         Page<HierarchyVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
+
+        // 添加填充逻辑
+        for (HierarchyVo vo : result.getRecords()) {
+            List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
+                Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, vo.getId())
+            );
+            for (HierarchyPropertyVo prop : properties) {
+                HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());
+                if (typeProp != null) {
+                    HierarchyTypePropertyDictVo dict = hierarchyTypePropertyDictMapper.selectVoById(typeProp.getPropertyDictId());
+                    typeProp.setDict(dict);
+                    prop.setTypeProperty(typeProp);
+                }
+            }
+            vo.setProperties(properties);
+        }
+
         return TableDataInfo.build(result);
     }
 
@@ -91,21 +109,64 @@ public class HierarchyServiceImpl implements IHierarchyService {
                 bo.setId(add.getId());
             }
 
+            List<HierarchyProperty> extraProperties = new ArrayList<>();
             for (HierarchyProperty property : bo.getProperties()) {
                 property.setHierarchyId(add != null ? add.getId() : null);
                 HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectById(property.getTypePropertyId());
                 HierarchyTypePropertyDictVo hierarchyTypePropertyDictVo = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypeProperty.getPropertyDictId());
-                if (hierarchyTypePropertyDictVo.getDataType().equals(DataTypeEnum.Hierarchy.getCode())) {
+                if (hierarchyTypePropertyDictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
                     HierarchyType hierarchyType = hierarchyTypeMapper.selectById(Long.valueOf(hierarchyTypePropertyDictVo.getDictValues()));
-                    if(hierarchyType.getCascadeParentId()!=null){
+                    if (hierarchyType != null && hierarchyType.getCascadeFlag()) {
                         Hierarchy hierarchy = new Hierarchy();
                         hierarchy.setId(bo.getId());
                         hierarchy.setParentId(Long.valueOf(property.getPropertyValue()));
                         baseMapper.updateById(hierarchy);
+                        if (hierarchyType.getCascadeParentId() != null) {
+                            // 添加隐藏父级属性
+                            Long currentBoundId = Long.valueOf(property.getPropertyValue());
+                            HierarchyType currentType = hierarchyType;
+                            while (currentType.getCascadeParentId() != null) {
+                                Long parentTypeId = currentType.getCascadeParentId();
+                                // 找到当前类型中指向父类型的typeProperty
+                                HierarchyTypeProperty parentProperty = null;
+                                List<HierarchyTypeProperty> props = hierarchyTypePropertyMapper.selectList(
+                                    Wrappers.<HierarchyTypeProperty>lambdaQuery().eq(HierarchyTypeProperty::getTypeId, currentType.getId())
+                                );
+                                for (HierarchyTypeProperty p : props) {
+                                    HierarchyTypePropertyDictVo d = hierarchyTypePropertyDictMapper.selectVoById(p.getPropertyDictId());
+                                    if (d != null && d.getDataType().equals(DataTypeEnum.HIERARCHY.getCode()) && d.getDictValues().equals(parentTypeId.toString())) {
+                                        parentProperty = p;
+                                        break;
+                                    }
+                                }
+                                if (parentProperty == null) {
+                                    break;
+                                }
+                                // 获取绑定的父级hierarchyId
+                                Hierarchy bound = baseMapper.selectById(currentBoundId);
+                                if (bound == null || bound.getParentId() == null) {
+                                    break;
+                                }
+                                Long parentBoundId = bound.getParentId();
+                                // 创建隐藏property
+                                HierarchyProperty hidden = new HierarchyProperty();
+                                hidden.setHierarchyId(add.getId());
+                                hidden.setTypePropertyId(parentProperty.getId());
+                                hidden.setPropertyValue(parentBoundId.toString());
+                                hidden.setScope(0);
+                                extraProperties.add(hidden);
+                                // 更新到下一级
+                                currentBoundId = parentBoundId;
+                                currentType = hierarchyTypeMapper.selectById(parentTypeId);
+                            }
+                        }
                     }
                 }
             }
             hierarchyPropertyMapper.insertBatch(bo.getProperties());
+            if (!extraProperties.isEmpty()) {
+                hierarchyPropertyMapper.insertBatch(extraProperties);
+            }
         }
         return flag;
     }
@@ -116,9 +177,27 @@ public class HierarchyServiceImpl implements IHierarchyService {
         if (update != null) {
             validEntityBeforeSave(update);
         }
+        List<HierarchyProperty> properties = bo.getProperties();
+        for (HierarchyProperty property : properties) {
+            hierarchyPropertyMapper.update(new LambdaUpdateWrapper<HierarchyProperty>()
+                .set(HierarchyProperty::getPropertyValue,property.getPropertyValue())
+                .eq(HierarchyProperty::getTypePropertyId,property.getTypePropertyId())
+                .eq(HierarchyProperty::getHierarchyId,bo.getId())
+            );
+
+            String[] split = property.getPropertyValue().split(",");
+            for (String s : split) {
+                Testpoint testpoint = new Testpoint();
+                testpoint.setId(Long.valueOf(s));
+                testpoint.setHierarchyOwnerId(bo.getId());
+                testpointMapper.updateById(testpoint);
+            }
+
+
+        }
+
         return baseMapper.updateById(update) > 0;
     }
-
     /**
      * 保存前的数据校验
      *
@@ -152,6 +231,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean deleteWithValidByIds(Collection<Long> ids, Boolean isValid) {
         if (isValid) {
             // 校验删除权限

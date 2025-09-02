@@ -8,7 +8,6 @@ import org.dromara.hm.domain.HierarchyType;
 import io.github.linpeilie.annotations.AutoMapper;
 import lombok.Data;
 import org.dromara.hm.domain.HierarchyTypeProperty;
-import org.dromara.hm.domain.HierarchyTypeShow;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -47,10 +46,9 @@ public class HierarchyTypeVo implements Serializable {
     @ExcelProperty(value = "级联父级id")
     private Long cascadeParentId;
 
-    @TableField(exist = false)
-    private List<HierarchyTypeProperty> properties;
+    private Boolean cascadeFlag;
 
     @TableField(exist = false)
-    private List<HierarchyTypeShow> showHierarchyList;
+    private List<HierarchyTypeProperty> properties;
 
 }

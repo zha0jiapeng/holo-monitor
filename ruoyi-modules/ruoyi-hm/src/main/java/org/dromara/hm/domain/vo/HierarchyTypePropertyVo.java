@@ -6,7 +6,6 @@ import org.dromara.common.excel.annotation.ExcelRequired;
 import org.dromara.hm.domain.HierarchyTypeProperty;
 import io.github.linpeilie.annotations.AutoMapper;
 import lombok.Data;
-import org.dromara.hm.domain.HierarchyTypePropertyDict;
 
 import java.io.Serial;
 import java.io.Serializable;

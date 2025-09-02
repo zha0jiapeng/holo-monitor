@@ -42,7 +42,9 @@ public class TestpointVo implements Serializable {
      */
     @ExcelRequired
     @ExcelProperty(value = "设备ID")
-    private Long equipmentId;
+    private Long hierarchyId;
+
+    private Long hierarchyOwnerId;
 
     /**
      * 测点编码

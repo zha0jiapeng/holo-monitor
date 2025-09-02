@@ -10,6 +10,9 @@ import lombok.Data;
 import java.io.Serial;
 import java.io.Serializable;
 
+// 添加导入
+import java.util.List;
+
 /**
  * 层级视图对象 hm_hierarchy
  *
@@ -50,5 +53,7 @@ public class HierarchyVo implements Serializable {
     @ExcelProperty(value = "层级名称")
     private String name;
 
+    // 添加字段
+    private List<HierarchyPropertyVo> properties;
 
 }
