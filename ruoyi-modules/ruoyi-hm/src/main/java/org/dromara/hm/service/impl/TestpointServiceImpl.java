@@ -19,7 +19,6 @@ import org.dromara.hm.domain.vo.TestpointVo;
 import org.dromara.hm.enums.PositionSourceEnum;
 import org.dromara.hm.enums.TestpointTypeEnum;
 import org.dromara.hm.mapper.TestpointMapper;
-import org.dromara.hm.service.IEquipmentService;
 import org.dromara.hm.service.ITestpointService;
 import org.springframework.stereotype.Service;
 
@@ -43,7 +42,6 @@ import org.springframework.transaction.interceptor.TransactionAspectSupport;
 public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint> implements ITestpointService {
 
     private final TestpointMapper baseMapper;
-    private final IEquipmentService equipmentService;
 
     @Override
     public TestpointVo queryById(Long id) {
@@ -134,12 +132,7 @@ public class TestpointServiceImpl extends ServiceImpl<TestpointMapper, Testpoint
      * @param entity 实体类数据
      */
     private void validEntityBeforeSave(Testpoint entity) {
-        // 校验设备是否存在
-        if (entity.getHierarchyId() != null) {
-            if (equipmentService.queryById(entity.getHierarchyId()) == null) {
-                throw new ServiceException("关联的设备不存在");
-            }
-        }
+
 
         // 校验KKS编码唯一性
         if (StringUtils.isNotBlank(entity.getKksCode())) {

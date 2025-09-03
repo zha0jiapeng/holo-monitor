@@ -12,8 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
 import org.dromara.hm.constant.Tag;
-import org.dromara.hm.domain.Equipment;
-import org.dromara.hm.service.IEquipmentService;
 import org.dromara.hm.service.ITestpointService;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
