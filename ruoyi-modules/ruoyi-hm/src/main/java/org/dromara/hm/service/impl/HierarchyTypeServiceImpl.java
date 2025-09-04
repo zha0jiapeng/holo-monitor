@@ -90,6 +90,8 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
         LambdaQueryWrapper<HierarchyType> lqw = Wrappers.lambdaQuery();
         lqw.like(StringUtils.isNotBlank(bo.getName()), HierarchyType::getName, bo.getName());
         lqw.eq(bo.getCascadeParentId() != null, HierarchyType::getCascadeParentId, bo.getCascadeParentId());
+        lqw.eq(bo.getCodeLength() != null, HierarchyType::getCodeLength, bo.getCodeLength());
+        lqw.eq(bo.getCodeSort() != null, HierarchyType::getCodeSort, bo.getCodeSort());
         lqw.orderByAsc(HierarchyType::getId);
         return lqw;
     }

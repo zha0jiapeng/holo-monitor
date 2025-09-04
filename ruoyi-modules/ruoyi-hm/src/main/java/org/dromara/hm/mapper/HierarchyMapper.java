@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Constants;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import org.dromara.common.mybatis.core.mapper.BaseMapperPlus;
 import org.dromara.hm.domain.Hierarchy;
@@ -13,6 +14,7 @@ import org.dromara.hm.domain.vo.HierarchyVo;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 层级Mapper接口
@@ -39,5 +41,6 @@ public interface HierarchyMapper extends BaseMapperPlus<Hierarchy, HierarchyVo> 
 
     @Override
     int updateById(@Param(Constants.ENTITY) Hierarchy entity);
+
 
 }

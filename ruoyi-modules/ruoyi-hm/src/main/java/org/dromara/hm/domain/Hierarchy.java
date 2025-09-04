@@ -39,4 +39,9 @@ public class Hierarchy {
      */
     private String name;
 
+    /**
+     * 层级编码
+     */
+    private String code;
+
 }

@@ -95,6 +95,8 @@ public enum DataTypeEnum {
 
     LOCATION_ID(1004,"SD400MP定位文件"),
 
+    CONFIGURATION(1005,"采集配置"),
+
     ;
 
     /**

@@ -47,6 +47,10 @@ public class HierarchyBo {
     @NotBlank(message = "层级名称不能为空", groups = {AddGroup.class, EditGroup.class})
     private String name;
 
+    /**
+     * 层级编码
+     */
+    private String code;
 
     @TableField(exist = false)
     private List<HierarchyProperty> properties;

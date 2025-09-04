@@ -36,4 +36,14 @@ public class HierarchyType {
     private Long cascadeParentId;
 
     private Boolean cascadeFlag;
+
+    /**
+     * 编码长度
+     */
+    private Integer codeLength;
+
+    /**
+     * 编码排序
+     */
+    private Integer codeSort;
 }

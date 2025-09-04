@@ -48,6 +48,18 @@ public class HierarchyTypeVo implements Serializable {
 
     private Boolean cascadeFlag;
 
+    /**
+     * 编码长度
+     */
+    @ExcelProperty(value = "编码长度")
+    private Integer codeLength;
+
+    /**
+     * 编码排序
+     */
+    @ExcelProperty(value = "编码排序")
+    private Integer codeSort;
+
     @TableField(exist = false)
     private List<HierarchyTypeProperty> properties;
 

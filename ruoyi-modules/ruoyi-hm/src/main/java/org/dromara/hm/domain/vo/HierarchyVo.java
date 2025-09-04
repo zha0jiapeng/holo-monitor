@@ -53,6 +53,12 @@ public class HierarchyVo implements Serializable {
     @ExcelProperty(value = "层级名称")
     private String name;
 
+    /**
+     * 层级编码
+     */
+    @ExcelProperty(value = "层级编码")
+    private String code;
+
     // 添加字段
     private List<HierarchyPropertyVo> properties;
 
