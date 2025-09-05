@@ -154,6 +154,67 @@ public class HierarchyServiceImpl implements IHierarchyService {
     }
 
     /**
+     * 查找级联属性并设置父级关系
+     *
+     * @param properties 属性列表
+     * @param hierarchyId 当前层级ID
+     * @return 父级层级ID，如果没有找到返回null
+     */
+    private Long findCascadeParentAndSetRelation(List<HierarchyProperty> properties, Long hierarchyId) {
+        for (HierarchyProperty property : properties) {
+            HierarchyTypeProperty typeProperty = hierarchyTypePropertyMapper.selectById(property.getTypePropertyId());
+            HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(typeProperty.getPropertyDictId());
+            
+            if (dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
+                HierarchyType relatedType = hierarchyTypeMapper.selectById(Long.valueOf(dictVo.getDictValues()));
+                if (relatedType != null && relatedType.getCascadeFlag()) {
+                    Long parentId = Long.valueOf(property.getPropertyValue());
+                    updateHierarchyParent(hierarchyId, parentId);
+                    return parentId;
+                }
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * 更新层级父级关系
+     */
+    private void updateHierarchyParent(Long hierarchyId, Long parentId) {
+        Hierarchy hierarchy = new Hierarchy();
+        hierarchy.setId(hierarchyId);
+        hierarchy.setParentId(parentId);
+        baseMapper.updateById(hierarchy);
+    }
+    
+    /**
+     * 批量插入属性
+     */
+    private void batchInsertProperties(List<HierarchyProperty> properties, List<HierarchyProperty> extraProperties) {
+        List<HierarchyProperty> allProperties = new ArrayList<>();
+        allProperties.addAll(properties);
+        allProperties.addAll(extraProperties);
+        
+        // 过滤有效属性并批量插入
+        List<HierarchyProperty> validProperties = allProperties.stream()
+            .filter(p -> p.getHierarchyId() != null)
+            .collect(Collectors.toList());
+            
+        if (!validProperties.isEmpty()) {
+            hierarchyPropertyMapper.insertBatch(validProperties);
+        }
+    }
+    
+    /**
+     * 检查是否为最底层
+     */
+    private boolean isBottomLevel(Long typeId) {
+        return hierarchyTypeMapper.selectCount(
+            Wrappers.<HierarchyType>lambdaQuery().eq(HierarchyType::getCascadeParentId, typeId)
+        ) == 0;
+    }
+
+    /**
      * 从父级层级创建隐藏属性
      * 为父级层级的所有隐藏属性（data_type=1001）创建隐藏property
      *
@@ -162,43 +223,49 @@ public class HierarchyServiceImpl implements IHierarchyService {
      * @param extraProperties 额外属性列表
      */
     private void createHiddenPropertiesFromParent(Long currentHierarchyId, Long parentHierarchyId, List<HierarchyProperty> extraProperties) {
-        // 获取父级层级信息
         Hierarchy parentHierarchy = baseMapper.selectById(parentHierarchyId);
-        if (parentHierarchy == null) {
-            return;
-        }
-
-        // 获取父级层级类型的所有隐藏属性（data_type=1001）
+        if (parentHierarchy == null) return;
+        
+        // 获取父级层级类型的所有隐藏属性
         List<HierarchyTypeProperty> parentTypeProperties = hierarchyTypePropertyMapper.selectList(
             Wrappers.<HierarchyTypeProperty>lambdaQuery().eq(HierarchyTypeProperty::getTypeId, parentHierarchy.getTypeId())
         );
-
-        // 为父级的每个隐藏属性创建隐藏property
+        
+        // 创建隐藏属性
         for (HierarchyTypeProperty parentTypeProperty : parentTypeProperties) {
-            HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(parentTypeProperty.getPropertyDictId());
-            if (dictVo != null && dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
-                // 查找父级层级的这个属性值
-                HierarchyProperty parentProperty = hierarchyPropertyMapper.selectOne(
-                    Wrappers.<HierarchyProperty>lambdaQuery()
-                        .eq(HierarchyProperty::getHierarchyId, parentHierarchyId)
-                        .eq(HierarchyProperty::getTypePropertyId, parentTypeProperty.getId())
-                );
-
-                if (parentProperty != null) {
-                    // 为当前层级创建这个隐藏属性
-                    HierarchyProperty hidden = new HierarchyProperty();
-                    hidden.setHierarchyId(currentHierarchyId);
-                    hidden.setTypePropertyId(parentTypeProperty.getId());
-                    hidden.setPropertyValue(parentProperty.getPropertyValue());
-                    hidden.setScope(0); // 隐藏属性
-                    extraProperties.add(hidden);
-                }
-            }
+            createHiddenPropertyIfNeeded(currentHierarchyId, parentHierarchyId, parentTypeProperty, extraProperties);
         }
-
+        
         // 递归处理父级的父级
         if (parentHierarchy.getParentId() != null) {
             createHiddenPropertiesFromParent(currentHierarchyId, parentHierarchy.getParentId(), extraProperties);
+        }
+    }
+    
+    /**
+     * 如需要则创建隐藏属性
+     */
+    private void createHiddenPropertyIfNeeded(Long currentHierarchyId, Long parentHierarchyId, 
+                                            HierarchyTypeProperty parentTypeProperty, List<HierarchyProperty> extraProperties) {
+        HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(parentTypeProperty.getPropertyDictId());
+        if (dictVo == null || !dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
+            return;
+        }
+        
+        // 查找父级层级的这个属性值
+        HierarchyProperty parentProperty = hierarchyPropertyMapper.selectOne(
+            Wrappers.<HierarchyProperty>lambdaQuery()
+                .eq(HierarchyProperty::getHierarchyId, parentHierarchyId)
+                .eq(HierarchyProperty::getTypePropertyId, parentTypeProperty.getId())
+        );
+        
+        if (parentProperty != null) {
+            HierarchyProperty hidden = new HierarchyProperty();
+            hidden.setHierarchyId(currentHierarchyId);
+            hidden.setTypePropertyId(parentTypeProperty.getId());
+            hidden.setPropertyValue(parentProperty.getPropertyValue());
+            hidden.setScope(0);
+            extraProperties.add(hidden);
         }
     }
 
@@ -246,70 +313,36 @@ public class HierarchyServiceImpl implements IHierarchyService {
             if (add != null) {
                 bo.setId(add.getId());
             }
-            initProperty(bo,type);
+            initProperty(bo, type);
+            
+            // 在主事务外调用新事务方法生成编码
+            if (bo.getNeedGenerateCode() != null && bo.getNeedGenerateCode()) {
+                updateHierarchyCodeInNewTransaction(bo.getId());
+            }
         }
         return flag;
     }
 
-    private void initProperty(HierarchyBo bo,HierarchyType type) {
+    private void initProperty(HierarchyBo bo, HierarchyType type) {
         List<HierarchyProperty> extraProperties = new ArrayList<>();
-
-        // 处理用户提供的属性，找到有级联关系的属性来设置父级
-        Long parentHierarchyId = null;
-        for (HierarchyProperty property : bo.getProperties()) {
-            property.setHierarchyId(bo != null ? bo.getId() : null);
-
-            HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectById(property.getTypePropertyId());
-            HierarchyTypePropertyDictVo hierarchyTypePropertyDictVo = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypeProperty.getPropertyDictId());
-            if (hierarchyTypePropertyDictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
-                HierarchyType hierarchyType = hierarchyTypeMapper.selectById(Long.valueOf(hierarchyTypePropertyDictVo.getDictValues()));
-                if (hierarchyType != null && hierarchyType.getCascadeFlag()) {
-                    // 找到级联属性，设置父级关系
-                    parentHierarchyId = Long.valueOf(property.getPropertyValue());
-                    Hierarchy hierarchy = new Hierarchy();
-                    hierarchy.setId(bo.getId());
-                    hierarchy.setParentId(parentHierarchyId);
-                    baseMapper.updateById(hierarchy);
-                    break; // 只需要找到一个级联属性来设置父级关系
-                }
-            }
-        }
-
-        // 如果找到了父级，需要为父级的所有隐藏属性创建隐藏property
+        Long hierarchyId = bo.getId();
+        
+        // 设置所有用户属性的hierarchyId
+        bo.getProperties().forEach(property -> property.setHierarchyId(hierarchyId));
+        
+        // 查找级联属性并设置父级关系
+        Long parentHierarchyId = findCascadeParentAndSetRelation(bo.getProperties(), hierarchyId);
+        
+        // 创建父级的所有隐藏属性
         if (parentHierarchyId != null) {
-            createHiddenPropertiesFromParent(bo.getId(), parentHierarchyId, extraProperties);
+            createHiddenPropertiesFromParent(hierarchyId, parentHierarchyId, extraProperties);
         }
 
-        // 确保所有属性都设置了hierarchyId
-        for (HierarchyProperty property : bo.getProperties()) {
-            if (property.getHierarchyId() == null) {
-                property.setHierarchyId(bo.getId());
-            }
-        }
+        // 批量插入属性
+        batchInsertProperties(bo.getProperties(), extraProperties);
         
-        // 过滤掉hierarchyId为空的属性
-        List<HierarchyProperty> validProperties = bo.getProperties().stream()
-            .filter(p -> p.getHierarchyId() != null)
-            .collect(Collectors.toList());
-            
-        List<HierarchyProperty> validExtraProperties = extraProperties.stream()
-            .filter(p -> p.getHierarchyId() != null)
-            .collect(Collectors.toList());
-        
-        if (!validProperties.isEmpty()) {
-            hierarchyPropertyMapper.insertBatch(validProperties);
-        }
-        if (!validExtraProperties.isEmpty()) {
-            hierarchyPropertyMapper.insertBatch(validExtraProperties);
-        }
-        Long count = hierarchyTypeMapper.selectCount(new LambdaQueryWrapper<HierarchyType>()
-            .eq(HierarchyType::getCascadeParentId, bo.getTypeId())
-        );
-        if (count == 0 && type.getCascadeFlag()) {
-            // 最底层，生成完整code - 需要在新事务中处理以确保数据可见性
-            updateHierarchyCodeInNewTransaction(bo.getId());
-        }
-
+        // 返回是否需要生成编码的标志
+        bo.setNeedGenerateCode(isBottomLevel(bo.getTypeId()) && type.getCascadeFlag());
     }
 
     @Override

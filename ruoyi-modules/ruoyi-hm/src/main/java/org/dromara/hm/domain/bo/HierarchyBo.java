@@ -55,4 +55,10 @@ public class HierarchyBo {
     @TableField(exist = false)
     private List<HierarchyProperty> properties;
 
+    /**
+     * 是否需要生成编码（临时标志字段）
+     */
+    @TableField(exist = false)
+    private Boolean needGenerateCode;
+
 }

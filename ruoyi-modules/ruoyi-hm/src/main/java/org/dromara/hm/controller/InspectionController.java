@@ -1,5 +1,6 @@
 package org.dromara.hm.controller;
 
+import cn.dev33.satoken.annotation.SaIgnore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.domain.R;
@@ -20,13 +21,14 @@ import java.util.Map;
 @Validated
 @RequiredArgsConstructor
 @RestController
-@RequestMapping("/pms-app-tf-overhaul/evmgt-svr")
+@RequestMapping("/pms-app-tf-overhauldevmgt-svr")
 public class InspectionController {
 
     /**
      * 接收巡检局放异常数据
      */
     @PostMapping(value = "/inspectionPartialDischargeAbnormal/add", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @SaIgnore
     public R<String> addInspectionPartialDischargeAbnormal(
             @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) String sourceId,
@@ -58,7 +60,7 @@ public class InspectionController {
         log.info("endDeviceType: {}", endDeviceType);
         log.info("generationfindTime: {}", generationfindTime);
         log.info("inspectionChartType: {}", inspectionChartType);
-        
+
         if (file != null) {
             log.info("file name: {}", file.getOriginalFilename());
             log.info("file size: {} bytes", file.getSize());
@@ -66,14 +68,6 @@ public class InspectionController {
         } else {
             log.info("file: null");
         }
-
-        // 打印所有其他参数
-        log.info("=== 所有参数 ===");
-        allParams.forEach((key, value) -> {
-            if (!"file".equals(key)) { // 文件参数单独处理
-                log.info("{}: {}", key, value);
-            }
-        });
         log.info("=== 参数打印完毕 ===");
 
         return R.ok("数据接收成功");
