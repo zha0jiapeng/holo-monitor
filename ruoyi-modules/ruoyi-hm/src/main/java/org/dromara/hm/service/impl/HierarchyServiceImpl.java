@@ -44,7 +44,20 @@ public class HierarchyServiceImpl implements IHierarchyService {
 
     @Override
     public HierarchyVo queryById(Long id) {
-        return baseMapper.selectVoById(id);
+        HierarchyVo hierarchyVo = baseMapper.selectVoById(id);
+        List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
+            Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, id)
+        );
+        for (HierarchyPropertyVo prop : properties) {
+            HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());
+            if (typeProp != null) {
+                HierarchyTypePropertyDictVo dict = hierarchyTypePropertyDictMapper.selectVoById(typeProp.getPropertyDictId());
+                typeProp.setDict(dict);
+                prop.setTypeProperty(typeProp);
+            }
+        }
+        hierarchyVo.setProperties(properties);
+        return hierarchyVo;
     }
 
     @Override
@@ -93,8 +106,9 @@ public class HierarchyServiceImpl implements IHierarchyService {
      * @param hierarchyId 层级ID
      * @return 生成的编码字符串
      */
-    private String generateHierarchyCode(Long hierarchyId) {
+    private Map<String, Object> generateHierarchyCode(Long hierarchyId) {
         List<Map<String, Object>> hierarchyCodeInfoList = new ArrayList<>();
+        List<Map<String, Object>> configurationList = new ArrayList<>();
 
         // 查询该层级的所有属性
         List<HierarchyProperty> properties = hierarchyPropertyMapper.selectList(
@@ -133,6 +147,27 @@ public class HierarchyServiceImpl implements IHierarchyService {
                             hierarchyInfo.put("codeSort", relatedType.getCodeSort() != null ? relatedType.getCodeSort() : 0);
                             hierarchyCodeInfoList.add(hierarchyInfo);
                         }
+
+                        // 获取相关层级的采集配置属性（data_type=1005）
+                        List<HierarchyProperty> relatedProperties = hierarchyPropertyMapper.selectList(
+                            Wrappers.<HierarchyProperty>lambdaQuery()
+                                .eq(HierarchyProperty::getHierarchyId, relatedHierarchyId)
+                        );
+
+                        for (HierarchyProperty relatedProperty : relatedProperties) {
+                            HierarchyTypeProperty relatedTypeProperty = hierarchyTypePropertyMapper.selectById(relatedProperty.getTypePropertyId());
+                            if (relatedTypeProperty != null) {
+                                HierarchyTypePropertyDictVo relatedDictVo = hierarchyTypePropertyDictMapper.selectVoById(relatedTypeProperty.getPropertyDictId());
+                                if (relatedDictVo != null && relatedDictVo.getDataType().equals(DataTypeEnum.CONFIGURATION.getCode())) {
+                                    // 这是一个采集配置属性
+                                    Map<String, Object> configInfo = new HashMap<>();
+                                    configInfo.put("propertyValue", relatedProperty.getPropertyValue());
+                                    configInfo.put("typePropertyId", relatedTypeProperty.getId());
+                                    configInfo.put("codeSort", relatedType != null ? (relatedType.getCodeSort() != null ? relatedType.getCodeSort() : 0) : 0);
+                                    configurationList.add(configInfo);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -150,7 +185,20 @@ public class HierarchyServiceImpl implements IHierarchyService {
             .map(info -> (String) info.get("code"))
             .collect(Collectors.toList());
 
-        return String.join("", codeParts);
+        // 选择code_sort最大的采集配置
+        String selectedConfiguration = null;
+        Long typePropertyId = null;
+        if (!configurationList.isEmpty()) {
+            configurationList.sort(Comparator.comparingInt((Map<String, Object> info) -> (Integer) info.get("codeSort")).reversed());
+            selectedConfiguration = (String) configurationList.get(0).get("propertyValue");
+            typePropertyId = (Long) configurationList.get(0).get("typePropertyId");
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("code", String.join("", codeParts));
+        result.put("configuration", selectedConfiguration);
+        result.put("typePropertyId", typePropertyId);
+        return result;
     }
 
     /**
@@ -164,7 +212,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
         for (HierarchyProperty property : properties) {
             HierarchyTypeProperty typeProperty = hierarchyTypePropertyMapper.selectById(property.getTypePropertyId());
             HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(typeProperty.getPropertyDictId());
-            
+
             if (dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
                 HierarchyType relatedType = hierarchyTypeMapper.selectById(Long.valueOf(dictVo.getDictValues()));
                 if (relatedType != null && relatedType.getCascadeFlag()) {
@@ -176,7 +224,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
         }
         return null;
     }
-    
+
     /**
      * 更新层级父级关系
      */
@@ -186,7 +234,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
         hierarchy.setParentId(parentId);
         baseMapper.updateById(hierarchy);
     }
-    
+
     /**
      * 批量插入属性
      */
@@ -194,17 +242,17 @@ public class HierarchyServiceImpl implements IHierarchyService {
         List<HierarchyProperty> allProperties = new ArrayList<>();
         allProperties.addAll(properties);
         allProperties.addAll(extraProperties);
-        
+
         // 过滤有效属性并批量插入
         List<HierarchyProperty> validProperties = allProperties.stream()
             .filter(p -> p.getHierarchyId() != null)
             .collect(Collectors.toList());
-            
+
         if (!validProperties.isEmpty()) {
             hierarchyPropertyMapper.insertBatch(validProperties);
         }
     }
-    
+
     /**
      * 检查是否为最底层
      */
@@ -225,40 +273,40 @@ public class HierarchyServiceImpl implements IHierarchyService {
     private void createHiddenPropertiesFromParent(Long currentHierarchyId, Long parentHierarchyId, List<HierarchyProperty> extraProperties) {
         Hierarchy parentHierarchy = baseMapper.selectById(parentHierarchyId);
         if (parentHierarchy == null) return;
-        
+
         // 获取父级层级类型的所有隐藏属性
         List<HierarchyTypeProperty> parentTypeProperties = hierarchyTypePropertyMapper.selectList(
             Wrappers.<HierarchyTypeProperty>lambdaQuery().eq(HierarchyTypeProperty::getTypeId, parentHierarchy.getTypeId())
         );
-        
+
         // 创建隐藏属性
         for (HierarchyTypeProperty parentTypeProperty : parentTypeProperties) {
             createHiddenPropertyIfNeeded(currentHierarchyId, parentHierarchyId, parentTypeProperty, extraProperties);
         }
-        
+
         // 递归处理父级的父级
         if (parentHierarchy.getParentId() != null) {
             createHiddenPropertiesFromParent(currentHierarchyId, parentHierarchy.getParentId(), extraProperties);
         }
     }
-    
+
     /**
      * 如需要则创建隐藏属性
      */
-    private void createHiddenPropertyIfNeeded(Long currentHierarchyId, Long parentHierarchyId, 
+    private void createHiddenPropertyIfNeeded(Long currentHierarchyId, Long parentHierarchyId,
                                             HierarchyTypeProperty parentTypeProperty, List<HierarchyProperty> extraProperties) {
         HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(parentTypeProperty.getPropertyDictId());
         if (dictVo == null || !dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
             return;
         }
-        
+
         // 查找父级层级的这个属性值
         HierarchyProperty parentProperty = hierarchyPropertyMapper.selectOne(
             Wrappers.<HierarchyProperty>lambdaQuery()
                 .eq(HierarchyProperty::getHierarchyId, parentHierarchyId)
                 .eq(HierarchyProperty::getTypePropertyId, parentTypeProperty.getId())
         );
-        
+
         if (parentProperty != null) {
             HierarchyProperty hidden = new HierarchyProperty();
             hidden.setHierarchyId(currentHierarchyId);
@@ -270,19 +318,64 @@ public class HierarchyServiceImpl implements IHierarchyService {
     }
 
     /**
-     * 在新事务中更新层级编码
+     * 在新事务中更新层级编码并处理采集配置
      * 解决同事务内数据可见性问题
      *
      * @param hierarchyId 层级ID
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public void updateHierarchyCodeInNewTransaction(Long hierarchyId) {
-        String generatedCode = generateHierarchyCode(hierarchyId);
-        if (generatedCode != null && !generatedCode.isEmpty()) {
-            Hierarchy update = new Hierarchy();
-            update.setId(hierarchyId);
-            update.setCode(generatedCode);
-            baseMapper.updateById(update);
+        Map<String, Object> result = generateHierarchyCode(hierarchyId);
+        if (result != null) {
+            String generatedCode = (String) result.get("code");
+            String selectedConfiguration = (String) result.get("configuration");
+            Long typePropertyId = (Long) result.get("typePropertyId");
+
+            if (generatedCode != null && !generatedCode.isEmpty()) {
+                Hierarchy update = new Hierarchy();
+                update.setId(hierarchyId);
+                update.setCode(generatedCode);
+                baseMapper.updateById(update);
+            }
+
+            // 处理采集配置 - 保存为当前层级的一个属性
+            if (selectedConfiguration != null && !selectedConfiguration.isEmpty()) {
+                saveConfigurationToHierarchyProperty(hierarchyId, selectedConfiguration, typePropertyId);
+            }
+        }
+    }
+
+    /**
+     * 保存采集配置到层级属性
+     *
+     * @param hierarchyId 层级ID
+     * @param configuration 采集配置值
+     */
+    private void saveConfigurationToHierarchyProperty(Long hierarchyId, String configuration, Long typePropertyId) {
+        HierarchyTypeProperty typeProperty = hierarchyTypePropertyMapper.selectById(typePropertyId);
+        HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(typeProperty.getPropertyDictId());
+        if (dictVo != null && dictVo.getDataType().equals(DataTypeEnum.CONFIGURATION.getCode())) {
+
+            // 找到了采集配置属性定义，检查是否已存在属性值
+            HierarchyProperty existingProperty = hierarchyPropertyMapper.selectOne(
+                Wrappers.<HierarchyProperty>lambdaQuery()
+                    .eq(HierarchyProperty::getHierarchyId, hierarchyId)
+                    .eq(HierarchyProperty::getTypePropertyId, typeProperty.getId())
+            );
+
+            if (existingProperty != null) {
+                // 更新现有属性
+                existingProperty.setPropertyValue(configuration);
+                int updateResult = hierarchyPropertyMapper.updateById(existingProperty);
+            } else {
+                // 创建新属性
+                HierarchyProperty newProperty = new HierarchyProperty();
+                newProperty.setHierarchyId(hierarchyId);
+                newProperty.setTypePropertyId(typeProperty.getId());
+                newProperty.setPropertyValue(configuration);
+                newProperty.setScope(0); // 用户属性
+                int insertResult = hierarchyPropertyMapper.insert(newProperty);
+            }
         }
     }
 
@@ -314,7 +407,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
                 bo.setId(add.getId());
             }
             initProperty(bo, type);
-            
+
             // 在主事务外调用新事务方法生成编码
             if (bo.getNeedGenerateCode() != null && bo.getNeedGenerateCode()) {
                 updateHierarchyCodeInNewTransaction(bo.getId());
@@ -326,13 +419,13 @@ public class HierarchyServiceImpl implements IHierarchyService {
     private void initProperty(HierarchyBo bo, HierarchyType type) {
         List<HierarchyProperty> extraProperties = new ArrayList<>();
         Long hierarchyId = bo.getId();
-        
+
         // 设置所有用户属性的hierarchyId
         bo.getProperties().forEach(property -> property.setHierarchyId(hierarchyId));
-        
+
         // 查找级联属性并设置父级关系
         Long parentHierarchyId = findCascadeParentAndSetRelation(bo.getProperties(), hierarchyId);
-        
+
         // 创建父级的所有隐藏属性
         if (parentHierarchyId != null) {
             createHiddenPropertiesFromParent(hierarchyId, parentHierarchyId, extraProperties);
@@ -340,7 +433,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
 
         // 批量插入属性
         batchInsertProperties(bo.getProperties(), extraProperties);
-        
+
         // 返回是否需要生成编码的标志
         bo.setNeedGenerateCode(isBottomLevel(bo.getTypeId()) && type.getCascadeFlag());
     }
@@ -430,6 +523,34 @@ public class HierarchyServiceImpl implements IHierarchyService {
         wrapper.eq(parentId != null, Hierarchy::getParentId, parentId);
         wrapper.orderByAsc(Hierarchy::getId);
         return baseMapper.selectVoList(wrapper);
+    }
+
+    @Override
+    public List<HierarchyVo> getDescendantsByType(Long hierarchyId, Long targetTypeId) {
+        List<HierarchyVo> result = new ArrayList<>();
+
+        // 递归获取所有子孙层级
+        getAllDescendants(hierarchyId, result);
+
+        // 过滤出指定类型的层级
+        return result.stream()
+                .filter(hierarchy -> targetTypeId.equals(hierarchy.getTypeId()))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 递归获取所有子孙层级
+     *
+     * @param parentId 父级层级ID
+     * @param result 结果列表
+     */
+    private void getAllDescendants(Long parentId, List<HierarchyVo> result) {
+        List<HierarchyVo> children = getChildrenByParentId(parentId);
+        for (HierarchyVo child : children) {
+            result.add(child);
+            // 递归获取子级的子级
+            getAllDescendants(child.getId(), result);
+        }
     }
 
 }

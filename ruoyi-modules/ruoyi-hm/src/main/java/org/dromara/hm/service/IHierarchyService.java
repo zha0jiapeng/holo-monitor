@@ -79,4 +79,13 @@ public interface IHierarchyService {
      */
     List<HierarchyVo> getChildrenByParentId(Long parentId);
 
+    /**
+     * 查询指定层级下所有子孙层级中指定类型的层级列表
+     *
+     * @param hierarchyId 层级ID
+     * @param targetTypeId 目标层级类型ID
+     * @return 指定类型的层级列表
+     */
+    List<HierarchyVo> getDescendantsByType(Long hierarchyId, Long targetTypeId);
+
 }

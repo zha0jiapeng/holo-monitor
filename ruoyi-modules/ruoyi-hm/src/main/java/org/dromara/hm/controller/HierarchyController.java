@@ -3,7 +3,6 @@ package org.dromara.hm.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import org.dromara.common.core.domain.R;
 import org.dromara.common.core.utils.MapstructUtils;
-import org.dromara.common.core.utils.ValidatorUtils;
 import org.dromara.common.core.validate.AddGroup;
 import org.dromara.common.core.validate.EditGroup;
 import org.dromara.common.core.validate.QueryGroup;
@@ -145,6 +144,20 @@ public class HierarchyController extends BaseController {
     @GetMapping("/children/{parentId}")
     public R<List<HierarchyVo>> getChildrenByParentId(@PathVariable("parentId") Long parentId) {
         return R.ok(hierarchyService.getChildrenByParentId(parentId));
+    }
+
+    /**
+     * 查询指定层级下所有子孙层级中指定类型的层级列表
+     *
+     * @param hierarchyId 层级ID
+     * @param targetTypeId 目标层级类型ID
+     */
+    @SaCheckPermission("hm:hierarchy:list")
+    @GetMapping("/descendants/{hierarchyId}/type/{targetTypeId}")
+    public R<List<HierarchyVo>> getDescendantsByType(
+            @NotNull(message = "层级ID不能为空") @PathVariable("hierarchyId") Long hierarchyId,
+            @NotNull(message = "目标类型ID不能为空") @PathVariable("targetTypeId") Long targetTypeId) {
+        return R.ok(hierarchyService.getDescendantsByType(hierarchyId, targetTypeId));
     }
 
 }
