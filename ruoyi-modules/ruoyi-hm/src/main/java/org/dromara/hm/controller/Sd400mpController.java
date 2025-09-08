@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.core.utils.sd400mp.GlbProperties;
+import org.dromara.common.web.annotation.BrotliCompress;
 import org.dromara.common.web.core.BaseController;
 import org.springframework.http.*;
 import org.springframework.validation.annotation.Validated;
@@ -27,6 +28,7 @@ import java.util.Enumeration;
 @RestController
 @RequestMapping("/sd400mp")
 @Slf4j
+@BrotliCompress
 public class Sd400mpController extends BaseController {
 
     private static final String URI = GlbProperties.uri;

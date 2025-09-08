@@ -124,7 +124,7 @@ public class TestpointExecutor {
         try {
             List<String> tags = new ArrayList<>();
             tags.add(Tag.MT);
-            JSONObject dataResponse = SD400MPUtils.data(Long.valueOf(testPointId),tags);
+            JSONObject dataResponse = SD400MPUtils.data(Long.valueOf(testPointId), tags, null);
             if (!isSuccessResponse(dataResponse)) {
                 log.warn("获取测点 [{}] 数据失败，响应码: {}", testPointId, dataResponse.getInt("code"));
                 return -1;

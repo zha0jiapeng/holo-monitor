@@ -88,4 +88,11 @@ public interface IHierarchyService {
      */
     List<HierarchyVo> getDescendantsByType(Long hierarchyId, Long targetTypeId);
 
+    /**
+     * 获取最底层且具有采集配置(1005)属性的层级列表
+     *
+     * @return 最底层且有采集配置属性的层级列表
+     */
+    List<HierarchyVo> getBottomLevelWithConfiguration();
+
 }

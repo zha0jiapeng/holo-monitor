@@ -39,10 +39,13 @@ public class HierarchyTypePropertyServiceImpl implements IHierarchyTypePropertyS
     private final HierarchyTypePropertyMapper baseMapper;
     private final HierarchyPropertyMapper hierarchyPropertyMapper;
     private final HierarchyMapper hierarchyMapper;
+    private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
 
     @Override
     public HierarchyTypePropertyVo queryById(Long id) {
-        return  baseMapper.selectVoById(id);
+        HierarchyTypePropertyVo hierarchyTypePropertyVo = baseMapper.selectVoById(id);
+        hierarchyTypePropertyVo.setDict(hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypePropertyVo.getPropertyDictId()));
+        return hierarchyTypePropertyVo;
     }
 
     @Override
@@ -214,12 +217,12 @@ public class HierarchyTypePropertyServiceImpl implements IHierarchyTypePropertyS
             for (HierarchyTypeProperty insertItem : insertList) {
                 validEntityBeforeSave(insertItem);
                 baseMapper.insert(insertItem);
-                
+
                 // 为所有该类型下的层级实例添加新属性
                 List<Hierarchy> hierarchies = hierarchyMapper.selectList(
                     new LambdaQueryWrapper<Hierarchy>().eq(Hierarchy::getTypeId, insertItem.getTypeId())
                 );
-                
+
                 List<HierarchyProperty> newProperties = new ArrayList<>();
                 for (Hierarchy hierarchy : hierarchies) {
                     HierarchyProperty property = new HierarchyProperty();
@@ -229,7 +232,7 @@ public class HierarchyTypePropertyServiceImpl implements IHierarchyTypePropertyS
                     property.setScope(1); // 默认设置为可见
                     newProperties.add(property);
                 }
-                
+
                 if (!newProperties.isEmpty()) {
                     hierarchyPropertyMapper.insertBatch(newProperties);
                 }

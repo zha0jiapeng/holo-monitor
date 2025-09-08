@@ -366,7 +366,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
             if (existingProperty != null) {
                 // 更新现有属性
                 existingProperty.setPropertyValue(configuration);
-                int updateResult = hierarchyPropertyMapper.updateById(existingProperty);
+                hierarchyPropertyMapper.updateById(existingProperty);
             } else {
                 // 创建新属性
                 HierarchyProperty newProperty = new HierarchyProperty();
@@ -374,7 +374,7 @@ public class HierarchyServiceImpl implements IHierarchyService {
                 newProperty.setTypePropertyId(typeProperty.getId());
                 newProperty.setPropertyValue(configuration);
                 newProperty.setScope(0); // 用户属性
-                int insertResult = hierarchyPropertyMapper.insert(newProperty);
+                hierarchyPropertyMapper.insert(newProperty);
             }
         }
     }
@@ -551,6 +551,105 @@ public class HierarchyServiceImpl implements IHierarchyService {
             // 递归获取子级的子级
             getAllDescendants(child.getId(), result);
         }
+    }
+
+    @Override
+    public List<HierarchyVo> getBottomLevelWithConfiguration() {
+        // 1. 获取所有层级类型
+        List<HierarchyType> allTypes = hierarchyTypeMapper.selectList(null);
+
+        // 2. 找出最底层的层级类型（没有其他类型以它作为级联父级）
+        List<Long> bottomLevelTypeIds = allTypes.stream()
+            .filter(type -> isBottomLevel(type.getId()))
+            .map(HierarchyType::getId)
+            .collect(Collectors.toList());
+
+        if (bottomLevelTypeIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 3. 获取最底层类型的层级数据
+        List<Hierarchy> bottomHierarchies = baseMapper.selectList(
+            Wrappers.<Hierarchy>lambdaQuery()
+                .in(Hierarchy::getTypeId, bottomLevelTypeIds)
+        );
+
+        if (bottomHierarchies.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<Long> hierarchyIds = bottomHierarchies.stream()
+            .map(Hierarchy::getId)
+            .collect(Collectors.toList());
+
+        // 4. 获取这些层级的属性，筛选出有采集配置(1005)的层级
+        List<HierarchyProperty> allProperties = hierarchyPropertyMapper.selectList(
+            Wrappers.<HierarchyProperty>lambdaQuery()
+                .in(HierarchyProperty::getHierarchyId, hierarchyIds)
+        );
+
+        // 5. 获取所有相关的类型属性信息
+        Set<Long> typePropertyIds = allProperties.stream()
+            .map(HierarchyProperty::getTypePropertyId)
+            .collect(Collectors.toSet());
+
+        List<HierarchyTypeProperty> typeProperties = hierarchyTypePropertyMapper.selectList(
+            Wrappers.<HierarchyTypeProperty>lambdaQuery()
+                .in(HierarchyTypeProperty::getId, typePropertyIds)
+        );
+
+        // 6. 获取属性字典信息
+        Set<Long> dictIds = typeProperties.stream()
+            .map(HierarchyTypeProperty::getPropertyDictId)
+            .collect(Collectors.toSet());
+
+        List<HierarchyTypePropertyDict> dicts = hierarchyTypePropertyDictMapper.selectList(
+            Wrappers.<HierarchyTypePropertyDict>lambdaQuery()
+                .in(HierarchyTypePropertyDict::getId, dictIds)
+        );
+
+        // 7. 筛选出具有采集配置(1005)属性的层级
+        Set<Long> hierarchyWithConfigIds = new HashSet<>();
+        for (HierarchyProperty property : allProperties) {
+            HierarchyTypeProperty typeProperty = typeProperties.stream()
+                .filter(tp -> tp.getId().equals(property.getTypePropertyId()))
+                .findFirst().orElse(null);
+
+            if (typeProperty != null) {
+                HierarchyTypePropertyDict dict = dicts.stream()
+                    .filter(d -> d.getId().equals(typeProperty.getPropertyDictId()))
+                    .findFirst().orElse(null);
+
+                if (dict != null && dict.getDataType().equals(DataTypeEnum.CONFIGURATION.getCode())) {
+                    hierarchyWithConfigIds.add(property.getHierarchyId());
+                }
+            }
+        }
+
+        // 8. 转换为VO对象并填充属性信息
+        List<HierarchyVo> result = new ArrayList<>();
+        for (Hierarchy hierarchy : bottomHierarchies) {
+            if (hierarchyWithConfigIds.contains(hierarchy.getId())) {
+                HierarchyVo vo = baseMapper.selectVoById(hierarchy.getId());
+                List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
+                    Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, hierarchy.getId())
+                );
+
+                // 为属性填充类型信息
+                for (HierarchyPropertyVo prop : properties) {
+                    HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());
+                    if (typeProp != null) {
+                        HierarchyTypePropertyDictVo dict = hierarchyTypePropertyDictMapper.selectVoById(typeProp.getPropertyDictId());
+                        typeProp.setDict(dict);
+                        prop.setTypeProperty(typeProp);
+                    }
+                }
+                vo.setProperties(properties);
+                result.add(vo);
+            }
+        }
+
+        return result;
     }
 
 }

@@ -97,6 +97,7 @@ public enum DataTypeEnum {
 
     CONFIGURATION(1005,"采集配置"),
 
+    LOCATION_INFO(1006,"三维定位坐标"),
     ;
 
     /**

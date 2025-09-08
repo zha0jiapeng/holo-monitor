@@ -29,13 +29,13 @@ public class HierarchyPropertyBo {
     /**
      * 层级id
      */
-    @NotNull(message = "层级id不能为空", groups = {AddGroup.class, EditGroup.class})
+    @NotNull(message = "层级id不能为空", groups = {AddGroup.class})
     private Long hierarchyId;
 
     /**
      * 属性key
      */
-    @NotBlank(message = "属性key不能为空", groups = {AddGroup.class, EditGroup.class})
+    @NotBlank(message = "属性key不能为空", groups = {AddGroup.class})
     private String typePropertyId;
 
     /**

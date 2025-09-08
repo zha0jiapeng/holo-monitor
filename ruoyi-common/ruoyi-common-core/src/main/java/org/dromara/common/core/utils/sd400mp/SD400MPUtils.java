@@ -76,7 +76,6 @@ public class SD400MPUtils {
                 tokenCache = token.toString();
                 tokenExpireTime = System.currentTimeMillis() + TOKEN_CACHE_DURATION;
 
-                // log.info("成功获取并缓存GLB令牌，有效期至: {}", new Date(tokenExpireTime));
                 return tokenCache;
             } catch (Exception e) {
                 e.printStackTrace();
@@ -116,22 +115,7 @@ public class SD400MPUtils {
                 log.error("请求索引接口返回数据为空");
                 return null;
             }
-
-            Integer code = response.getInt("code");
-            if (code == 200) {
-//                 Map<String, Object> data = response.getObject("data", Map.class);
-//                // Map<String, Object> idResult = (Map<String, Object>) data.get("id");
-//
-//                // Map<String, Object> result = new HashMap<>(2);
-//                // result.put("id", idResult.get("id"));
-//                // result.put("times", data.get("time"));
-//                System.out.println(data.get("time"));
-                return response;
-            } else {
-                log.warn("查询索引失败 - uniqueId:{}, from:{}, to:{}, response:{}",
-                    uniqueId, from, to, response.toString());
-                return null;
-            }
+            return response;
         } catch (Exception e) {
             log.error("查询索引异常 - uniqueId:{}, from:{}, to:{}", uniqueId, from, to, e);
             return null;
@@ -228,7 +212,19 @@ public class SD400MPUtils {
         return JSONUtil.parseObj(body);
     }
 
-    public static JSONObject data(Long testpointId, List<String> tags) {
+    public static JSONObject testpointFind(String kksCode) {
+        Map<String, Object> map = new HashMap<>(2);
+        map.put("token", getToken());
+        Map<String, Object> dataMap = new HashMap<>(4);
+        dataMap.put("key", kksCode);
+        map.put("data",dataMap);
+        String body = HttpUtil.createPost(URI + "/api/testpointFind")
+                .body(JSONUtil.toJsonStr(map))
+                .execute().body();
+        return JSONUtil.parseObj(body);
+    }
+
+    public static JSONObject data(Long testpointId, List<String> tags,String timestamp) {
         Map<String, Object> map = new HashMap<>(2);
         map.put("token", getToken());
         Map<String, Object> dataMap = new HashMap<>(2);
@@ -238,7 +234,9 @@ public class SD400MPUtils {
         list.add(idMap);
         dataMap.put("testpoints", list);
         dataMap.put("include", tags);
+        dataMap.put("timestamp", timestamp);
         map.put("data", dataMap);
+        System.out.println(JSONUtil.toJsonStr(map));
         String body = HttpUtil.createPost(URI + "/api/data")
             .body(JSONUtil.toJsonStr(map))
             .execute().body();
@@ -279,14 +277,6 @@ public class SD400MPUtils {
 
     public static JSONObject single(Map<String,Object> map) {
         String body = HttpUtil.createPost(URI + "/api/single")
-                .body(JSONUtil.toJsonStr(map))
-                .execute().body();
-        return JSONUtil.parseObj(body);
-    }
-
-    public static JSONObject testpointFind(Map<String,Object> map) {
-        map.put("token", getToken());
-        String body = HttpUtil.createPost(URI + "/api/testpointFind")
                 .body(JSONUtil.toJsonStr(map))
                 .execute().body();
         return JSONUtil.parseObj(body);

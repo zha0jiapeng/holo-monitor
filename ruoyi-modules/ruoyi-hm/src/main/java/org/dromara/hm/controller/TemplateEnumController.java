@@ -2,6 +2,7 @@ package org.dromara.hm.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import org.dromara.common.core.domain.R;
+import org.dromara.common.web.annotation.BrotliCompress;
 import org.dromara.hm.enums.TemplateEnum;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -22,6 +23,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/hm/templateEnum")
+@BrotliCompress
 public class TemplateEnumController {
 
     /**

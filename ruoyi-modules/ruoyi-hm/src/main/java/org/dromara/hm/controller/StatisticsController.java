@@ -3,6 +3,7 @@
  import lombok.RequiredArgsConstructor;
  import org.dromara.common.core.domain.R;
 
+ import org.dromara.common.web.annotation.BrotliCompress;
  import org.dromara.common.web.core.BaseController;
  import org.dromara.hm.service.IStatisticsService;
  import org.springframework.validation.annotation.Validated;
@@ -19,6 +20,7 @@
  @RequiredArgsConstructor
  @RestController
  @RequestMapping("/hm/statistics")
+ @BrotliCompress
  public class StatisticsController extends BaseController {
 
      private final IStatisticsService statisticsService;
