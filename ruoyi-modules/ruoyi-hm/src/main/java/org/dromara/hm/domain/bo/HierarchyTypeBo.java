@@ -1,5 +1,6 @@
 package org.dromara.hm.domain.bo;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import org.dromara.common.core.validate.AddGroup;
 import org.dromara.common.core.validate.EditGroup;
 import org.dromara.hm.domain.HierarchyType;
@@ -50,5 +51,8 @@ public class HierarchyTypeBo {
      * 编码排序
      */
     private Integer codeSort;
+
+    @TableField(exist = false)
+    private Boolean needProperty = false;
 
 }

@@ -42,5 +42,34 @@ public interface HierarchyMapper extends BaseMapperPlus<Hierarchy, HierarchyVo> 
     @Override
     int updateById(@Param(Constants.ENTITY) Hierarchy entity);
 
+    @Select("SELECT\n" +
+        "\thhp.hierarchy_id\n " +
+        "FROM\n " +
+        "\thm_hierarchy_property hhp\n " +
+        "left join hm_hierarchy_type_property hhtp\n " +
+        "on hhp.type_property_id = hhtp.id\n " +
+        "left JOIN hm_hierarchy_type_property_dict hhtpd\n " +
+        "on hhtp.property_dict_id = hhtpd.id\n " +
+        "where hhp.property_value = #{hierarchyId} and data_type = 1001 ")
+    List<Long> selctChildHierarchyIOs(Long hierarchyId);
 
+    @Select({
+        "<script>",
+        "SELECT",
+        "    hhp.property_value hierarchy_id",
+        "FROM",
+        "    hm_hierarchy_property hhp",
+        "    LEFT JOIN hm_hierarchy_type_property hhtp ON hhp.type_property_id = hhtp.id",
+        "    LEFT JOIN hm_hierarchy_type_property_dict hhtpd ON hhtp.property_dict_id = hhtpd.id",
+        "    INNER JOIN hm_hierarchy hh ON hh.id = hhp.hierarchy_id",
+        "WHERE",
+        "    hhtpd.dict_values = #{targetTypeId}",
+        "    AND hhp.scope = 1",
+//        "    AND hh.id IN",
+//        "    <foreach item='id' collection='ids' open='(' close=')' separator=','>",
+//        "        #{id}",
+//        "    </foreach>",
+        "</script>"
+    })
+    List<Long> selecttargetTypeHierarchyList(@Param("ids") List<Long> ids, @Param("targetTypeId") Long targetTypeId);
 }

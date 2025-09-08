@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.MapstructUtils;
@@ -33,7 +34,7 @@ import java.util.stream.Collectors;
  */
 @RequiredArgsConstructor
 @Service
-public class HierarchyServiceImpl implements IHierarchyService {
+public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy> implements IHierarchyService {
 
     private final HierarchyMapper baseMapper;
     private final HierarchyPropertyMapper hierarchyPropertyMapper;
@@ -64,23 +65,23 @@ public class HierarchyServiceImpl implements IHierarchyService {
     public TableDataInfo<HierarchyVo> queryPageList(HierarchyBo bo, PageQuery pageQuery) {
         LambdaQueryWrapper<Hierarchy> lqw = buildQueryWrapper(bo);
         Page<HierarchyVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
-
-        // 添加填充逻辑
-        for (HierarchyVo vo : result.getRecords()) {
-            List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
-                Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, vo.getId())
-            );
-            for (HierarchyPropertyVo prop : properties) {
-                HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());
-                if (typeProp != null) {
-                    HierarchyTypePropertyDictVo dict = hierarchyTypePropertyDictMapper.selectVoById(typeProp.getPropertyDictId());
-                    typeProp.setDict(dict);
-                    prop.setTypeProperty(typeProp);
+        if(bo.getNeedProperty()) {
+            // 添加填充逻辑
+            for (HierarchyVo vo : result.getRecords()) {
+                List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
+                    Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, vo.getId())
+                );
+                for (HierarchyPropertyVo prop : properties) {
+                    HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());
+                    if (typeProp != null) {
+                        HierarchyTypePropertyDictVo dict = hierarchyTypePropertyDictMapper.selectVoById(typeProp.getPropertyDictId());
+                        typeProp.setDict(dict);
+                        prop.setTypeProperty(typeProp);
+                    }
                 }
+                vo.setProperties(properties);
             }
-            vo.setProperties(properties);
         }
-
         return TableDataInfo.build(result);
     }
 

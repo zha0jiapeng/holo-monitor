@@ -1,13 +1,17 @@
  package org.dromara.hm.controller;
 
+ import cn.dev33.satoken.annotation.SaIgnore;
  import lombok.RequiredArgsConstructor;
  import org.dromara.common.core.domain.R;
 
  import org.dromara.common.web.annotation.BrotliCompress;
  import org.dromara.common.web.core.BaseController;
+ import org.dromara.hm.domain.Hierarchy;
  import org.dromara.hm.service.IStatisticsService;
  import org.springframework.validation.annotation.Validated;
  import org.springframework.web.bind.annotation.*;
+
+ import java.util.List;
  import java.util.Map;
 
  /**
@@ -21,20 +25,21 @@
  @RestController
  @RequestMapping("/hm/statistics")
  @BrotliCompress
+ @SaIgnore
  public class StatisticsController extends BaseController {
 
      private final IStatisticsService statisticsService;
 
-     @GetMapping("/getTargetTypeList")
-     public R<Map<String,Object>> getTargetTypeList(Long hierarchyId,Long targetTypeId) {
-        Map<String,Object> result =  statisticsService.getTargetTypeList(hierarchyId,targetTypeId);
+    @GetMapping("/getTargetTypeCount")
+    public R<List<Map<String, Object>>> getTargetTypeList(Long hierarchyId,Long targetTypeId) {
+         List<Map<String, Object>> result =  statisticsService.getTargetTypeList(hierarchyId,targetTypeId);
         return R.ok(result);
      }
 
-     @GetMapping("/getTargetTypeStatistics")
-     public R<Map<String,Object>> getTargetTypeStatistics(Long hierarchyId,Long targetTypeId) {
-         Map<String,Object> result =  statisticsService.getTargetTypeStatistics(hierarchyId,targetTypeId);
-         return R.ok(result);
+     @GetMapping("/getNextHierarchyList")
+     public R<Map<String,Object>> getNextHierarchyList(Long hierarchyId,Long targetTypeId) {
+         R<Map<String,Object>> result =  statisticsService.getNextHierarchyList(hierarchyId, targetTypeId);
+         return result;
      }
 
 //     @GetMapping("/getEquipmentDetailStatistics")

@@ -64,9 +64,11 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
     public TableDataInfo<HierarchyTypeVo> queryPageList(HierarchyTypeBo bo, PageQuery pageQuery) {
         LambdaQueryWrapper<HierarchyType> lqw = buildQueryWrapper(bo);
         Page<HierarchyTypeVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
-        List<HierarchyTypeVo> records = result.getRecords();
-        for (HierarchyTypeVo hierarchyTypeVo : records) {
-            initVo(hierarchyTypeVo);
+        if(bo.getNeedProperty()) {
+            List<HierarchyTypeVo> records = result.getRecords();
+            for (HierarchyTypeVo hierarchyTypeVo : records) {
+                initVo(hierarchyTypeVo);
+            }
         }
         return TableDataInfo.build(result);
     }
