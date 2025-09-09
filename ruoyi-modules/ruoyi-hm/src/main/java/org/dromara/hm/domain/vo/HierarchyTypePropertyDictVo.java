@@ -45,4 +45,16 @@ public class HierarchyTypePropertyDictVo implements Serializable {
 
     private String dictValues;
 
+    /**
+     * 系统属性
+     */
+    @ExcelProperty(value = "系统属性")
+    private Boolean systemFlag;
+
+    /**
+     * 字典key
+     */
+    @ExcelProperty(value = "字典key")
+    private String dictKey;
+
 }

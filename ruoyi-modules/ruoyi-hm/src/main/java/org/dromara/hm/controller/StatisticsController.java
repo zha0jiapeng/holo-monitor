@@ -7,6 +7,7 @@
  import org.dromara.common.web.annotation.BrotliCompress;
  import org.dromara.common.web.core.BaseController;
  import org.dromara.hm.domain.Hierarchy;
+ import org.dromara.hm.domain.vo.HierarchyVo;
  import org.dromara.hm.service.IStatisticsService;
  import org.springframework.validation.annotation.Validated;
  import org.springframework.web.bind.annotation.*;
@@ -37,9 +38,9 @@
      }
 
      @GetMapping("/getNextHierarchyList")
-     public R<Map<String,Object>> getNextHierarchyList(Long hierarchyId,Long targetTypeId) {
-         R<Map<String,Object>> result =  statisticsService.getNextHierarchyList(hierarchyId, targetTypeId);
-         return result;
+     public R<List<HierarchyVo>> getNextHierarchyList(Long hierarchyId, Long targetTypeId) {
+         List<HierarchyVo> result =  statisticsService.getNextHierarchyList(hierarchyId, targetTypeId);
+         return R.ok(result);
      }
 
 //     @GetMapping("/getEquipmentDetailStatistics")

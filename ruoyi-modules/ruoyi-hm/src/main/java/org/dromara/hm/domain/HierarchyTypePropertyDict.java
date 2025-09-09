@@ -36,4 +36,14 @@ public class HierarchyTypePropertyDict {
 
     private String dictValues;
 
+    /**
+     * 系统属性
+     */
+    private Boolean systemFlag;
+
+    /**
+     * 字典key
+     */
+    private String dictKey;
+
 }

@@ -3,7 +3,6 @@ package org.dromara.hm.validate;
 import jakarta.validation.ConstraintValidator;
 import jakarta.validation.ConstraintValidatorContext;
 import org.dromara.hm.enums.AlgorithmTypeEnum;
-import org.dromara.hm.enums.EquipmentFileTypeEnum;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;

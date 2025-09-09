@@ -3,6 +3,7 @@ package org.dromara.hm.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.MapstructUtils;
@@ -27,7 +28,7 @@ import java.util.List;
  */
 @RequiredArgsConstructor
 @Service
-public class HierarchyDataServiceImpl implements IHierarchyDataService {
+public class HierarchyDataServiceImpl extends ServiceImpl<HierarchyDataMapper, HierarchyData>  implements IHierarchyDataService {
 
     private final HierarchyDataMapper baseMapper;
 

@@ -49,14 +49,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
             Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, id)
         );
-        for (HierarchyPropertyVo prop : properties) {
-            HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());
-            if (typeProp != null) {
-                HierarchyTypePropertyDictVo dict = hierarchyTypePropertyDictMapper.selectVoById(typeProp.getPropertyDictId());
-                typeProp.setDict(dict);
-                prop.setTypeProperty(typeProp);
-            }
-        }
+        initProperty(properties);
         hierarchyVo.setProperties(properties);
         return hierarchyVo;
     }
@@ -71,14 +64,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
                     Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, vo.getId())
                 );
-                for (HierarchyPropertyVo prop : properties) {
-                    HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());
-                    if (typeProp != null) {
-                        HierarchyTypePropertyDictVo dict = hierarchyTypePropertyDictMapper.selectVoById(typeProp.getPropertyDictId());
-                        typeProp.setDict(dict);
-                        prop.setTypeProperty(typeProp);
-                    }
-                }
+                initProperty(properties);
                 vo.setProperties(properties);
             }
         }
@@ -637,14 +623,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 );
 
                 // 为属性填充类型信息
-                for (HierarchyPropertyVo prop : properties) {
-                    HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());
-                    if (typeProp != null) {
-                        HierarchyTypePropertyDictVo dict = hierarchyTypePropertyDictMapper.selectVoById(typeProp.getPropertyDictId());
-                        typeProp.setDict(dict);
-                        prop.setTypeProperty(typeProp);
-                    }
-                }
+                initProperty(properties);
                 vo.setProperties(properties);
                 result.add(vo);
             }
@@ -652,6 +631,44 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
         return result;
     }
+
+    @Override
+    public List<Long> selectChildHierarchyIds(Long hierarchyId) {
+        return baseMapper.selectChildHierarchyIds(hierarchyId);
+    }
+
+    @Override
+    public List<Long> selectTargetTypeHierarchyList(List<Long> ids, Long targetTypeId) {
+        return baseMapper.selectTargetTypeHierarchyList(ids,targetTypeId);
+    }
+
+    @Override
+    public List<HierarchyVo> selectByIds(List<Long> matchedIds) {
+        List<HierarchyVo> hierarchies = baseMapper.selectVoByIds(matchedIds);
+        for (HierarchyVo hierarchy : hierarchies) {
+            List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
+                Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, hierarchy.getId())
+            );
+            initProperty(properties);
+            hierarchy.setProperties(properties);
+        }
+        return hierarchies;
+    }
+
+    private void initProperty(List<HierarchyPropertyVo> properties) {
+        for (HierarchyPropertyVo prop : properties) {
+            HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());
+            if (typeProp != null) {
+                HierarchyTypePropertyDictVo dict = hierarchyTypePropertyDictMapper.selectVoById(typeProp.getPropertyDictId());
+                typeProp.setDict(dict);
+                prop.setTypeProperty(typeProp);
+                if(dict.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())){
+                    prop.setHierarchyName(baseMapper.selectById(Long.valueOf(prop.getPropertyValue())).getName());
+                }
+            }
+        }
+    }
+
 
 }
 

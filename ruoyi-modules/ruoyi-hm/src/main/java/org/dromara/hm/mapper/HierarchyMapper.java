@@ -51,7 +51,7 @@ public interface HierarchyMapper extends BaseMapperPlus<Hierarchy, HierarchyVo> 
         "left JOIN hm_hierarchy_type_property_dict hhtpd\n " +
         "on hhtp.property_dict_id = hhtpd.id\n " +
         "where hhp.property_value = #{hierarchyId} and data_type = 1001 ")
-    List<Long> selctChildHierarchyIOs(Long hierarchyId);
+    List<Long> selectChildHierarchyIds(Long hierarchyId);
 
     @Select({
         "<script>",
@@ -71,5 +71,5 @@ public interface HierarchyMapper extends BaseMapperPlus<Hierarchy, HierarchyVo> 
 //        "    </foreach>",
         "</script>"
     })
-    List<Long> selecttargetTypeHierarchyList(@Param("ids") List<Long> ids, @Param("targetTypeId") Long targetTypeId);
+    List<Long> selectTargetTypeHierarchyList(@Param("ids") List<Long> ids, @Param("targetTypeId") Long targetTypeId);
 }

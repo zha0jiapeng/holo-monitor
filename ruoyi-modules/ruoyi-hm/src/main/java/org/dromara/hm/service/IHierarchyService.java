@@ -96,4 +96,9 @@ public interface IHierarchyService extends IService<Hierarchy> {
      */
     List<HierarchyVo> getBottomLevelWithConfiguration();
 
+    List<Long> selectChildHierarchyIds(Long hierarchyId);
+
+    List<Long> selectTargetTypeHierarchyList(List<Long> longs, Long targetTypeId);
+
+    List<HierarchyVo> selectByIds(List<Long> matchedIds);
 }

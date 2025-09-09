@@ -2,6 +2,7 @@
 
  import org.dromara.common.core.domain.R;
  import org.dromara.hm.domain.Hierarchy;
+ import org.dromara.hm.domain.vo.HierarchyVo;
  import org.dromara.hm.enums.StatisticsCountTypeEnum;
  import java.util.Map;
  import java.util.List;
@@ -93,5 +94,5 @@
          return getRealtimeAlarmList(hierarchyId, null, 60); // 默认查询1小时内的所有报警
      }
 
-     R<Map<String, Object>> getNextHierarchyList(Long hierarchyId,Long targetTypeId);
+     List<HierarchyVo> getNextHierarchyList(Long hierarchyId, Long targetTypeId);
  }

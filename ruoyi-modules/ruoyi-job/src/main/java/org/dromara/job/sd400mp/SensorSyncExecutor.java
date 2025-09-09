@@ -6,9 +6,11 @@ import cn.hutool.json.JSONUtil;
 import com.aizuda.snailjob.client.job.core.annotation.JobExecutor;
 import com.aizuda.snailjob.client.job.core.dto.JobArgs;
 import com.aizuda.snailjob.client.model.ExecuteResult;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
+import org.dromara.hm.domain.HierarchyData;
 import org.dromara.hm.domain.bo.HierarchyDataBo;
 import org.dromara.hm.domain.vo.HierarchyPropertyVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
@@ -73,19 +75,25 @@ public class SensorSyncExecutor {
                     JSONObject data = entries.getJSONObject("data");
                     String id = data.getStr("id");
                     JSONObject tagResponse = SD400MPUtils.data(Long.valueOf(id), allTags, null);
-                    System.out.println(tagResponse);
                     Object online = tagResponse.getByPath("data.groups[0].online");
                     if(online==null) continue;
                     JSONArray onlines = (JSONArray) online;
                     for (Object o : onlines) {
                         JSONObject item = (JSONObject) o;
-                        HierarchyDataBo hierarchyData = new HierarchyDataBo();
-                        hierarchyData.setHierarchyId(Long.valueOf(hierarchyVo.getId()));
-                        hierarchyData.setTime(LocalDateTime.parse(item.getStr("dt")));
-                        hierarchyData.setValue(new BigDecimal(item.getStr("val")));
-                        hierarchyData.setTag(item.getStr("key"));
-                        hierarchyData.setName( mapp.get(item.getStr("tag")));
-                        hierarchyDataService.insertByBo(hierarchyData);
+                        LocalDateTime parse = LocalDateTime.parse(item.getStr("dt"));
+                        long count = hierarchyDataService.count(new LambdaQueryWrapper<HierarchyData>()
+                            .eq(HierarchyData::getHierarchyId, hierarchyVo.getId())
+                            .eq(HierarchyData::getTime, parse)
+                        );
+                        if(count!=0) {
+                            HierarchyDataBo hierarchyData = new HierarchyDataBo();
+                            hierarchyData.setHierarchyId(Long.valueOf(hierarchyVo.getId()));
+                            hierarchyData.setTime(parse);
+                            hierarchyData.setValue(new BigDecimal(item.getStr("val")));
+                            hierarchyData.setTag(item.getStr("key"));
+                            hierarchyData.setName(mapp.get(item.getStr("tag")));
+                            hierarchyDataService.insertByBo(hierarchyData);
+                        }
                     }
 //                    LocalDateTime toTime = LocalDateTime.now();
 //                    String from = toTime.minusHours(1).format(FORMATTER);

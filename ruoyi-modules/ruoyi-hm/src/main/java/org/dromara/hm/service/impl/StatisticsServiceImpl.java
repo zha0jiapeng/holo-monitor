@@ -5,8 +5,10 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.domain.R;
 import org.dromara.hm.domain.Hierarchy;
+import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.enums.StatisticsCountTypeEnum;
 import org.dromara.hm.mapper.HierarchyMapper;
+import org.dromara.hm.service.IHierarchyService;
 import org.dromara.hm.service.IStatisticsService;
 import org.springframework.stereotype.Service;
 
@@ -23,12 +25,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class StatisticsServiceImpl implements IStatisticsService {
 
-    private final HierarchyMapper hierarchyMapper;
+    private final IHierarchyService hierarchyService;
 
     @Override
     public List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId) {
-        List<Long> list = hierarchyMapper.selecttargetTypeHierarchyList(hierarchyMapper.selctChildHierarchyIOs(hierarchyId),targetTypeId);
-        List<Hierarchy> hierarchies = hierarchyMapper.selectByIds(list);
+        List<Long> list = hierarchyService.selectTargetTypeHierarchyList(hierarchyService.selectChildHierarchyIds(hierarchyId),targetTypeId);
+        List<Hierarchy> hierarchies = hierarchyService.listByIds(list);
 
         Map<String, Long> nameStatistics = hierarchies.stream()
             .filter(h -> h.getName() != null) // 过滤掉 name 为 null 的记录
@@ -51,26 +53,17 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
 
     @Override
-    public R<Map<String, Object>> getNextHierarchyList(Long hierarchyId,Long targetTypeId) {
-        Map<String, Object> result = new HashMap<>();
+    public List<HierarchyVo> getNextHierarchyList(Long hierarchyId, Long targetTypeId) {
 
         // 递归获取包含目标类型的所有子孙层级，找到目标类型就停止递归
         List<Long> matchedIds = new ArrayList<>();
         findMatchingDescendants(hierarchyId, targetTypeId, matchedIds);
 
         if (matchedIds.isEmpty()) {
-            result.put("list", new ArrayList<>());
-            result.put("total", 0);
-            return R.ok(result);
+            return new ArrayList<HierarchyVo>();
         }
 
-        // 查询匹配的层级信息
-        List<Hierarchy> matchedHierarchies = hierarchyMapper.selectByIds(matchedIds);
-
-        result.put("list", matchedHierarchies);
-        result.put("total", matchedHierarchies.size());
-
-        return R.ok(result);
+        return hierarchyService.selectByIds(matchedIds);
     }
 
     /**
@@ -81,7 +74,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
      */
     private void findMatchingDescendants(Long hierarchyId, Long targetTypeId, List<Long> matchedIds) {
         // 先检查当前层级是否匹配
-        Hierarchy current = hierarchyMapper.selectById(hierarchyId);
+        Hierarchy current = hierarchyService.getById(hierarchyId);
         if (current != null && targetTypeId.equals(current.getTypeId())) {
             matchedIds.add(hierarchyId);
             return; // 找到匹配的类型，停止递归
@@ -90,7 +83,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         // 获取直接子级
         LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Hierarchy::getParentId, hierarchyId);
-        List<Hierarchy> children = hierarchyMapper.selectList(wrapper);
+        List<Hierarchy> children = hierarchyService.list(wrapper);
 
         // 递归查找子级，但只在子级不匹配目标类型时才继续
         for (Hierarchy child : children) {
