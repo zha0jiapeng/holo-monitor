@@ -99,8 +99,8 @@ public class HierarchyController extends BaseController {
     @SaCheckPermission("hm:hierarchy:query")
     @GetMapping("/{id}")
     public R<HierarchyVo> getInfo(@NotNull(message = "主键不能为空")
-                                 @PathVariable("id") Long id) {
-        return R.ok(hierarchyService.queryById(id));
+                                 @PathVariable("id") Long id,boolean needProperty) {
+        return R.ok(hierarchyService.queryById(id,needProperty));
     }
 
     /**
@@ -161,4 +161,11 @@ public class HierarchyController extends BaseController {
             @NotNull(message = "目标类型ID不能为空") @PathVariable("targetTypeId") Long targetTypeId) {
         return R.ok(hierarchyService.getDescendantsByType(hierarchyId, targetTypeId));
     }
+
+    @SaCheckPermission("hm:hierarchy:list")
+    @GetMapping("/sensor/list/{hierarchyId}")
+    public R<List<HierarchyVo>> getSensorListByDeviceId(@PathVariable("hierarchyId") Long hierarchyId) {
+        return R.ok(hierarchyService.getSensorListByDeviceId(hierarchyId));
+    }
+
 }

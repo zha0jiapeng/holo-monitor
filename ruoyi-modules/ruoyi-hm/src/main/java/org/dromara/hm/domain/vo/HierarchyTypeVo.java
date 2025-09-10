@@ -63,4 +63,6 @@ public class HierarchyTypeVo implements Serializable {
     @TableField(exist = false)
     private List<HierarchyTypeProperty> properties;
 
+    private String typeKey;
+
 }

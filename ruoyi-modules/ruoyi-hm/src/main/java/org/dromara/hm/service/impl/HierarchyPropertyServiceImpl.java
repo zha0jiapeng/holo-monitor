@@ -9,19 +9,24 @@ import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.HierarchyProperty;
+import org.dromara.hm.domain.HierarchyTypeProperty;
 import org.dromara.hm.domain.HierarchyTypePropertyDict;
 import org.dromara.hm.domain.bo.HierarchyPropertyBo;
 import org.dromara.hm.domain.vo.HierarchyPropertyVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
+import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.enums.DataTypeEnum;
 import org.dromara.hm.mapper.HierarchyMapper;
 import org.dromara.hm.mapper.HierarchyPropertyMapper;
 import org.dromara.hm.mapper.HierarchyTypePropertyDictMapper;
 import org.dromara.hm.mapper.HierarchyTypePropertyMapper;
 import org.dromara.hm.service.IHierarchyPropertyService;
+import org.dromara.hm.service.IHierarchyService;
+import org.dromara.hm.service.IHierarchyTypePropertyService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,18 +41,16 @@ import java.util.List;
  */
 @RequiredArgsConstructor
 @Service
-public class HierarchyPropertyServiceImpl implements IHierarchyPropertyService {
+public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyMapper, HierarchyProperty>  implements IHierarchyPropertyService {
 
     private final HierarchyPropertyMapper baseMapper;
-    private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
-    private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
+    private final IHierarchyTypePropertyService hierarchyTypePropertyService;
+    private final IHierarchyService hierarchyService;
 
     @Override
     public HierarchyPropertyVo queryById(Long id) {
         HierarchyPropertyVo hierarchyPropertyVo = baseMapper.selectVoById(id);
-        HierarchyTypePropertyVo hierarchyTypePropertyVo = hierarchyTypePropertyMapper.selectVoById(hierarchyPropertyVo.getTypePropertyId());
-        HierarchyTypePropertyDictVo hierarchyTypePropertyDictVo = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypePropertyVo.getPropertyDictId());
-        hierarchyTypePropertyVo.setDict(hierarchyTypePropertyDictVo);
+        HierarchyTypePropertyVo hierarchyTypePropertyVo = hierarchyTypePropertyService.queryById(hierarchyPropertyVo.getTypePropertyId());
         hierarchyPropertyVo.setTypeProperty(hierarchyTypePropertyVo);
         return hierarchyPropertyVo;
     }
@@ -57,12 +60,8 @@ public class HierarchyPropertyServiceImpl implements IHierarchyPropertyService {
         LambdaQueryWrapper<HierarchyProperty> lqw = buildQueryWrapper(bo);
         Page<HierarchyPropertyVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
         for (HierarchyPropertyVo record : result.getRecords()) {
-            HierarchyTypePropertyVo hierarchyTypePropertyVo = hierarchyTypePropertyMapper.selectVoById(record.getTypePropertyId());
-            if(hierarchyTypePropertyVo!=null){
-                HierarchyTypePropertyDictVo hierarchyTypePropertyDictVo = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypePropertyVo.getPropertyDictId());
-                hierarchyTypePropertyVo.setDict(hierarchyTypePropertyDictVo);
-                record.setTypeProperty(hierarchyTypePropertyVo);
-            }
+            HierarchyTypePropertyVo hierarchyTypePropertyVo = hierarchyTypePropertyService.queryById(record.getTypePropertyId());
+            record.setTypeProperty(hierarchyTypePropertyVo);
         }
         return TableDataInfo.build(result);
     }
@@ -112,6 +111,22 @@ public class HierarchyPropertyServiceImpl implements IHierarchyPropertyService {
         if (update != null) {
             validEntityBeforeSave(update);
         }
+        //TODO 传感器绑定设备反向关系 目前没法建立 没有typePropertyId
+//        HierarchyTypePropertyVo hierarchyTypeProperty = hierarchyTypePropertyService.queryById(bo.getTypePropertyId());
+//        if(hierarchyTypeProperty.getDict().getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())){
+//            String[] split = bo.getPropertyValue().split("\\,");
+//            for (String hierarchyIdStr : split) {
+//                Long hierarchyId = Long.valueOf(hierarchyIdStr);
+//                HierarchyVo hierarchyVo = hierarchyService.queryById(hierarchyId, false);
+//                HierarchyProperty hierarchyProperty = new  HierarchyProperty();
+//                hierarchyProperty.setScope(0);
+//                hierarchyProperty.setTypePropertyId();
+//                hierarchyProperty.setHierarchyId(hierarchyId);
+//                hierarchyProperty.setPropertyValue(bo.getHierarchyId() + "");
+//                baseMapper.insert(hierarchyProperty);
+//            }
+//        }
+
         return baseMapper.updateById(update) > 0;
     }
 

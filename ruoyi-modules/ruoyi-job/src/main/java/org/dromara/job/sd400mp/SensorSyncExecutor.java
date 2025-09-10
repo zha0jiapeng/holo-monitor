@@ -80,12 +80,14 @@ public class SensorSyncExecutor {
                     JSONArray onlines = (JSONArray) online;
                     for (Object o : onlines) {
                         JSONObject item = (JSONObject) o;
+                        Object key = item.get("key");
                         LocalDateTime parse = LocalDateTime.parse(item.getStr("dt"));
                         long count = hierarchyDataService.count(new LambdaQueryWrapper<HierarchyData>()
                             .eq(HierarchyData::getHierarchyId, hierarchyVo.getId())
+                            .eq(HierarchyData::getTag, key)
                             .eq(HierarchyData::getTime, parse)
                         );
-                        if(count!=0) {
+                        if(count == 0 && !key.toString().startsWith("sys:cs")) {
                             HierarchyDataBo hierarchyData = new HierarchyDataBo();
                             hierarchyData.setHierarchyId(Long.valueOf(hierarchyVo.getId()));
                             hierarchyData.setTime(parse);

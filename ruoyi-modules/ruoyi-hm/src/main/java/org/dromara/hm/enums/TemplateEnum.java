@@ -18,7 +18,10 @@ import java.util.stream.Collectors;
 public enum TemplateEnum {
 
 
-    PD("局放配置", "[{\"name\":\"magnitude\",\"value\":\"sys:cs\",\"cn\":\"离线状态\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"magnitude\",\"value\":\"/mont/pd/mag\",\"cn\":\"幅值\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"magnitude\",\"value\":\"/mont/pd/au\",\"cn\":\"幅值单位\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"st\",\"cn\":\"报警状态\",\"hidden\":1,\"value\":\"/sys/st\",\"data_type\":\"1\"}]");
+    PD("局放配置", "[{\"name\":\"magnitude\",\"value\":\"sys:cs\",\"cn\":\"离线状态\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"magnitude\",\"value\":\"mont/pd/mag\",\"cn\":\"幅值\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"magnitude\",\"value\":\"mont/pd/au\",\"cn\":\"幅值单位\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"st\",\"cn\":\"报警状态\",\"hidden\":1,\"value\":\"sys:st\",\"data_type\":\"1\"}]"),
+    SF6("六氟化硫", "[{\"name\":\"magnitude\",\"value\":\"sys:cs\",\"cn\":\"离线状态\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"st\",\"cn\":\"报警状态\",\"hidden\":1,\"value\":\"sys:st\",\"data_type\":\"1\"},{\"name\":\"SF6temp\",\"value\":\"custom:SF6temp\",\"cn\":\"温度\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"SF6NormHum\",\"value\":\"custom:SF6NormHum\",\"cn\":\"带压微水\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"SF6Dens\",\"value\":\"custom:SF6Dens\",\"cn\":\"密度\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"SF6NormHum@20\",\"value\":\"custom:SF6NormHum@20\",\"cn\":\"常压微水20℃\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"SF6PressHum\",\"value\":\"custom:SF6PressHum\",\"cn\":\"常压微水\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"SF6Press\",\"value\":\"custom:SF6Press\",\"cn\":\"压力\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"SF6Dew\",\"value\":\"custom:SF6Dew\",\"cn\":\"露点\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"SF6Press@20\",\"value\":\"custom:SF6Press@20\",\"cn\":\"压力@20℃\",\"hidden\":1,\"data_type\":\"1\"},{\"name\":\"thr\",\"value\":\"custom:sys:st/thr\",\"cn\":\"状态\",\"hidden\":1,\"data_type\":\"1\"}]")
+
+    ;
 
 
     private final String name;

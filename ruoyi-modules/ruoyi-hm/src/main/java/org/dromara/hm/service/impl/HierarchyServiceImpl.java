@@ -1,5 +1,7 @@
 package org.dromara.hm.service.impl;
 
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -9,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.utils.StringUtils;
+import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.*;
@@ -41,16 +44,16 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     private final HierarchyTypeMapper hierarchyTypeMapper;
     private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
     private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
-    private final TestpointMapper testpointMapper;
 
     @Override
-    public HierarchyVo queryById(Long id) {
+    public HierarchyVo queryById(Long id, boolean needProperty) {
         HierarchyVo hierarchyVo = baseMapper.selectVoById(id);
-        List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
-            Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, id)
-        );
-        initProperty(properties);
-        hierarchyVo.setProperties(properties);
+        if(needProperty) {
+            List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
+                Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, id)
+            );
+            initProperty(properties,hierarchyVo);
+        }
         return hierarchyVo;
     }
 
@@ -64,8 +67,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
                     Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, vo.getId())
                 );
-                initProperty(properties);
-                vo.setProperties(properties);
+                initProperty(properties,vo);
             }
         }
         return TableDataInfo.build(result);
@@ -390,11 +392,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             validEntityBeforeSave(add);
         }
         if(bo.getCode() == null){
-            // 自动生成编码
-            String autoCode = generateAutoCode(bo.getTypeId(), codeLength);
-            if (add != null) {
-                add.setCode(autoCode);
-            }
+            //TODO 自动生成编码
         }
         boolean flag = baseMapper.insert(add) > 0;
         if (flag) {
@@ -414,22 +412,12 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     private void initProperty(HierarchyBo bo, HierarchyType type) {
         List<HierarchyProperty> extraProperties = new ArrayList<>();
         Long hierarchyId = bo.getId();
-
-        // 设置所有用户属性的hierarchyId
         bo.getProperties().forEach(property -> property.setHierarchyId(hierarchyId));
-
-        // 查找级联属性并设置父级关系
         Long parentHierarchyId = findCascadeParentAndSetRelation(bo.getProperties(), hierarchyId);
-
-        // 创建父级的所有隐藏属性
         if (parentHierarchyId != null) {
             createHiddenPropertiesFromParent(hierarchyId, parentHierarchyId, extraProperties);
         }
-
-        // 批量插入属性
         batchInsertProperties(bo.getProperties(), extraProperties);
-
-        // 返回是否需要生成编码的标志
         bo.setNeedGenerateCode(isBottomLevel(bo.getTypeId()) && type.getCascadeFlag());
     }
 
@@ -541,23 +529,11 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
     @Override
     public List<HierarchyVo> getBottomLevelWithConfiguration() {
-        // 1. 获取所有层级类型
-        List<HierarchyType> allTypes = hierarchyTypeMapper.selectList(null);
-
-        // 2. 找出最底层的层级类型（没有其他类型以它作为级联父级）
-        List<Long> bottomLevelTypeIds = allTypes.stream()
-            .filter(type -> isBottomLevel(type.getId()))
-            .map(HierarchyType::getId)
-            .collect(Collectors.toList());
-
-        if (bottomLevelTypeIds.isEmpty()) {
-            return new ArrayList<>();
-        }
 
         // 3. 获取最底层类型的层级数据
         List<Hierarchy> bottomHierarchies = baseMapper.selectList(
             Wrappers.<Hierarchy>lambdaQuery()
-                .in(Hierarchy::getTypeId, bottomLevelTypeIds)
+                .eq(Hierarchy::getTypeId, 19)
         );
 
         if (bottomHierarchies.isEmpty()) {
@@ -622,8 +598,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 );
 
                 // 为属性填充类型信息
-                initProperty(properties);
-                vo.setProperties(properties);
+                initProperty(properties,vo);
                 result.add(vo);
             }
         }
@@ -648,13 +623,47 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
                 Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, hierarchy.getId())
             );
-            initProperty(properties);
-            hierarchy.setProperties(properties);
+            initProperty(properties,hierarchy);
         }
         return hierarchies;
     }
 
-    private void initProperty(List<HierarchyPropertyVo> properties) {
+    @Override
+    public List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId) {
+        List<HierarchyVo> list = new ArrayList<>();
+        HierarchyVo hierarchy = queryById(hierarchyId,true);
+        if(hierarchy.isHaveSensorFlag()){
+            String sensorStrs = "";
+            for (HierarchyPropertyVo property : hierarchy.getProperties()) {
+                if(property.getTypeProperty().getDict().getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())){
+                    sensorStrs = property.getPropertyValue();
+                    break;
+                }
+            }
+            String[] split = sensorStrs.split("\\,");
+            for (String sensorIdStr : split) {
+                HierarchyVo hierarchyVo = queryById(Long.valueOf(sensorIdStr), true);
+
+                //TODO 可视化 400MP 数据
+                List<String> tags = List.of("sys:cs","mont/pd/mag","mont/pd/au","sys:st");;
+                JSONObject entries = SD400MPUtils.testpointFind(hierarchyVo.getCode());
+                if(entries.getInt("code") == 200){
+                    String id = entries.getJSONObject("data").getStr("id");
+                    JSONObject data = SD400MPUtils.data(Long.valueOf(id), tags, null);
+                    if(data.getInt("code")==200){
+                        Object online = data.getByPath("data.groups[0].online");
+                        if(online==null) continue;
+                        JSONArray onlines = (JSONArray) online;
+                        hierarchyVo.setDataSet(onlines);
+                    }
+                }
+                list.add(hierarchyVo);
+            }
+        }
+        return list;
+    }
+
+    private void initProperty(List<HierarchyPropertyVo> properties,HierarchyVo hierarchyVo) {
         for (HierarchyPropertyVo prop : properties) {
             HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());
             if (typeProp != null) {
@@ -664,113 +673,13 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 if(dict.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())){
                     prop.setHierarchyName(baseMapper.selectById(Long.valueOf(prop.getPropertyValue())).getName());
                 }
-            }
-        }
-    }
-
-    /**
-     * 生成自动递增编码
-     *
-     * @param typeId 层级类型ID
-     * @param codeLength 编码长度
-     * @return 生成的编码字符串
-     */
-    private String generateAutoCode(Long typeId, Integer codeLength) {
-        // 查询该类型下所有现有的编码
-        List<Hierarchy> hierarchies = baseMapper.selectList(
-            Wrappers.<Hierarchy>lambdaQuery()
-                .eq(Hierarchy::getTypeId, typeId)
-                .isNotNull(Hierarchy::getCode)
-                .ne(Hierarchy::getCode, "")
-                .orderByDesc(Hierarchy::getId)
-        );
-
-        // 提取所有编码
-        Set<String> existingCodes = hierarchies.stream()
-            .map(Hierarchy::getCode)
-            .filter(code -> code != null && !code.isEmpty() && code.length() == codeLength)
-            .collect(Collectors.toSet());
-
-        // 从00开始递增，直到找到一个不存在的编码
-        return generateNextCode(existingCodes, codeLength);
-    }
-
-    /**
-     * 生成下一个可用的编码
-     *
-     * @param existingCodes 现有编码集合
-     * @param codeLength 编码长度
-     * @return 下一个可用的编码
-     */
-    private String generateNextCode(Set<String> existingCodes, int codeLength) {
-        // 从01开始（跳过00）
-        if (codeLength == 2 && existingCodes.isEmpty()) {
-            return "01";
-        }
-
-        // 生成所有可能的编码组合，按指定顺序排序
-        List<String> allPossibleCodes = generateAllPossibleCodes(codeLength);
-
-        // 找到第一个不存在的编码
-        for (String code : allPossibleCodes) {
-            if (!existingCodes.contains(code)) {
-                return code;
-            }
-        }
-
-        // 如果所有编码都已存在，抛出异常
-        throw new ServiceException("已达到最大编码数量，无法生成新的编码");
-    }
-
-    /**
-     * 生成所有可能的编码组合，按照指定顺序
-     *
-     * @param codeLength 编码长度
-     * @return 排序后的编码列表
-     */
-    private List<String> generateAllPossibleCodes(int codeLength) {
-        List<String> codes = new ArrayList<>();
-        final String DIGITS = "0123456789";
-        final String LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-        if (codeLength == 2) {
-            // 第一位
-            for (char first : (DIGITS + LETTERS).toCharArray()) {
-                // 第二位
-                for (char second : (DIGITS + LETTERS).toCharArray()) {
-                    // 跳过00，从01开始
-                    if (first == '0' && second == '0') {
-                        continue;
-                    }
-                    codes.add("" + first + second);
+                if(dict.getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())){
+                    hierarchyVo.setHaveSensorFlag(true);
                 }
             }
-        } else {
-            // 对于其他长度，使用递归生成
-            generateCodesRecursive(codes, new char[codeLength], 0, DIGITS + LETTERS);
-            // 移除全0的编码
-            String allZeros = String.join("", java.util.Collections.nCopies(codeLength, "0"));
-            codes.removeIf(code -> code.equals(allZeros));
         }
-
-        return codes;
+        hierarchyVo.setProperties(properties);
     }
-
-    /**
-     * 递归生成编码组合
-     */
-    private void generateCodesRecursive(List<String> codes, char[] current, int position, String charset) {
-        if (position == current.length) {
-            codes.add(new String(current));
-            return;
-        }
-
-        for (char c : charset.toCharArray()) {
-            current[position] = c;
-            generateCodesRecursive(codes, current, position + 1, charset);
-        }
-    }
-
 
 }
 

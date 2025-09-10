@@ -46,4 +46,6 @@ public class HierarchyType {
      * 编码排序
      */
     private Integer codeSort;
+
+    private String typeKey;
 }

@@ -43,11 +43,11 @@
          return R.ok(result);
      }
 
-//     @GetMapping("/getEquipmentDetailStatistics")
-//     public R<Map<String,Object>> getEquipmentDetailStatistics(Long hierarchyId) {
-//        Map<String,Object> result =  statisticsService.getEquipmentDetailStatistics(hierarchyId);
-//        return R.ok(result);
-//     }
+     @GetMapping("/alarm")
+     public R<Map<String,Object>> alarm(Long hierarchyId,Long targetTypeId,Integer statisticalType) {
+        Map<String,Object> result =  statisticsService.alarm(hierarchyId,targetTypeId,statisticalType);
+        return R.ok(result);
+     }
 
 //     @GetMapping("/getTestpointDetailStatistics")
 //     public R<Map<String,Object>> getTestpointDetailStatistics(Long hierarchyId) {

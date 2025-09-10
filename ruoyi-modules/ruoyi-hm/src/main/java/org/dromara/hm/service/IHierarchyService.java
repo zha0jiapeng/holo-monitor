@@ -24,7 +24,7 @@ public interface IHierarchyService extends IService<Hierarchy> {
      * @param id 主键ID
      * @return 层级视图对象
      */
-    HierarchyVo queryById(Long id);
+    HierarchyVo queryById(Long id, boolean needProperty);
 
     /**
      * 查询列表
@@ -101,4 +101,6 @@ public interface IHierarchyService extends IService<Hierarchy> {
     List<Long> selectTargetTypeHierarchyList(List<Long> longs, Long targetTypeId);
 
     List<HierarchyVo> selectByIds(List<Long> matchedIds);
+
+    List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId);
 }

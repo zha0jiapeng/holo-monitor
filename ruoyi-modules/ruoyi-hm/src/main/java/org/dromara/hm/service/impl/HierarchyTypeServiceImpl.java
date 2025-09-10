@@ -94,6 +94,7 @@ public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
         lqw.eq(bo.getCascadeParentId() != null, HierarchyType::getCascadeParentId, bo.getCascadeParentId());
         lqw.eq(bo.getCodeLength() != null, HierarchyType::getCodeLength, bo.getCodeLength());
         lqw.eq(bo.getCodeSort() != null, HierarchyType::getCodeSort, bo.getCodeSort());
+        lqw.eq(bo.getTypeKey() != null, HierarchyType::getTypeKey, bo.getTypeKey());
         lqw.orderByAsc(HierarchyType::getId);
         return lqw;
     }

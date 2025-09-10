@@ -95,4 +95,6 @@
      }
 
      List<HierarchyVo> getNextHierarchyList(Long hierarchyId, Long targetTypeId);
+
+     Map<String, Object> alarm(Long hierarchyId, Long targetTypeId, Integer statisticalType);
  }

@@ -1,7 +1,9 @@
 package org.dromara.hm.domain.vo;
 
+import cn.hutool.json.JSONArray;
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import com.github.therapi.runtimejavadoc.repack.com.eclipsesource.json.JsonObject;
 import org.dromara.common.excel.annotation.ExcelRequired;
 import org.dromara.hm.domain.Hierarchy;
 import io.github.linpeilie.annotations.AutoMapper;
@@ -61,5 +63,9 @@ public class HierarchyVo implements Serializable {
 
     // 添加字段
     private List<HierarchyPropertyVo> properties;
+
+    private JSONArray dataSet;
+
+    private boolean haveSensorFlag;
 
 }

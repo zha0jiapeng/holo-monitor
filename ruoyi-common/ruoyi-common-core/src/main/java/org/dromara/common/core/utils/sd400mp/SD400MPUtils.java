@@ -281,7 +281,60 @@ public class SD400MPUtils {
                 .execute().body();
         return JSONUtil.parseObj(body);
     }
+    /**
+     * 获取事件列表（使用MPIDMultipleJson格式）
+     *
+     * @param idEquipment 设备ID
+     * @param from 开始时间
+     * @param to 结束时间
+     * @param testpoints 测点ID对象，可为null
+     * @param withConnectionState 是否包含连接状态
+     * @return 事件列表响应对象，如果失败返回null
+     */
+    public static JSONObject events(String idEquipment, String from, String to, MPIDMultipleJson testpoints, boolean withConnectionState) {
+        try {
+            // 构建请求参数
+            Map<String, Object> requestMap = new HashMap<>(2);
+            requestMap.put("token", getToken());
 
+            Map<String, Object> dataMap = new HashMap<>();
+            dataMap.put("id", idEquipment);
+            dataMap.put("from", from);
+            dataMap.put("to", to);
+            dataMap.put("withConnectionState", withConnectionState);
 
+            if (testpoints != null) {
+                dataMap.put("testpoints", testpoints);
+            }
 
+            requestMap.put("data", dataMap);
+
+            System.out.println(JSONUtil.toJsonStr(requestMap));
+
+            // 发送请求
+            String responseBody = HttpUtil.createPost(URI + "/api/events")
+                    .body(JSONUtil.toJsonStr(requestMap), ContentType.JSON.toString())
+                    .execute()
+                    .body();
+
+            // 解析响应
+            JSONObject response = JSONUtil.parseObj(responseBody);
+            if (response == null) {
+                log.error("请求事件接口返回数据为空 - idEquipment:{}, from:{}, to:{}", idEquipment, from, to);
+                return null;
+            }
+
+            // 检查响应状态
+            Integer code = response.getInt("code");
+            if (code == null || code != 200) {
+                log.error("请求事件接口失败 - code:{}, idEquipment:{}, from:{}, to:{}", code, idEquipment, from, to);
+                return null;
+            }
+
+            return response;
+        } catch (Exception e) {
+            log.error("获取事件列表异常 - idEquipment:{}, from:{}, to:{}", idEquipment, from, to, e);
+            return null;
+        }
+    }
 }

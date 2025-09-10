@@ -1,7 +1,9 @@
 package org.dromara.hm.service;
 
+import com.baomidou.mybatisplus.extension.service.IService;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
+import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.bo.HierarchyPropertyBo;
 import org.dromara.hm.domain.vo.HierarchyPropertyVo;
@@ -15,7 +17,7 @@ import java.util.List;
  * @author Mashir0
  * @date 2024-01-01
  */
-public interface IHierarchyPropertyService {
+public interface IHierarchyPropertyService extends IService<HierarchyProperty> {
 
     /**
      * 查询单个
