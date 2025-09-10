@@ -381,12 +381,20 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     public Boolean insertByBo(HierarchyBo bo) {
         String code = bo.getCode();
         HierarchyType type = hierarchyTypeMapper.selectById(bo.getTypeId());
-        if(code!=null&&!type.getCodeLength().equals(code.length())) {
+        Integer codeLength = type.getCodeLength();
+        if(code!=null&&!codeLength.equals(code.length())) {
             return false;
         }
         Hierarchy add = MapstructUtils.convert(bo, Hierarchy.class);
         if (add != null) {
             validEntityBeforeSave(add);
+        }
+        if(bo.getCode() == null){
+            // 自动生成编码
+            String autoCode = generateAutoCode(bo.getTypeId(), codeLength);
+            if (add != null) {
+                add.setCode(autoCode);
+            }
         }
         boolean flag = baseMapper.insert(add) > 0;
         if (flag) {
@@ -426,6 +434,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     }
 
     @Override
+    @Transactional()
     public Boolean updateByBo(HierarchyBo bo) {
         Hierarchy update = MapstructUtils.convert(bo, Hierarchy.class);
         if (update != null) {
@@ -438,16 +447,6 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 .eq(HierarchyProperty::getTypePropertyId,property.getTypePropertyId())
                 .eq(HierarchyProperty::getHierarchyId,bo.getId())
             );
-
-            String[] split = property.getPropertyValue().split(",");
-            for (String s : split) {
-                Testpoint testpoint = new Testpoint();
-                testpoint.setId(Long.valueOf(s));
-                testpoint.setHierarchyOwnerId(bo.getId());
-                testpointMapper.updateById(testpoint);
-            }
-
-
         }
 
         return baseMapper.updateById(update) > 0;
@@ -666,6 +665,109 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                     prop.setHierarchyName(baseMapper.selectById(Long.valueOf(prop.getPropertyValue())).getName());
                 }
             }
+        }
+    }
+
+    /**
+     * 生成自动递增编码
+     *
+     * @param typeId 层级类型ID
+     * @param codeLength 编码长度
+     * @return 生成的编码字符串
+     */
+    private String generateAutoCode(Long typeId, Integer codeLength) {
+        // 查询该类型下所有现有的编码
+        List<Hierarchy> hierarchies = baseMapper.selectList(
+            Wrappers.<Hierarchy>lambdaQuery()
+                .eq(Hierarchy::getTypeId, typeId)
+                .isNotNull(Hierarchy::getCode)
+                .ne(Hierarchy::getCode, "")
+                .orderByDesc(Hierarchy::getId)
+        );
+
+        // 提取所有编码
+        Set<String> existingCodes = hierarchies.stream()
+            .map(Hierarchy::getCode)
+            .filter(code -> code != null && !code.isEmpty() && code.length() == codeLength)
+            .collect(Collectors.toSet());
+
+        // 从00开始递增，直到找到一个不存在的编码
+        return generateNextCode(existingCodes, codeLength);
+    }
+
+    /**
+     * 生成下一个可用的编码
+     *
+     * @param existingCodes 现有编码集合
+     * @param codeLength 编码长度
+     * @return 下一个可用的编码
+     */
+    private String generateNextCode(Set<String> existingCodes, int codeLength) {
+        // 从01开始（跳过00）
+        if (codeLength == 2 && existingCodes.isEmpty()) {
+            return "01";
+        }
+
+        // 生成所有可能的编码组合，按指定顺序排序
+        List<String> allPossibleCodes = generateAllPossibleCodes(codeLength);
+
+        // 找到第一个不存在的编码
+        for (String code : allPossibleCodes) {
+            if (!existingCodes.contains(code)) {
+                return code;
+            }
+        }
+
+        // 如果所有编码都已存在，抛出异常
+        throw new ServiceException("已达到最大编码数量，无法生成新的编码");
+    }
+
+    /**
+     * 生成所有可能的编码组合，按照指定顺序
+     *
+     * @param codeLength 编码长度
+     * @return 排序后的编码列表
+     */
+    private List<String> generateAllPossibleCodes(int codeLength) {
+        List<String> codes = new ArrayList<>();
+        final String DIGITS = "0123456789";
+        final String LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+        if (codeLength == 2) {
+            // 第一位
+            for (char first : (DIGITS + LETTERS).toCharArray()) {
+                // 第二位
+                for (char second : (DIGITS + LETTERS).toCharArray()) {
+                    // 跳过00，从01开始
+                    if (first == '0' && second == '0') {
+                        continue;
+                    }
+                    codes.add("" + first + second);
+                }
+            }
+        } else {
+            // 对于其他长度，使用递归生成
+            generateCodesRecursive(codes, new char[codeLength], 0, DIGITS + LETTERS);
+            // 移除全0的编码
+            String allZeros = String.join("", java.util.Collections.nCopies(codeLength, "0"));
+            codes.removeIf(code -> code.equals(allZeros));
+        }
+
+        return codes;
+    }
+
+    /**
+     * 递归生成编码组合
+     */
+    private void generateCodesRecursive(List<String> codes, char[] current, int position, String charset) {
+        if (position == current.length) {
+            codes.add(new String(current));
+            return;
+        }
+
+        for (char c : charset.toCharArray()) {
+            current[position] = c;
+            generateCodesRecursive(codes, current, position + 1, charset);
         }
     }
 

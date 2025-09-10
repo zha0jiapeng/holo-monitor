@@ -36,7 +36,7 @@ public class HierarchyPropertyBo {
      * 属性key
      */
     @NotBlank(message = "属性key不能为空", groups = {AddGroup.class})
-    private String typePropertyId;
+    private Long typePropertyId;
 
     /**
      * 属性值

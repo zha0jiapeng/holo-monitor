@@ -85,7 +85,7 @@ public class HierarchyPropertyServiceImpl implements IHierarchyPropertyService {
     private LambdaQueryWrapper<HierarchyProperty> buildQueryWrapper(HierarchyPropertyBo bo) {
         LambdaQueryWrapper<HierarchyProperty> lqw = Wrappers.lambdaQuery();
         lqw.eq(bo.getHierarchyId() != null, HierarchyProperty::getHierarchyId, bo.getHierarchyId());
-        lqw.like(StringUtils.isNotBlank(bo.getTypePropertyId()), HierarchyProperty::getTypePropertyId, bo.getTypePropertyId());
+        lqw.eq(bo.getTypePropertyId()!=null, HierarchyProperty::getTypePropertyId, bo.getTypePropertyId());
         lqw.orderByAsc(HierarchyProperty::getId);
         return lqw;
     }
