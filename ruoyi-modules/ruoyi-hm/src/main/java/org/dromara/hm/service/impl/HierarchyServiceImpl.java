@@ -178,14 +178,14 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
         // 拼装属性编码前缀
         String codePrefix = String.join("", codeParts);
-        
+
         // 获取当前层级类型信息用于确定编码长度
         Integer codeLength = 3; // 默认长度3
         if (current != null) {
             HierarchyType currentType = hierarchyTypeMapper.selectById(current.getTypeId());
             codeLength = (currentType != null && currentType.getCodeLength() != null) ? currentType.getCodeLength() : 3;
         }
-        
+
         // 根据前缀生成完整编码
         String completeCode = generateCompleteCodeWithPrefix(codePrefix, codeLength);
 
@@ -209,47 +209,47 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         if (codePrefix == null || codePrefix.isEmpty()) {
             return null;
         }
-        
+
         if (codeLength == null || codeLength <= 0) {
             codeLength = 3; // 默认长度3
         }
-        
+
         // 查找数据库中以该前缀开头的编码，按id倒序取最大的一个
         LambdaQueryWrapper<Hierarchy> queryWrapper = Wrappers.<Hierarchy>lambdaQuery()
             .likeRight(Hierarchy::getCode, codePrefix) // code LIKE '前缀%'
             .isNotNull(Hierarchy::getCode)
             .orderByDesc(Hierarchy::getId)
             .last("LIMIT 1");
-        
+
         Hierarchy latestHierarchy = baseMapper.selectOne(queryWrapper);
-        
+
         if (latestHierarchy == null || latestHierarchy.getCode() == null) {
             // 没有找到已有编码，生成第一个编码：前缀 + 001（根据长度补零）
             return codePrefix + String.format("%0" + codeLength + "d", 1);
         }
-        
+
         String existingCode = latestHierarchy.getCode();
-        
+
         // 找到了已有编码，提取后缀部分并递增
         if (existingCode.length() <= codePrefix.length() || !existingCode.startsWith(codePrefix)) {
             // 如果现有编码长度不足或不是以前缀开头，重新开始：前缀 + 001
             return codePrefix + String.format("%0" + codeLength + "d", 1);
         }
-        
+
         // 提取后缀部分
         String suffix = existingCode.substring(codePrefix.length());
-        
+
         // 根据后缀长度确定实际的编码长度（不依赖传入的codeLength参数）
         int actualCodeLength = suffix.length();
-        
+
         // 尝试将后缀解析为数字并递增
         try {
             int suffixNumber = Integer.parseInt(suffix);
             int nextNumber = suffixNumber + 1;
-            
+
             // 使用实际的后缀长度来格式化数字，保持长度一致
             return codePrefix + String.format("%0" + actualCodeLength + "d", nextNumber);
-            
+
         } catch (NumberFormatException e) {
             // 后缀不是纯数字，使用现有的字母递增逻辑
             String nextAlphaSuffix = generateNextCodeFromExisting(suffix, actualCodeLength);
@@ -407,7 +407,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 }
             }
         }
-        
+
         // 然后生成完整编码
         Map<String, Object> result = generateHierarchyCode(hierarchyId);
         if (result != null) {
@@ -1027,7 +1027,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         if (currentCode == null || currentCode.length() != codeLength) {
             return generateFirstCode(codeLength);
         }
-        
+
         // 检查当前编码是否全为数字
         if (isAllDigits(currentCode)) {
             // 如果是全数字，尝试数字递增
@@ -1042,7 +1042,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             return incrementAlphaCode(currentCode, codeLength);
         }
     }
-    
+
     /**
      * 检查字符串是否全为数字
      */
@@ -1054,14 +1054,14 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         }
         return true;
     }
-    
+
     /**
      * 递增纯数字编码
      */
     private String incrementNumericCode(String currentCode) {
         char[] codeArray = currentCode.toCharArray();
         int codeLength = codeArray.length;
-        
+
         // 从最后一位开始递增
         for (int i = codeLength - 1; i >= 0; i--) {
             if (codeArray[i] < '9') {
@@ -1077,7 +1077,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         }
         return null;
     }
-    
+
     /**
      * 获取第一个字母编码
      * 例如：长度2时返回"0A"，长度3时返回"00A"
@@ -1090,18 +1090,18 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         code.append("A");
         return code.toString();
     }
-    
+
     /**
      * 递增字母编码（已包含字母的编码）
      */
     private String incrementAlphaCode(String currentCode, Integer codeLength) {
         char[] codeArray = currentCode.toCharArray();
-        
+
         // 从最后一位开始进位
         for (int i = codeLength - 1; i >= 0; i--) {
             char currentChar = codeArray[i];
             char nextChar = getNextAlphaChar(currentChar);
-            
+
             if (nextChar != '0') {
                 // 当前位可以进位，不需要向前进位
                 codeArray[i] = nextChar;
@@ -1117,10 +1117,10 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 // 继续向前进位
             }
         }
-        
+
         return new String(codeArray);
     }
-    
+
     /**
      * 获取字母编码中字符的下一个字符
      * 0-9 -> 1-9,A

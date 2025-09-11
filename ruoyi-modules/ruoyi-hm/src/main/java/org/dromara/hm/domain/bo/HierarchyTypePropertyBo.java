@@ -8,6 +8,7 @@ import lombok.Data;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.dromara.hm.domain.HierarchyTypePropertyDict;
 
 /**
  * 层级类型属性业务对象 hm_hierarchy_type_property
@@ -42,5 +43,7 @@ public class HierarchyTypePropertyBo {
      * 是否必填
      */
     private Integer required;
+
+    private HierarchyTypePropertyDict dict;
 
 }

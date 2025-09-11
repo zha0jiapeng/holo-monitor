@@ -57,4 +57,6 @@ public class HierarchyTypeBo {
 
     private String typeKey;
 
+
+
 }

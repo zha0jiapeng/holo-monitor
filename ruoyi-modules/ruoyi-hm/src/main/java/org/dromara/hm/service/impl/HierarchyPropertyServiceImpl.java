@@ -121,6 +121,13 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
             for (String hierarchyIdStr : split) {
                 Long hierarchyId = Long.valueOf(hierarchyIdStr);
                 HierarchyVo hierarchyVo = hierarchyService.queryById(hierarchyId, true);
+                Long l = baseMapper.selectCount(new LambdaQueryWrapper<HierarchyProperty>()
+                    .eq(HierarchyProperty::getHierarchyId, hierarchyVo.getId())
+                    .eq(HierarchyProperty::getPropertyValue, property.getPropertyValue())
+                );
+                if(l!=0){
+                    continue;
+                }
                 HierarchyProperty hierarchyProperty = new  HierarchyProperty();
                 hierarchyProperty.setScope(0);
                 Long typeId = hierarchyVo.getTypeId();

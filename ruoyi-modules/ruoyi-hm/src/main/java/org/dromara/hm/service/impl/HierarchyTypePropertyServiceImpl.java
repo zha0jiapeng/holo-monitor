@@ -162,7 +162,6 @@ public class HierarchyTypePropertyServiceImpl extends ServiceImpl<HierarchyTypeP
 
         // 分析需要执行的操作
         List<HierarchyTypeProperty> insertList = new ArrayList<>();
-        //List<HierarchyTypeProperty> updateList = new ArrayList<>();
         List<Long> deleteIds = new ArrayList<>();
 
         // 找出需要删除的记录（现有记录中不在前端数据中的）
@@ -192,6 +191,10 @@ public class HierarchyTypePropertyServiceImpl extends ServiceImpl<HierarchyTypeP
             if (existing == null) {
                 // 不存在，则准备新增
                 insertList.add(item);
+                Long l = hierarchyMapper.selectCount(new LambdaQueryWrapper<Hierarchy>().eq(Hierarchy::getTypeId, item.getTypeId()));
+                if(l>0){
+                    throw new ServiceException("该层级类型下已有层级，不能新增关联。");
+                }
             }
         }
 
@@ -213,32 +216,32 @@ public class HierarchyTypePropertyServiceImpl extends ServiceImpl<HierarchyTypeP
             baseMapper.deleteByIds(deleteIds);
         }
 
-        // 批量执行新增
-        if (!insertList.isEmpty()) {
-            for (HierarchyTypeProperty insertItem : insertList) {
-                validEntityBeforeSave(insertItem);
-                baseMapper.insert(insertItem);
-
-                // 为所有该类型下的层级实例添加新属性
-                List<Hierarchy> hierarchies = hierarchyMapper.selectList(
-                    new LambdaQueryWrapper<Hierarchy>().eq(Hierarchy::getTypeId, insertItem.getTypeId())
-                );
-
-                List<HierarchyProperty> newProperties = new ArrayList<>();
-                for (Hierarchy hierarchy : hierarchies) {
-                    HierarchyProperty property = new HierarchyProperty();
-                    property.setHierarchyId(hierarchy.getId());
-                    property.setTypePropertyId(insertItem.getId());
-                    property.setPropertyValue(null);
-                    property.setScope(1); // 默认设置为可见
-                    newProperties.add(property);
-                }
-
-                if (!newProperties.isEmpty()) {
-                    hierarchyPropertyMapper.insertBatch(newProperties);
-                }
-            }
-        }
+//        // 批量执行新增
+//        if (!insertList.isEmpty()) {
+//            for (HierarchyTypeProperty insertItem : insertList) {
+//                validEntityBeforeSave(insertItem);
+//                baseMapper.insert(insertItem);
+//
+//                // 为所有该类型下的层级实例添加新属性
+//                List<Hierarchy> hierarchies = hierarchyMapper.selectList(
+//                    new LambdaQueryWrapper<Hierarchy>().eq(Hierarchy::getTypeId, insertItem.getTypeId())
+//                );
+//
+//                List<HierarchyProperty> newProperties = new ArrayList<>();
+//                for (Hierarchy hierarchy : hierarchies) {
+//                    HierarchyProperty property = new HierarchyProperty();
+//                    property.setHierarchyId(hierarchy.getId());
+//                    property.setTypePropertyId(insertItem.getId());
+//                    property.setPropertyValue(null);
+//                    property.setScope(1); // 默认设置为可见
+//                    newProperties.add(property);
+//                }
+//
+//                if (!newProperties.isEmpty()) {
+//                    hierarchyPropertyMapper.insertBatch(newProperties);
+//                }
+//            }
+//        }
 
         return true;
     }

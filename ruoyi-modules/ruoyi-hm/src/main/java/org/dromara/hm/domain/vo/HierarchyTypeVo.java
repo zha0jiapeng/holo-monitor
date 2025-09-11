@@ -61,7 +61,7 @@ public class HierarchyTypeVo implements Serializable {
     private Integer codeSort;
 
     @TableField(exist = false)
-    private List<HierarchyTypeProperty> properties;
+    private List<HierarchyTypePropertyVo> properties;
 
     private String typeKey;
 

@@ -13,9 +13,15 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.*;
 import org.dromara.hm.domain.bo.HierarchyTypeBo;
+import org.dromara.hm.domain.bo.HierarchyTypePropertyBo;
+import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
+import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
 import org.dromara.hm.domain.vo.HierarchyTypeVo;
 import org.dromara.hm.mapper.*;
+import org.dromara.hm.service.IHierarchyTypePropertyDictService;
+import org.dromara.hm.service.IHierarchyTypePropertyService;
 import org.dromara.hm.service.IHierarchyTypeService;
+import org.springframework.beans.BeanUtils;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
@@ -36,7 +42,7 @@ public class HierarchyTypeServiceImpl extends ServiceImpl<HierarchyTypeMapper,Hi
 
     private final HierarchyTypeMapper baseMapper;
     private final HierarchyMapper hierarchyMapper;
-    private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
+    private final IHierarchyTypePropertyService hierarchyTypePropertService;
     private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
 
     @Override
@@ -47,18 +53,14 @@ public class HierarchyTypeServiceImpl extends ServiceImpl<HierarchyTypeMapper,Hi
     }
 
     private void initVo(HierarchyTypeVo hierarchyTypeVo) {
-        List<HierarchyTypeProperty> hierarchyTypeProperties = hierarchyTypePropertyMapper.selectList(
-            new LambdaQueryWrapper<HierarchyTypeProperty>().eq(HierarchyTypeProperty::getTypeId, hierarchyTypeVo.getId()
-            ));
-        for (HierarchyTypeProperty hierarchyTypeProperty : hierarchyTypeProperties) {
-            HierarchyTypePropertyDict hierarchyTypePropertyDict = hierarchyTypePropertyDictMapper.selectById(hierarchyTypeProperty.getPropertyDictId());
-            if(hierarchyTypePropertyDict!=null){
-                hierarchyTypeProperty.setDataType(hierarchyTypePropertyDict.getDataType());
-                hierarchyTypeProperty.setDictName(hierarchyTypePropertyDict.getDictName());
-                hierarchyTypeProperty.setDictValues(hierarchyTypePropertyDict.getDictValues());
-            }
+        HierarchyTypePropertyBo bo = new HierarchyTypePropertyBo();
+        bo.setTypeId(hierarchyTypeVo.getId());
+        List<HierarchyTypePropertyVo> hierarchyTypePropertyVos = hierarchyTypePropertService.queryList(bo);
+        for (HierarchyTypePropertyVo hierarchyTypeProperty : hierarchyTypePropertyVos) {
+            HierarchyTypePropertyDictVo hierarchyTypePropertyDict = hierarchyTypePropertyDictMapper.selectVoById(hierarchyTypeProperty.getPropertyDictId());
+            hierarchyTypeProperty.setDict(hierarchyTypePropertyDict);
         }
-        hierarchyTypeVo.setProperties(hierarchyTypeProperties);
+        hierarchyTypeVo.setProperties(hierarchyTypePropertyVos);
     }
 
     @Override

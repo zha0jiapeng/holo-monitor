@@ -40,13 +40,5 @@ public class HierarchyTypeProperty {
      */
     private Integer required;
 
-    @TableField(exist = false)
-    private Integer dataType;
-
-    @TableField(exist = false)
-    private String dictName;
-
-    @TableField(exist = false)
-    private String dictValues;
 
 }
