@@ -3,6 +3,7 @@ package org.dromara.hm.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,7 +34,7 @@ import java.util.List;
  */
 @RequiredArgsConstructor
 @Service
-public class HierarchyTypePropertyDictServiceImpl implements IHierarchyTypePropertyDictService {
+public class HierarchyTypePropertyDictServiceImpl extends ServiceImpl<HierarchyTypePropertyDictMapper,HierarchyTypePropertyDict> implements IHierarchyTypePropertyDictService {
 
     private final HierarchyTypePropertyDictMapper baseMapper;
     private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
@@ -132,6 +133,9 @@ public class HierarchyTypePropertyDictServiceImpl implements IHierarchyTypePrope
                 wrapper.eq(HierarchyTypeProperty::getPropertyDictId, dict.getId());
                 if (hierarchyTypePropertyMapper.exists(wrapper)) {
                     throw new ServiceException("字典项【" + dict.getDictName() + "】正在被使用，无法删除!");
+                }
+                if(dict.getSystemFlag()){
+                    throw new ServiceException("系统字典不能删除");
                 }
             }
         }

@@ -1,6 +1,7 @@
 package org.dromara.hm.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import cn.dev33.satoken.annotation.SaIgnore;
 import org.dromara.common.core.domain.R;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.validate.AddGroup;
@@ -162,10 +163,19 @@ public class HierarchyController extends BaseController {
         return R.ok(hierarchyService.getDescendantsByType(hierarchyId, targetTypeId));
     }
 
+    /**
+     * 查询传感器列表（包含未绑定和已绑定）
+     *
+     * @param parentId 父级ID（用于查询未绑定传感器）
+     * @param hierarchyId 当前层级ID（用于查询已绑定传感器回显）
+     */
     @SaCheckPermission("hm:hierarchy:list")
-    @GetMapping("/sensor/list/{hierarchyId}")
-    public R<List<HierarchyVo>> getSensorListByDeviceId(@PathVariable("hierarchyId") Long hierarchyId) {
-        return R.ok(hierarchyService.getSensorListByDeviceId(hierarchyId));
+    @GetMapping("/getSensorList")
+    @SaIgnore
+    public R<Map<String, List<HierarchyVo>>> sensorList(
+        @NotNull(message = "父级ID不能为空") @RequestParam Long parentId,
+        @RequestParam Long hierarchyId){
+        return R.ok(hierarchyService.sensorList(parentId, hierarchyId));
     }
 
 }

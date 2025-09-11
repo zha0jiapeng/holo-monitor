@@ -6,9 +6,9 @@
 
  import org.dromara.common.web.annotation.BrotliCompress;
  import org.dromara.common.web.core.BaseController;
- import org.dromara.hm.domain.Hierarchy;
  import org.dromara.hm.domain.vo.HierarchyVo;
  import org.dromara.hm.service.IStatisticsService;
+ import org.dromara.hm.service.IHierarchyService;
  import org.springframework.validation.annotation.Validated;
  import org.springframework.web.bind.annotation.*;
 
@@ -30,6 +30,7 @@
  public class StatisticsController extends BaseController {
 
      private final IStatisticsService statisticsService;
+     private final IHierarchyService hierarchyService;
 
     @GetMapping("/getTargetTypeCount")
     public R<List<Map<String, Object>>> getTargetTypeList(Long hierarchyId,Long targetTypeId) {
@@ -49,31 +50,10 @@
         return R.ok(result);
      }
 
-//     @GetMapping("/getTestpointDetailStatistics")
-//     public R<Map<String,Object>> getTestpointDetailStatistics(Long hierarchyId) {
-//         Map<String,Object> result =  statisticsService.getTestpointDetailStatistics(hierarchyId);
-//         return R.ok(result);
-//     }
-//
-//     @GetMapping("/getReportDetailStatistics")
-//     public R<Map<String,Object>> getReportDetailStatistics(Long hierarchyId, Integer countType) {
-//         StatisticsCountTypeEnum countTypeEnum = StatisticsCountTypeEnum.getByCode(countType != null ? countType : 0);
-//         if(countTypeEnum==null) return R.fail("countType错误");
-//         Map<String,Object> result =  statisticsService.getReportDetailStatistics(hierarchyId, countTypeEnum);
-//         return R.ok(result);
-//     }
-//
-//     @GetMapping("/getOfflineDetailStatistics")
-//     public R<Map<String,Object>> getOfflineDetailStatistics(Long hierarchyId, Integer countType) {
-//         StatisticsCountTypeEnum countTypeEnum = StatisticsCountTypeEnum.getByCode(countType != null ? countType : 0);
-//         if(countTypeEnum==null) return R.fail("countType错误");
-//         Map<String,Object> result =  statisticsService.getOfflineDetailStatistics(hierarchyId, countTypeEnum);
-//         return R.ok(result);
-//     }
-//
-//     @GetMapping("/realtimeAlarmList")
-//     public R<Map<String,Object>> getRealtimeAlarmList(Long hierarchyId, Integer minutesAgo, @RequestParam(required = false) List<Integer> alarmTypes) {
-//         Map<String,Object> result =  statisticsService.getRealtimeAlarmList(hierarchyId, alarmTypes, minutesAgo);
-//         return R.ok(result);
-//     }
+     @GetMapping("/alarmList")
+     public R<Map<String,Object>> alarmList(Long hierarchyId) {
+        Map<String,Object> result =  statisticsService.alarmList(hierarchyId);
+        return R.ok(result);
+     }
+
  }

@@ -663,6 +663,190 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         return list;
     }
 
+    @Override
+    public List<HierarchyVo> getAllSensorsWithConfiguration() {
+        // 1. 获取所有具有采集配置(dataType=1005)的属性字典
+        List<HierarchyTypePropertyDict> configDicts = hierarchyTypePropertyDictMapper.selectList(
+            Wrappers.<HierarchyTypePropertyDict>lambdaQuery()
+                .eq(HierarchyTypePropertyDict::getDataType, DataTypeEnum.CONFIGURATION.getCode())
+        );
+
+        if (configDicts.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 2. 获取这些字典对应的类型属性关联
+        Set<Long> dictIds = configDicts.stream()
+            .map(HierarchyTypePropertyDict::getId)
+            .collect(Collectors.toSet());
+
+        List<HierarchyTypeProperty> typeProperties = hierarchyTypePropertyMapper.selectList(
+            Wrappers.<HierarchyTypeProperty>lambdaQuery()
+                .in(HierarchyTypeProperty::getPropertyDictId, dictIds)
+        );
+
+        if (typeProperties.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 3. 获取这些类型属性对应的层级属性
+        Set<Long> typePropertyIds = typeProperties.stream()
+            .map(HierarchyTypeProperty::getId)
+            .collect(Collectors.toSet());
+
+        List<HierarchyProperty> properties = hierarchyPropertyMapper.selectList(
+            Wrappers.<HierarchyProperty>lambdaQuery()
+                .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
+        );
+
+        if (properties.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 4. 获取具有这些属性的层级ID
+        Set<Long> hierarchyIds = properties.stream()
+            .map(HierarchyProperty::getHierarchyId)
+            .collect(Collectors.toSet());
+
+        // 5. 获取这些层级的详细信息
+        List<Hierarchy> hierarchies = baseMapper.selectList(
+            Wrappers.<Hierarchy>lambdaQuery().in(Hierarchy::getId, hierarchyIds)
+        );
+
+        // 6. 转换为VO对象并填充属性信息
+        List<HierarchyVo> result = new ArrayList<>();
+        for (Hierarchy hierarchy : hierarchies) {
+            HierarchyVo vo = baseMapper.selectVoById(hierarchy.getId());
+
+            // 获取该层级的属性信息
+            List<HierarchyPropertyVo> hierarchyProperties = hierarchyPropertyMapper.selectVoList(
+                Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, hierarchy.getId())
+            );
+
+            // 为属性填充类型信息
+            initProperty(hierarchyProperties, vo);
+            result.add(vo);
+        }
+
+        return result;
+    }
+
+    @Override
+    public Map<String, List<HierarchyVo>> sensorList(Long parentId, Long hierarchyId) {
+        // 1. 获取传感器类型ID（type_key = "sensor"）
+        HierarchyType sensorType = hierarchyTypeMapper.selectOne(
+            Wrappers.<HierarchyType>lambdaQuery()
+                .eq(HierarchyType::getTypeKey, "sensor")
+        );
+        if (sensorType == null) {
+            Map<String, List<HierarchyVo>> result = new HashMap<>();
+            result.put("unbound", new ArrayList<>());
+            result.put("bound", new ArrayList<>());
+            return result;
+        }
+
+        // 2. 递归查询指定层级下所有传感器类型的子孙层级
+        List<HierarchyVo> allSensors = getDescendantsByType(parentId, sensorType.getId());
+
+        // 3. 获取sensor_device属性字典
+        HierarchyTypePropertyDict sensorDeviceDict = hierarchyTypePropertyDictMapper.selectOne(
+            Wrappers.<HierarchyTypePropertyDict>lambdaQuery()
+                .eq(HierarchyTypePropertyDict::getDictKey, "sensor_device")
+        );
+
+        if (sensorDeviceDict == null) {
+            // 如果没有sensor_device字典，则所有传感器都算未绑定
+            Map<String, List<HierarchyVo>> result = new HashMap<>();
+            result.put("unbound", allSensors);
+            result.put("bound", new ArrayList<>());
+            return result;
+        }
+
+        // 4. 获取传感器类型对应的sensor_device属性定义
+        List<HierarchyTypeProperty> sensorDeviceTypeProperties = hierarchyTypePropertyMapper.selectList(
+            Wrappers.<HierarchyTypeProperty>lambdaQuery()
+                .eq(HierarchyTypeProperty::getTypeId, sensorType.getId())
+                .eq(HierarchyTypeProperty::getPropertyDictId, sensorDeviceDict.getId())
+        );
+
+        if (sensorDeviceTypeProperties.isEmpty()) {
+            // 如果传感器类型没有sensor_device属性定义，则所有传感器都算未绑定
+            Map<String, List<HierarchyVo>> result = new HashMap<>();
+            result.put("unbound", allSensors);
+            result.put("bound", new ArrayList<>());
+            return result;
+        }
+
+        // 5. 获取所有传感器ID
+        List<Long> sensorIds = allSensors.stream()
+            .map(HierarchyVo::getId)
+            .collect(Collectors.toList());
+
+        if (sensorIds.isEmpty()) {
+            Map<String, List<HierarchyVo>> result = new HashMap<>();
+            result.put("unbound", new ArrayList<>());
+            result.put("bound", new ArrayList<>());
+            return result;
+        }
+
+        // 6. 查找已绑定sensor_device属性的传感器ID
+        List<Long> typePropertyIds = sensorDeviceTypeProperties.stream()
+            .map(HierarchyTypeProperty::getId)
+            .collect(Collectors.toList());
+
+        List<HierarchyProperty> boundProperties = hierarchyPropertyMapper.selectList(
+            Wrappers.<HierarchyProperty>lambdaQuery()
+                .in(HierarchyProperty::getHierarchyId, sensorIds)
+                .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
+                .isNotNull(HierarchyProperty::getPropertyValue)
+                .ne(HierarchyProperty::getPropertyValue, "")
+        );
+
+        Set<Long> boundSensorIds = boundProperties.stream()
+            .map(HierarchyProperty::getHierarchyId)
+            .collect(Collectors.toSet());
+
+        // 7. 筛选出未绑定的传感器
+        List<HierarchyVo> unboundSensors = allSensors.stream()
+            .filter(sensor -> !boundSensorIds.contains(sensor.getId()))
+            .collect(Collectors.toList());
+
+        // 8. 查询当前层级已绑定的传感器（用于回显）
+        List<HierarchyVo> boundSensors = new ArrayList<>();
+        if (hierarchyId != null) {
+            // 查询当前层级绑定的传感器ID
+            List<HierarchyProperty> currentBoundProperties = hierarchyPropertyMapper.selectList(
+                Wrappers.<HierarchyProperty>lambdaQuery()
+                    .eq(HierarchyProperty::getHierarchyId, hierarchyId)
+                    .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
+                    .isNotNull(HierarchyProperty::getPropertyValue)
+                    .ne(HierarchyProperty::getPropertyValue, "")
+            );
+
+            if (!currentBoundProperties.isEmpty()) {
+                // 提取绑定的传感器ID
+                Set<Long> currentBoundSensorIds = currentBoundProperties.stream()
+                    .map(property -> Long.valueOf(property.getPropertyValue()))
+                    .collect(Collectors.toSet());
+
+                // 查询这些传感器的详细信息
+                if (!currentBoundSensorIds.isEmpty()) {
+                    boundSensors = baseMapper.selectVoList(
+                        Wrappers.<Hierarchy>lambdaQuery()
+                            .in(Hierarchy::getId, currentBoundSensorIds)
+                            .eq(Hierarchy::getTypeId, sensorType.getId())
+                    );
+                }
+            }
+        }
+
+        // 9. 组装返回结果
+        Map<String, List<HierarchyVo>> result = new HashMap<>();
+        result.put("unbound", unboundSensors);  // 未绑定的传感器列表
+        result.put("bound", boundSensors);      // 当前层级已绑定的传感器列表（用于回显）
+        return result;
+    }
+
     private void initProperty(List<HierarchyPropertyVo> properties,HierarchyVo hierarchyVo) {
         for (HierarchyPropertyVo prop : properties) {
             HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());

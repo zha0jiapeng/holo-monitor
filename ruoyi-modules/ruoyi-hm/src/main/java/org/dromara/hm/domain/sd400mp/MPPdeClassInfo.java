@@ -30,9 +30,9 @@ public class MPPdeClassInfo {
      *
      * @param data JSON数据对象
      */
-    public MPPdeClassInfo(Object data) {
-        // 这里需要根据实际的JSON结构进行解析
-        // 暂时保持空实现，具体实现需要根据API响应格式确定
+    public MPPdeClassInfo(cn.hutool.json.JSONObject data) {
+        this.index = data.getInt("index");
+        this.name = data.getStr("name");
     }
 
     /**

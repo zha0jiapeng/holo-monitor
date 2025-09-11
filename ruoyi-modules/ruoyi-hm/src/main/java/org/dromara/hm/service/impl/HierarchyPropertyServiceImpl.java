@@ -26,6 +26,7 @@ import org.dromara.hm.mapper.HierarchyTypePropertyDictMapper;
 import org.dromara.hm.mapper.HierarchyTypePropertyMapper;
 import org.dromara.hm.service.IHierarchyPropertyService;
 import org.dromara.hm.service.IHierarchyService;
+import org.dromara.hm.service.IHierarchyTypePropertyDictService;
 import org.dromara.hm.service.IHierarchyTypePropertyService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +46,7 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
 
     private final HierarchyPropertyMapper baseMapper;
     private final IHierarchyTypePropertyService hierarchyTypePropertyService;
+    private final IHierarchyTypePropertyDictService hierarchyTypePropertyDictService;
     private final IHierarchyService hierarchyService;
 
     @Override
@@ -96,7 +98,7 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
         if (add != null) {
             validEntityBeforeSave(add);
         }
-        boolean flag = baseMapper.insert(add) > 0;
+        boolean flag = baseMapper.insertOrUpdate(add);
         if (flag) {
             if (add != null) {
                 bo.setId(add.getId());
@@ -111,21 +113,30 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
         if (update != null) {
             validEntityBeforeSave(update);
         }
-        //TODO 传感器绑定设备反向关系 目前没法建立 没有typePropertyId
-//        HierarchyTypePropertyVo hierarchyTypeProperty = hierarchyTypePropertyService.queryById(bo.getTypePropertyId());
-//        if(hierarchyTypeProperty.getDict().getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())){
-//            String[] split = bo.getPropertyValue().split("\\,");
-//            for (String hierarchyIdStr : split) {
-//                Long hierarchyId = Long.valueOf(hierarchyIdStr);
-//                HierarchyVo hierarchyVo = hierarchyService.queryById(hierarchyId, false);
-//                HierarchyProperty hierarchyProperty = new  HierarchyProperty();
-//                hierarchyProperty.setScope(0);
-//                hierarchyProperty.setTypePropertyId();
-//                hierarchyProperty.setHierarchyId(hierarchyId);
-//                hierarchyProperty.setPropertyValue(bo.getHierarchyId() + "");
-//                baseMapper.insert(hierarchyProperty);
-//            }
-//        }
+        HierarchyProperty property = baseMapper.selectById(bo.getId());
+        if(property==null) return false;
+        HierarchyTypePropertyVo hierarchyTypeProperty = hierarchyTypePropertyService.queryById(property.getTypePropertyId());
+        if(hierarchyTypeProperty.getDict().getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())){
+            String[] split = bo.getPropertyValue().split("\\,");
+            for (String hierarchyIdStr : split) {
+                Long hierarchyId = Long.valueOf(hierarchyIdStr);
+                HierarchyVo hierarchyVo = hierarchyService.queryById(hierarchyId, true);
+                HierarchyProperty hierarchyProperty = new  HierarchyProperty();
+                hierarchyProperty.setScope(0);
+                Long typeId = hierarchyVo.getTypeId();
+                HierarchyTypePropertyDict sensorDevice = hierarchyTypePropertyDictService.getOne(
+                    new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_device"));
+                HierarchyTypeProperty one = hierarchyTypePropertyService.getOne(
+                    new LambdaQueryWrapper<HierarchyTypeProperty>()
+                        .eq(HierarchyTypeProperty::getTypeId, typeId)
+                        .eq(HierarchyTypeProperty::getPropertyDictId, sensorDevice.getId())
+                );
+                hierarchyProperty.setTypePropertyId(one.getId());
+                hierarchyProperty.setHierarchyId(hierarchyId);
+                hierarchyProperty.setPropertyValue(property.getHierarchyId() + "");
+                baseMapper.insert(hierarchyProperty);
+            }
+        }
 
         return baseMapper.updateById(update) > 0;
     }
@@ -144,8 +155,9 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
             if (entity.getId() != null) {
                 wrapper.ne(HierarchyProperty::getId, entity.getId());
             }
-            if (baseMapper.exists(wrapper)) {
-                throw new ServiceException("该层级下已存在相同的属性key");
+            HierarchyProperty hierarchyProperty = baseMapper.selectOne(wrapper);
+            if (hierarchyProperty!=null) {
+                entity.setId(hierarchyProperty.getId());
             }
         }
     }

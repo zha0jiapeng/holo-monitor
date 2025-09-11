@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.MapstructUtils;
@@ -31,7 +32,7 @@ import java.util.Objects;
  */
 @RequiredArgsConstructor
 @Service
-public class HierarchyTypeServiceImpl implements IHierarchyTypeService {
+public class HierarchyTypeServiceImpl extends ServiceImpl<HierarchyTypeMapper,HierarchyType> implements IHierarchyTypeService {
 
     private final HierarchyTypeMapper baseMapper;
     private final HierarchyMapper hierarchyMapper;

@@ -11,15 +11,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
 import org.dromara.hm.domain.HierarchyData;
+import org.dromara.hm.domain.HierarchyProperty;
+import org.dromara.hm.domain.HierarchyTypeProperty;
+import org.dromara.hm.domain.HierarchyTypePropertyDict;
 import org.dromara.hm.domain.bo.HierarchyDataBo;
+import org.dromara.hm.domain.bo.HierarchyPropertyBo;
 import org.dromara.hm.domain.vo.HierarchyPropertyVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
 import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.enums.DataTypeEnum;
-import org.dromara.hm.service.IHierarchyDataService;
-import org.dromara.hm.service.IHierarchyService;
-import org.dromara.hm.service.IHierarchyTypePropertyService;
+import org.dromara.hm.service.*;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -45,7 +47,9 @@ public class SensorSyncExecutor {
 
     private final IHierarchyService hierarchyService;
     private final IHierarchyTypePropertyService hierarchyTypePropertyService;
+    private final IHierarchyTypePropertyDictService hierarchyTypePropertyDictService;
     private final IHierarchyDataService hierarchyDataService;
+    private final IHierarchyPropertyService hierarchyPropertyService;
 
     public ExecuteResult jobExecute(JobArgs jobArgs) {
         log.info("开始执行传感器同步任务");
@@ -55,7 +59,7 @@ public class SensorSyncExecutor {
         for (HierarchyVo hierarchyVo : bottomLevelHierarchies) {
             List<HierarchyPropertyVo> properties = hierarchyVo.getProperties();
             for (HierarchyPropertyVo property : properties) {
-                HierarchyTypePropertyVo hierarchyTypePropertyVo = hierarchyTypePropertyService.queryById(Long.valueOf( property.getTypePropertyId()));
+                HierarchyTypePropertyVo hierarchyTypePropertyVo = hierarchyTypePropertyService.queryById(property.getTypePropertyId());
                 HierarchyTypePropertyDictVo dict = hierarchyTypePropertyVo.getDict();
                 if(dict.getDataType().equals(DataTypeEnum.CONFIGURATION.getCode())){
                     String propertyValue = property.getPropertyValue();
@@ -80,56 +84,48 @@ public class SensorSyncExecutor {
                     JSONArray onlines = (JSONArray) online;
                     for (Object o : onlines) {
                         JSONObject item = (JSONObject) o;
-                        Object key = item.get("key");
+                        String key = item.getStr("key");
                         LocalDateTime parse = LocalDateTime.parse(item.getStr("dt"));
                         long count = hierarchyDataService.count(new LambdaQueryWrapper<HierarchyData>()
                             .eq(HierarchyData::getHierarchyId, hierarchyVo.getId())
                             .eq(HierarchyData::getTag, key)
                             .eq(HierarchyData::getTime, parse)
                         );
-                        if(count == 0 && !key.toString().startsWith("sys:cs")) {
+                        if(count == 0) {
                             HierarchyDataBo hierarchyData = new HierarchyDataBo();
                             hierarchyData.setHierarchyId(Long.valueOf(hierarchyVo.getId()));
                             hierarchyData.setTime(parse);
                             hierarchyData.setValue(new BigDecimal(item.getStr("val")));
-                            hierarchyData.setTag(item.getStr("key"));
+                            hierarchyData.setTag(key);
                             hierarchyData.setName(mapp.get(item.getStr("tag")));
                             hierarchyDataService.insertByBo(hierarchyData);
+                            if(key.equals("sys:st") && !item.getStr("val").equals("0")){
+                                extracted(hierarchyVo,"report_time",parse.toString());
+                                extracted(hierarchyVo,"report_st",item.getStr("val"));
+                            }
+                            if(key.equals("sys:cs") && !item.getStr("val").equals("0")){
+                                extracted(hierarchyVo,"offline_flag",item.getStr("val"));
+                            }
                         }
                     }
-//                    LocalDateTime toTime = LocalDateTime.now();
-//                    String from = toTime.minusHours(1).format(FORMATTER);
-//                    String to = toTime.format(FORMATTER);
-//                    JSONObject index = SD400MPUtils.index(hierarchyVo.getCode(), from, to);
-//                    System.out.println(index);
-//                    Integer code = index.getInt("code");
-//                    if (code == 200) {
-//                        JSONObject data = index.getJSONObject("data");
-//                        String id = data.getJSONObject("id").getStr("id");
-//                        JSONArray times = data.getJSONArray("time");
-//                        for (Object timeObj : times) {
-//                            String timeStr = (String) timeObj;
-//                            JSONObject tagResponse = SD400MPUtils.data(Long.valueOf(id), allTags,timeStr);
-//                            System.out.println(tagResponse);
-//                            Object online = tagResponse.getByPath("data.groups[0].online");
-//                            if(online==null) continue;
-//                            JSONArray onlines = (JSONArray) online;
-//                            for (Object o : onlines) {
-//                                JSONObject item = (JSONObject) o;
-//                                HierarchyDataBo hierarchyData = new HierarchyDataBo();
-//                                hierarchyData.setHierarchyId(Long.valueOf(hierarchyVo.getId()));
-//                                hierarchyData.setTime(LocalDateTime.parse(item.getStr("dt")));
-//                                hierarchyData.setValue(new BigDecimal(item.getStr("val")));
-//                                hierarchyData.setTag(item.getStr("key"));
-//                                hierarchyData.setName( mapp.get(item.getStr("tag")));
-//                                hierarchyDataService.insertByBo(hierarchyData);
-//                            }
-//
-//                        }
-//                    }
                 }
             }
         }
         return ExecuteResult.success();
+    }
+
+    private void extracted(HierarchyVo hierarchyVo,String dictKey,String value) {
+        HierarchyTypePropertyDict reportTimeDict = hierarchyTypePropertyDictService.getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, dictKey));
+        HierarchyTypeProperty one = hierarchyTypePropertyService.getOne(
+            new LambdaQueryWrapper<HierarchyTypeProperty>()
+                .eq(HierarchyTypeProperty::getPropertyDictId, reportTimeDict.getId())
+                .eq(HierarchyTypeProperty::getTypeId, hierarchyVo.getTypeId())
+        );
+        HierarchyPropertyBo hierarchyProperty = new HierarchyPropertyBo();
+        hierarchyProperty.setPropertyValue(value);
+        hierarchyProperty.setScope(0);
+        hierarchyProperty.setHierarchyId(hierarchyVo.getId());
+        hierarchyProperty.setTypePropertyId(one.getId());
+        hierarchyPropertyService.insertByBo(hierarchyProperty);
     }
 }

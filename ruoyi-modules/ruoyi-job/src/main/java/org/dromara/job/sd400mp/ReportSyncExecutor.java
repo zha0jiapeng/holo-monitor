@@ -1,7 +1,5 @@
 package org.dromara.job.sd400mp;
 
-import cn.hutool.core.date.DatePattern;
-import cn.hutool.core.date.DateUtil;
 import cn.hutool.json.JSONObject;
 import com.aizuda.snailjob.client.job.core.annotation.JobExecutor;
 import com.aizuda.snailjob.client.job.core.dto.JobArgs;
@@ -9,17 +7,16 @@ import com.aizuda.snailjob.client.model.ExecuteResult;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.dromara.common.core.utils.sd400mp.DataPointBean;
 import org.dromara.common.core.utils.sd400mp.MPIDMultipleJson;
-import org.dromara.common.core.utils.sd400mp.MPBinaryConverter;
 import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
 import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.service.*;
+import org.dromara.hm.domain.sd400mp.MPEventList;
 import org.springframework.stereotype.Component;
 
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * SD400MP测点数据同步任务
@@ -33,6 +30,7 @@ import java.util.List;
 public class ReportSyncExecutor {
 
     private final IHierarchyService hierarchyService;
+    private final EventParserService eventParserService;
 
 
     public ExecuteResult jobExecute(JobArgs jobArgs) {
@@ -47,109 +45,93 @@ public class ReportSyncExecutor {
             }
         }
         MPIDMultipleJson mpidMultipleJson = MPIDMultipleJson.create(ids);
-        JSONObject events = SD400MPUtils.events("37", "2025-01-01T05:53:35.224Z", "2025-09-30T05:53:35.224Z", null, true);
+        JSONObject events = SD400MPUtils.events("37", "2025-09-04T15:20:57.869+08:00", "2025-09-11T15:20:57.869+08:00", null, true);
 
-        // 解析payload数据示例
+        // 解析events数据，得到与JavaScript相同结构的结果
         if (events != null && events.getInt("code") == 200) {
-            parseEventPayloads(events);
+            MPEventList eventList = eventParserService.parseEvents(events);
+            if (eventList != null) {
+                log.info("成功解析events，共{}个分组，{}个设备名称，{}个测点名称",
+                        eventList.getGroups().size(),
+                        eventList.getNamesEq().size(),
+                        eventList.getNamesTp().size());
+
+                // 这里可以进一步处理解析后的数据
+                processEventList(eventList);
+            } else {
+                log.error("解析events失败");
+            }
+        } else {
+            log.error("获取events数据失败");
         }
 
         return ExecuteResult.success();
     }
 
     /**
-     * 解析事件响应中的payload数据
-     * @param events 事件响应数据
+     * 处理解析后的事件列表
+     *
+     * @param eventList 解析后的事件列表
      */
-    private void parseEventPayloads(JSONObject events) {
-        try {
-            JSONObject data = events.getJSONObject("data");
-            if (data == null) {
-                log.warn("事件响应数据为空");
-                return;
+    private void processEventList(MPEventList eventList) {
+        log.info("=== 开始处理事件列表 ===");
+
+        // 显示PDE类信息
+        if (!eventList.getPdClasses().isEmpty()) {
+            log.info("PDE类信息: {}", eventList.getPdClasses().size());
+            eventList.getPdClasses().forEach((index, pdeClass) -> {
+                log.debug("PDE类 [{}]: {}", index, pdeClass.getName());
+            });
+        }
+
+        // 遍历所有事件分组
+        eventList.getGroups().forEach((key, group) -> {
+            log.info("事件分组: {}, 标签: {}, 事件数量: {}",
+                    key, group.getTag().getTitle(), group.getEvents().size());
+
+            // 统计每个分组的状态分布
+            Map<Integer, Long> stateCount = group.getEvents().stream()
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            org.dromara.hm.domain.sd400mp.MPEvent::getState,
+                            java.util.stream.Collectors.counting()));
+
+            stateCount.forEach((state, count) -> {
+                log.info("  状态 {}: {} 个事件", state, count);
+            });
+
+            // 显示前几个事件的详细信息
+            group.getEvents().stream().limit(3).forEach(event -> {
+                String equipmentName = eventList.getNamesEq().get(event.getEquipmentId());
+                String testpointName = eventList.getNamesTp().get(event.getTestpointId());
+
+                log.info("  事件详情 - 设备: {} ({}), 测点: {} ({}), 状态: {}, 开始: {}, 结束: {}, 卫星值: {}",
+                        equipmentName, event.getEquipmentId(),
+                        testpointName, event.getTestpointId(),
+                        event.getState(), event.getStart(), event.getEnd(),
+                        event.getSatelliteValue());
+            });
+
+            // 如果有卫星标签，显示信息
+            if (group.getSatelliteTag() != null) {
+                log.info("  卫星标签: {}, 显示设置数量: {}",
+                        group.getSatelliteTag().getTitle(),
+                        group.getDisplaySettings().size());
             }
+        });
 
-            // 遍历设备
-            for (Object eqObj : data.getJSONArray("equipment")) {
-                JSONObject equipment = (JSONObject) eqObj;
+        // 统计总体信息
+        int totalEvents = eventList.getGroups().values().stream()
+                .mapToInt(group -> group.getEvents().size())
+                .sum();
 
-                // 遍历测点
-                for (Object tpObj : equipment.getJSONArray("testpoints")) {
-                    JSONObject testpoint = (JSONObject) tpObj;
+        log.info("=== 事件处理完成 - 总分组: {}, 总事件: {}, 设备: {}, 测点: {} ===",
+                eventList.getGroups().size(), totalEvents,
+                eventList.getNamesEq().size(), eventList.getNamesTp().size());
 
-                    // 遍历标签
-                    for (Object tagObj : testpoint.getJSONArray("tags")) {
-                        JSONObject tag = (JSONObject) tagObj;
-
-                        // 解析事件payload
-                        if (tag.containsKey("events") && tag.getJSONObject("events") != null) {
-                            JSONObject eventData = tag.getJSONObject("events");
-                            if (eventData.containsKey("payload") && !eventData.getStr("payload").isEmpty()) {
-                                String payload = eventData.getStr("payload");
-
-                                // 使用MPBinaryConverter解析payload
-                                List<DataPointBean> dataPoints = MPBinaryConverter.dataPointsFromBase64(payload);
-
-                                log.info("测点: {}, 标签: {}, 解析到{}个数据点",
-                                    testpoint.getStr("name"),
-                                    tag.getStr("tag"),
-                                    dataPoints.size());
-
-                                // 处理解析后的数据点
-                                processDataPoints(dataPoints);
-                            }
-                        }
-
-                        // 解析卫星数据payload（如果存在）
-                        if (tag.containsKey("satelite") && tag.getJSONObject("satelite") != null) {
-                            JSONObject satelite = tag.getJSONObject("satelite");
-                            if (satelite.containsKey("events") && satelite.getJSONObject("events") != null) {
-                                JSONObject sateliteEvents = satelite.getJSONObject("events");
-                                if (sateliteEvents.containsKey("payload") && !sateliteEvents.getStr("payload").isEmpty()) {
-                                    String satellitePayload = sateliteEvents.getStr("payload");
-
-                                    // 解析卫星数据payload
-                                    List<DataPointBean> satellitePoints = MPBinaryConverter.dataPointsFromBase64(satellitePayload);
-
-                                    log.info("测点ID: {}, 卫星标签: {}, 解析到{}个卫星数据点",
-                                        testpoint.getStr("id"),
-                                        satelite.getStr("tag"),
-                                        satellitePoints.size());
-
-                                    // 处理卫星数据点
-                                    processSatelliteDataPoints(satellitePoints);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.error("解析事件payload异常", e);
-        }
-    }
-
-    /**
-     * 处理解析后的数据点
-     * @param dataPoints 数据点列表
-     */
-    private void processDataPoints(List<DataPointBean> dataPoints) {
-        // 这里可以添加具体的业务逻辑，比如保存到数据库、进行数据分析等
-        for (DataPointBean point : dataPoints) {
-            log.info("数据点 - 时间: {}, 数值: {}", point.getTime(), point.getValue());
-            // TODO: 添加具体的业务处理逻辑
-        }
-    }
-
-    /**
-     * 处理卫星数据点
-     * @param satellitePoints 卫星数据点列表
-     */
-    private void processSatelliteDataPoints(List<DataPointBean> satellitePoints) {
-        // 这里可以添加卫星数据的业务逻辑
-        for (DataPointBean point : satellitePoints) {
-            log.info("卫星数据点 - 时间: {}, 数值: {}", DateUtil.format(point.getTime(), DatePattern.NORM_DATETIME_PATTERN), point.getValue());
-            // TODO: 添加卫星数据的业务处理逻辑
-        }
+        // 这里可以添加更多的业务逻辑，比如：
+        // 1. 将事件数据保存到数据库
+        // 2. 发送事件通知
+        // 3. 生成报告
+        // 4. 更新统计信息等
     }
 }

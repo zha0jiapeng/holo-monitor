@@ -3,6 +3,7 @@ package org.dromara.hm.domain.sd400mp;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,22 +29,23 @@ public class MPEventGroup {
     /**
      * 标签信息
      */
-    private Object tag;
+    private MPTag tag;
 
     /**
      * 卫星标签
      */
-    private Object satelliteTag;
+    private MPTag satelliteTag;
 
     /**
      * 事件列表
      */
+    @ToString.Exclude
     private List<MPEvent> events = new ArrayList<>();
 
     /**
      * 显示设置映射
      */
-    private Map<Long, Object> displaySettings = new HashMap<>();
+    private Map<Long, MPDisplaySettings> displaySettings = new HashMap<>();
 
     /**
      * 构造函数
@@ -51,8 +53,10 @@ public class MPEventGroup {
      * @param tag 标签对象
      * @param result 事件列表结果
      */
-    public MPEventGroup(Object tag, MPEventList result) {
-        // 这里需要根据实际的标签结构进行初始化
-        // 暂时保持空实现
+    public MPEventGroup(MPTag tag, MPEventList result) {
+        this.key = tag.getKey();
+        this.tag = tag;
+        this.events = new ArrayList<>();
+        this.displaySettings = new HashMap<>();
     }
 }

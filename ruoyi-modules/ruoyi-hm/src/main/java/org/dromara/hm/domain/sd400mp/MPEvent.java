@@ -3,6 +3,7 @@ package org.dromara.hm.domain.sd400mp;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.util.Date;
 
@@ -20,6 +21,7 @@ public class MPEvent {
     /**
      * 事件分组
      */
+    @ToString.Exclude
     private MPEventGroup group;
 
     /**

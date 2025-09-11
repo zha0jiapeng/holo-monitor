@@ -1,6 +1,7 @@
 package org.dromara.hm.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import jakarta.validation.constraints.NotNull;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.Hierarchy;
@@ -9,6 +10,7 @@ import org.dromara.hm.domain.vo.HierarchyVo;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 层级Service接口
@@ -103,4 +105,13 @@ public interface IHierarchyService extends IService<Hierarchy> {
     List<HierarchyVo> selectByIds(List<Long> matchedIds);
 
     List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId);
+
+    /**
+     * 获取所有具有采集配置(CONFIGURATION, 1005)属性的传感器列表
+     *
+     * @return 具有采集配置属性的传感器列表
+     */
+    List<HierarchyVo> getAllSensorsWithConfiguration();
+
+    Map<String, List<HierarchyVo>> sensorList(Long parentId, Long hierarchyId);
 }

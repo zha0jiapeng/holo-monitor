@@ -337,4 +337,31 @@ public class SD400MPUtils {
             return null;
         }
     }
+
+    /**
+     * 发送POST请求并检查响应
+     *
+     * @param endpoint API端点
+     * @param requestData 请求数据
+     * @return 响应JSON对象，失败返回null
+     */
+    public static JSONObject postJsonAndCheck(String endpoint, Map<String, Object> requestData) {
+        try {
+            String responseBody = HttpUtil.createPost(URI + endpoint)
+                    .body(JSONUtil.toJsonStr(requestData), ContentType.JSON.toString())
+                    .execute()
+                    .body();
+
+            JSONObject response = JSONUtil.parseObj(responseBody);
+            if (response == null) {
+                log.error("请求{}返回数据为空", endpoint);
+                return null;
+            }
+
+            return response;
+        } catch (Exception e) {
+            log.error("请求{}异常", endpoint, e);
+            return null;
+        }
+    }
 }

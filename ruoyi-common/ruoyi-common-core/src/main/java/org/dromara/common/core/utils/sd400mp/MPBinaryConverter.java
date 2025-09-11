@@ -27,6 +27,13 @@ public class MPBinaryConverter {
      * 每毫秒的ticks数
      */
     private static final long TICKS_PER_MILLISECOND = 10000L;
+    
+    /**
+     * 时区偏移量（毫秒），对应JavaScript中的timeZoneOffsetMillisecond
+     * JavaScript: new Date().getTimezoneOffset() * 60000
+     * Java: -TimeZone.getDefault().getRawOffset() (因为方向相反)
+     */
+    private static final long TIME_ZONE_OFFSET_MILLISECOND = -java.util.TimeZone.getDefault().getRawOffset();
 
     /**
      * 解析base64编码的payload数据，返回数据点列表
@@ -50,19 +57,22 @@ public class MPBinaryConverter {
 
             List<DataPointBean> result = new ArrayList<>();
 
-            // 每个数据点占用16字节：8字节long（ticks） + 8字节double（value）
-            while (buffer.remaining() >= 16) {
+            // 每个数据点占用12字节：8字节long（ticks） + 4字节float（value）
+            // 对应JavaScript中的 i += 12 逻辑
+            while (buffer.remaining() >= 12) {
                 // 读取8字节的long（时间ticks）
                 long ticks = buffer.getLong();
 
-                // 读取8字节的double（数值）
-                double value = buffer.getDouble();
+                // 读取4字节的float（数值）
+                float value = buffer.getFloat();
 
-                // 转换为DataPointBean对象
+                // 转换时间
+                Date time = ticksToDate(ticks);
+                
+                // 创建数据点（不再过滤，让上层逻辑处理）
                 DataPointBean dataPoint = new DataPointBean();
-                dataPoint.setTime(ticksToDate(ticks));
-                dataPoint.setValue(value);
-
+                dataPoint.setTime(time);
+                dataPoint.setValue((double) value); // 转换float为double
                 result.add(dataPoint);
             }
 
@@ -85,8 +95,10 @@ public class MPBinaryConverter {
      * @return Java Date对象
      */
     private static Date ticksToDate(long ticks) {
-        // 计算毫秒数：(ticks - EPOCH_OFFSET) / TICKS_PER_MILLISECOND
-        long milliseconds = (ticks - EPOCH_OFFSET) / TICKS_PER_MILLISECOND;
+        // 计算毫秒数：(ticks - EPOCH_OFFSET) / TICKS_PER_MILLISECOND + TIME_ZONE_OFFSET_MILLISECOND
+        // 对应JavaScript中的逻辑
+        long milliseconds = (ticks - EPOCH_OFFSET) / TICKS_PER_MILLISECOND + TIME_ZONE_OFFSET_MILLISECOND;
+        
         return new Date(milliseconds);
     }
 
