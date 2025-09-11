@@ -1,9 +1,11 @@
 package org.dromara.hm.controller;
 
+import cn.dev33.satoken.annotation.SaIgnore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.core.utils.sd400mp.GlbProperties;
+import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
 import org.dromara.common.web.annotation.BrotliCompress;
 import org.dromara.common.web.core.BaseController;
 import org.springframework.http.*;
@@ -48,7 +50,8 @@ public class Sd400mpController extends BaseController {
             HttpServletResponse response,
             @RequestBody(required = false) String requestBody) {
 
-        try {
+            String token = SD400MPUtils.getToken();
+            try {
             // 1. 提取目标路径
             String requestURI = request.getRequestURI();
             String targetPath = requestURI.replace("/sd400mp", "");
@@ -65,6 +68,7 @@ public class Sd400mpController extends BaseController {
 
             // 4. 复制请求头
             HttpHeaders headers = new HttpHeaders();
+
             Enumeration<String> headerNames = request.getHeaderNames();
             while (headerNames.hasMoreElements()) {
                 String headerName = headerNames.nextElement();
@@ -73,6 +77,7 @@ public class Sd400mpController extends BaseController {
                     headers.add(headerName, request.getHeader(headerName));
                 }
             }
+            headers.set("Authorization", "GlbToken " + token);
 
             // 禁用压缩以避免解压问题
             headers.set("Accept-Encoding", "identity");
