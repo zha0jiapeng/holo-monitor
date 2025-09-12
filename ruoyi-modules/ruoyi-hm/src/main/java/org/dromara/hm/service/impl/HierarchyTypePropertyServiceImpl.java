@@ -216,32 +216,13 @@ public class HierarchyTypePropertyServiceImpl extends ServiceImpl<HierarchyTypeP
             baseMapper.deleteByIds(deleteIds);
         }
 
-//        // 批量执行新增
-//        if (!insertList.isEmpty()) {
-//            for (HierarchyTypeProperty insertItem : insertList) {
-//                validEntityBeforeSave(insertItem);
-//                baseMapper.insert(insertItem);
-//
-//                // 为所有该类型下的层级实例添加新属性
-//                List<Hierarchy> hierarchies = hierarchyMapper.selectList(
-//                    new LambdaQueryWrapper<Hierarchy>().eq(Hierarchy::getTypeId, insertItem.getTypeId())
-//                );
-//
-//                List<HierarchyProperty> newProperties = new ArrayList<>();
-//                for (Hierarchy hierarchy : hierarchies) {
-//                    HierarchyProperty property = new HierarchyProperty();
-//                    property.setHierarchyId(hierarchy.getId());
-//                    property.setTypePropertyId(insertItem.getId());
-//                    property.setPropertyValue(null);
-//                    property.setScope(1); // 默认设置为可见
-//                    newProperties.add(property);
-//                }
-//
-//                if (!newProperties.isEmpty()) {
-//                    hierarchyPropertyMapper.insertBatch(newProperties);
-//                }
-//            }
-//        }
+        // 批量执行新增
+        if (!insertList.isEmpty()) {
+            for (HierarchyTypeProperty insertItem : insertList) {
+                validEntityBeforeSave(insertItem);
+                baseMapper.insert(insertItem);
+            }
+        }
 
         return true;
     }

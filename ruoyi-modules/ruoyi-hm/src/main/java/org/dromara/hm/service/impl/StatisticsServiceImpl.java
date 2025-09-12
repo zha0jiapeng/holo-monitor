@@ -254,31 +254,6 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     /**
-     * 递归查找hierarchyId下所有type_id=targetTypeId的层级
-     * @param hierarchyId 当前层级ID
-     * @param targetTypeId 目标类型ID
-     * @param targetHierarchyIds 匹配的层级ID集合
-     */
-    private void findTargetTypeHierarchies(Long hierarchyId, Long targetTypeId, List<Long> targetHierarchyIds) {
-        // 先检查当前层级是否匹配
-        Hierarchy current = hierarchyService.getById(hierarchyId);
-        if (current != null && targetTypeId.equals(current.getTypeId())) {
-            targetHierarchyIds.add(hierarchyId);
-            // 如果当前层级匹配目标类型，仍然继续查找其子级，因为可能存在多层相同类型的层级
-        }
-
-        // 获取直接子级
-        LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Hierarchy::getParentId, hierarchyId);
-        List<Hierarchy> children = hierarchyService.list(wrapper);
-
-        // 递归查找每个子级
-        for (Hierarchy child : children) {
-            findTargetTypeHierarchies(child.getId(), targetTypeId, targetHierarchyIds);
-        }
-    }
-
-    /**
      * 递归查找匹配指定类型的子孙层级，找到匹配类型就停止递归
      * @param hierarchyId 当前层级ID
      * @param targetTypeId 目标类型ID
@@ -320,7 +295,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
     private List<Long> getReportStHierarchyIds(Long typeId) {
 
         // 验证字典是否存在
-        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey,"report_st"));
+        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey,"sys:st"));
 
         HierarchyTypeProperty one = hierarchyTypePropertyService.getOne(Wrappers.<HierarchyTypeProperty>lambdaQuery()
             .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId())
@@ -513,7 +488,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         try {
             // 1. 计算时间范围：当前时间-1天到现在
             LocalDateTime now = LocalDateTime.now();
-            LocalDateTime yesterday = now.minusDays(1);
+            LocalDateTime yesterday = now.minusDays(7);
 
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'+08:00'");
             String fromTime = yesterday.format(formatter);
@@ -537,9 +512,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
             if (sensors.isEmpty()) {
                 result.put("totalEvents", 0);
-                result.put("groups", new HashMap<>());
-                result.put("namesEq", new HashMap<>());
-                result.put("namesTp", new HashMap<>());
+                result.put("events", new ArrayList<>());
                 result.put("message", "未找到传感器");
                 return result;
             }
@@ -573,9 +546,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
             if (testpointIds.isEmpty()) {
                 result.put("totalEvents", 0);
-                result.put("groups", new HashMap<>());
-                result.put("namesEq", new HashMap<>());
-                result.put("namesTp", new HashMap<>());
+                result.put("events", new ArrayList<>());
                 result.put("message", "未找到有效的测点ID");
                 return result;
             }
@@ -602,7 +573,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 //                            .sum();
 //                    result.put("totalEvents", totalEvents);
 
-                    // 统计各状态事件数量
+                     //统计各状态事件数量
 //                    Map<Integer, Long> stateStatistics = new HashMap<>();
 //                    eventList.getGroups().values().forEach(group -> {
 //                        group.getEvents().forEach(event -> {
@@ -611,22 +582,20 @@ public class StatisticsServiceImpl implements IStatisticsService {
 //                    });
 //                    result.put("stateStatistics", stateStatistics);
 
-                    // 构建简化的分组信息，避免复杂对象的循环引用
+                    // 不再分组，将所有事件合并到一个列表中，添加分组key作为事件属性
                     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-                    Map<String, Object> groupsSummary = new HashMap<>();
-                    eventList.getGroups().forEach((key, group) -> {
-                        Map<String, Object> groupInfo = new HashMap<>();
-                        groupInfo.put("eventCount", group.getEvents().size());
-                        groupInfo.put("tagTitle", group.getTag() != null ? group.getTag().getTitle() : null);
+                    List<Map<String, Object>> allEvents = new ArrayList<>();
 
-                        // 只提取事件的基本信息，避免复杂对象
-                        List<Map<String, Object>> eventsInfo = group.getEvents().stream()
-                                .limit(100) // 限制每组最多返回100个事件，避免数据过大
-                                .map(event -> {
+                    eventList.getGroups().forEach((key, group) -> {
+                        String tagTitle = group.getTag() != null ? group.getTag().getTitle() : null;
+
+                        // 处理该分组中的所有事件
+                        group.getEvents().forEach(event -> {
                             Map<String, Object> eventInfo = new HashMap<>();
-//                            eventInfo.put("equipmentId", event.getEquipmentId());
-//                            eventInfo.put("testpointId", event.getTestpointId());
+                            eventInfo.put("groupKey", key); // 添加分组key作为事件属性
+                            eventInfo.put("tagTitle", tagTitle); // 添加标签标题
                             eventInfo.put("state", event.getState());
+
                             // 处理开始时间
                             String startTime = null;
                             if (event.getStart() != null) {
@@ -640,6 +609,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                                 }
                             }
                             eventInfo.put("start", startTime);
+                            eventInfo.put("startTimestamp", event.getStart() != null ? event.getStart().getTime() : 0); // 用于排序
 
                             // 处理结束时间
                             String endTime = null;
@@ -662,14 +632,24 @@ public class StatisticsServiceImpl implements IStatisticsService {
                             eventInfo.put("equipmentName", equipmentName != null ? equipmentName : "未知设备");
                             eventInfo.put("testpointName", testpointName != null ? testpointName : "未知测点");
 
-                            return eventInfo;
-                        }).toList();
-
-                        groupInfo.put("events", eventsInfo);
-                        groupsSummary.put(key, groupInfo);
+                            allEvents.add(eventInfo);
+                        });
                     });
 
-                    result.put("groups", groupsSummary);
+                    // 按开始时间倒序排列（最新的在前面）
+                    allEvents.sort((e1, e2) -> {
+                        Long timestamp1 = (Long) e1.get("startTimestamp");
+                        Long timestamp2 = (Long) e2.get("startTimestamp");
+                        if (timestamp1 == null) timestamp1 = 0L;
+                        if (timestamp2 == null) timestamp2 = 0L;
+                        return timestamp2.compareTo(timestamp1); // 倒序
+                    });
+
+                    // 移除排序用的时间戳字段，保持数据清洁
+                    allEvents.forEach(event -> event.remove("startTimestamp"));
+
+                    result.put("events", allEvents);
+                    result.put("totalEvents", allEvents.size());
                 }
             }
 
@@ -731,13 +711,13 @@ public class StatisticsServiceImpl implements IStatisticsService {
     private Map<Long, Integer> getSensorAlarmLevels(Long sensorTypeId) {
         Map<Long, Integer> alarmLevels = new HashMap<>();
 
-        // 获取report_st字典
+        // 获取sys:st字典
         HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.getOne(
             new LambdaQueryWrapper<HierarchyTypePropertyDict>()
-                .eq(HierarchyTypePropertyDict::getDictKey, "report_st"));
+                .eq(HierarchyTypePropertyDict::getDictKey, "sys:st"));
 
         if (dict == null) {
-            log.warn("未找到report_st属性字典");
+            log.warn("未找到sys:st属性字典");
             return alarmLevels;
         }
 
@@ -747,7 +727,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 .eq(HierarchyTypeProperty::getTypeId, sensorTypeId));
 
         if (typeProperty == null) {
-            log.warn("传感器类型未配置report_st属性");
+            log.warn("传感器类型未配置sys:st属性");
             return alarmLevels;
         }
 

@@ -28,6 +28,8 @@ public interface IHierarchyService extends IService<Hierarchy> {
      */
     HierarchyVo queryById(Long id, boolean needProperty);
 
+    List<HierarchyVo> queryByIds(List<Long> ids,boolean needProperty);
+
     /**
      * 查询列表
      */

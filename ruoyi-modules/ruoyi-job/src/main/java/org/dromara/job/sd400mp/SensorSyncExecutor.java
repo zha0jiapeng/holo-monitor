@@ -53,7 +53,7 @@ public class SensorSyncExecutor {
 
     public ExecuteResult jobExecute(JobArgs jobArgs) {
         log.info("开始执行传感器同步任务");
-
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         // 调用获取最底层且具有1005属性的层级列表
         List<HierarchyVo> bottomLevelHierarchies = hierarchyService.getBottomLevelWithConfiguration();
         for (HierarchyVo hierarchyVo : bottomLevelHierarchies) {
@@ -85,27 +85,37 @@ public class SensorSyncExecutor {
                     for (Object o : onlines) {
                         JSONObject item = (JSONObject) o;
                         String key = item.getStr("key");
-                        LocalDateTime parse = LocalDateTime.parse(item.getStr("dt"));
-                        long count = hierarchyDataService.count(new LambdaQueryWrapper<HierarchyData>()
-                            .eq(HierarchyData::getHierarchyId, hierarchyVo.getId())
-                            .eq(HierarchyData::getTag, key)
-                            .eq(HierarchyData::getTime, parse)
-                        );
-                        if(count == 0) {
-                            HierarchyDataBo hierarchyData = new HierarchyDataBo();
-                            hierarchyData.setHierarchyId(Long.valueOf(hierarchyVo.getId()));
-                            hierarchyData.setTime(parse);
-                            hierarchyData.setValue(new BigDecimal(item.getStr("val")));
-                            hierarchyData.setTag(key);
-                            hierarchyData.setName(mapp.get(item.getStr("tag")));
-                            hierarchyDataService.insertByBo(hierarchyData);
-                            if(key.equals("sys:st") && !item.getStr("val").equals("0")){
-                                extracted(hierarchyVo,"report_time",parse.toString());
-                                extracted(hierarchyVo,"report_st",item.getStr("val"));
-                            }
-                            if(key.equals("sys:cs") && !item.getStr("val").equals("0")){
-                                extracted(hierarchyVo,"offline_flag",item.getStr("val"));
-                            }
+                        HierarchyTypePropertyDict dictt = hierarchyTypePropertyDictService.getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, key));
+                        if(dictt!=null){
+                            HierarchyTypeProperty reportStt = hierarchyTypePropertyService.getOne(
+                                new LambdaQueryWrapper<HierarchyTypeProperty>()
+                                    .eq(HierarchyTypeProperty::getTypeId, hierarchyVo.getTypeId())
+                                    .eq(HierarchyTypeProperty::getPropertyDictId,dictt.getId()));
+                            if(reportStt ==null) continue;
+                            HierarchyProperty hp = hierarchyPropertyService.getOne(
+                                new LambdaQueryWrapper<HierarchyProperty>()
+                                    .eq(HierarchyProperty::getTypePropertyId, reportStt.getId()).eq(HierarchyProperty::getHierarchyId, hierarchyVo.getId()));
+                            if(hp ==null)
+                                hp = new  HierarchyProperty();
+                            hp.setHierarchyId(hierarchyVo.getId());
+                            hp.setTypePropertyId(reportStt.getId());
+                            hp.setScope(0);
+                            hp.setPropertyValue(item.get("val").toString());
+                            hierarchyPropertyService.saveOrUpdate(hp);
+                        }
+                        if(key.equals("sys:st") && !item.getStr("val").equals("0")){
+                            LocalDateTime parse = LocalDateTime.parse(item.getStr("dt"));
+                            HierarchyTypePropertyDict reportTime = hierarchyTypePropertyDictService.getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "report_time"));
+                            HierarchyTypeProperty reportTimee = hierarchyTypePropertyService.getOne(new LambdaQueryWrapper<HierarchyTypeProperty>().eq(HierarchyTypeProperty::getTypeId, hierarchyVo.getTypeId()).eq(HierarchyTypeProperty::getPropertyDictId,reportTime.getId()));
+                            HierarchyProperty hpp = hierarchyPropertyService.getOne(
+                                new LambdaQueryWrapper<HierarchyProperty>()
+                                    .eq(HierarchyProperty::getTypePropertyId, reportTimee.getId()).eq(HierarchyProperty::getHierarchyId, hierarchyVo.getId()));
+                            if(hpp ==null) hpp = new  HierarchyProperty();
+                            hpp.setHierarchyId(hierarchyVo.getId());
+                            hpp.setTypePropertyId(reportTimee.getId());
+                            hpp.setScope(0);
+                            hpp.setPropertyValue(parse.format(dateTimeFormatter));
+                            hierarchyPropertyService.save(hpp);
                         }
                     }
                 }

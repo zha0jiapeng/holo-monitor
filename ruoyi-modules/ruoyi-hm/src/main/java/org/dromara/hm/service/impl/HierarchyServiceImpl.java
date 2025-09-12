@@ -58,6 +58,22 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     }
 
     @Override
+    public List<HierarchyVo> queryByIds(List<Long> ids, boolean needProperty) {
+        List<HierarchyVo> hierarchyVo = baseMapper.selectVoByIds(ids);
+        if(needProperty) {
+            for (HierarchyVo vo : hierarchyVo) {
+                List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
+                    Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, vo.getId())
+                );
+                initProperty(properties,vo);
+            }
+
+        }
+        return hierarchyVo;
+    }
+
+
+    @Override
     public TableDataInfo<HierarchyVo> queryPageList(HierarchyBo bo, PageQuery pageQuery) {
         LambdaQueryWrapper<Hierarchy> lqw = buildQueryWrapper(bo);
         Page<HierarchyVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
@@ -928,11 +944,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             List<Long> list = currentBoundProperties.stream().map(HierarchyProperty::getHierarchyId).toList();
 
             if (!currentBoundProperties.isEmpty()) {
-                boundSensors = baseMapper.selectVoList(
-                    Wrappers.<Hierarchy>lambdaQuery()
-                        .in(Hierarchy::getId, list)
-                        .eq(Hierarchy::getTypeId, sensorType.getId())
-                );
+                boundSensors = queryByIds(list,true);
             }
         }
         Map<String, List<HierarchyVo>> result = new HashMap<>();
