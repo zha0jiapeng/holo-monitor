@@ -887,7 +887,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
         if (sensorIds.isEmpty()) {
             Map<String, List<HierarchyVo>> result = new HashMap<>();
-            result.put("unbound", new ArrayList<>());
+            result.put("unbound", allSensors);
             result.put("bound", new ArrayList<>());
             return result;
         }
@@ -920,33 +920,24 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             // 查询当前层级绑定的传感器ID
             List<HierarchyProperty> currentBoundProperties = hierarchyPropertyMapper.selectList(
                 Wrappers.<HierarchyProperty>lambdaQuery()
-                    .eq(HierarchyProperty::getHierarchyId, hierarchyId)
+                    .eq(HierarchyProperty::getPropertyValue, hierarchyId)
                     .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
                     .isNotNull(HierarchyProperty::getPropertyValue)
                     .ne(HierarchyProperty::getPropertyValue, "")
             );
+            List<Long> list = currentBoundProperties.stream().map(HierarchyProperty::getHierarchyId).toList();
 
             if (!currentBoundProperties.isEmpty()) {
-                // 提取绑定的传感器ID
-                Set<Long> currentBoundSensorIds = currentBoundProperties.stream()
-                    .map(property -> Long.valueOf(property.getPropertyValue()))
-                    .collect(Collectors.toSet());
-
-                // 查询这些传感器的详细信息
-                if (!currentBoundSensorIds.isEmpty()) {
-                    boundSensors = baseMapper.selectVoList(
-                        Wrappers.<Hierarchy>lambdaQuery()
-                            .in(Hierarchy::getId, currentBoundSensorIds)
-                            .eq(Hierarchy::getTypeId, sensorType.getId())
-                    );
-                }
+                boundSensors = baseMapper.selectVoList(
+                    Wrappers.<Hierarchy>lambdaQuery()
+                        .in(Hierarchy::getId, list)
+                        .eq(Hierarchy::getTypeId, sensorType.getId())
+                );
             }
         }
-
-        // 9. 组装返回结果
         Map<String, List<HierarchyVo>> result = new HashMap<>();
-        result.put("unbound", unboundSensors);  // 未绑定的传感器列表
-        result.put("bound", boundSensors);      // 当前层级已绑定的传感器列表（用于回显）
+        result.put("unbound", unboundSensors);
+        result.put("bound", boundSensors);
         return result;
     }
 

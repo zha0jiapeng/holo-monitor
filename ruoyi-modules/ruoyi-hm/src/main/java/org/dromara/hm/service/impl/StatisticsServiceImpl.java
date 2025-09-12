@@ -46,6 +46,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
     @Override
     public List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId) {
         List<Long> list = hierarchyService.selectTargetTypeHierarchyList(hierarchyService.selectChildHierarchyIds(hierarchyId),targetTypeId);
+        if(list==null|| list.isEmpty()){
+            return null;
+        }
         List<Hierarchy> hierarchies = hierarchyService.listByIds(list);
 
         Map<String, Long> nameStatistics = hierarchies.stream()
@@ -55,7 +58,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 Collectors.counting()
             ));
 
-        List<Map<String, Object>> resultList = nameStatistics.entrySet().stream()
+        return nameStatistics.entrySet().stream()
             .map(entry -> {
                 Map<String, Object> item = new HashMap<>();
                 item.put("name", entry.getKey());
@@ -63,8 +66,6 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 return item;
             })
             .collect(Collectors.toList());
-
-        return resultList;
     }
 
 

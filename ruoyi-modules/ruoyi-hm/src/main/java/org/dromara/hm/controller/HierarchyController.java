@@ -164,7 +164,7 @@ public class HierarchyController extends BaseController {
     }
 
     /**
-     * 查询传感器列表（包含未绑定和已绑定）
+     * 查询未绑定传感器列表
      *
      * @param parentId 父级ID（用于查询未绑定传感器）
      * @param hierarchyId 当前层级ID（用于查询已绑定传感器回显）

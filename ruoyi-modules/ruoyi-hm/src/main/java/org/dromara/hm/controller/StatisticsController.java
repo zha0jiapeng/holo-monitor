@@ -30,7 +30,6 @@
  public class StatisticsController extends BaseController {
 
      private final IStatisticsService statisticsService;
-     private final IHierarchyService hierarchyService;
 
     @GetMapping("/getTargetTypeCount")
     public R<List<Map<String, Object>>> getTargetTypeList(Long hierarchyId,Long targetTypeId) {
