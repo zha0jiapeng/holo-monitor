@@ -45,27 +45,17 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     @Override
     public List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId) {
-        List<Long> list = hierarchyService.selectTargetTypeHierarchyList(hierarchyService.selectChildHierarchyIds(hierarchyId),targetTypeId);
-        if(list==null|| list.isEmpty()){
-            return null;
+        List<Map<String, Object>> put = new ArrayList<>();
+        List<Map<String,Long>> longIntegerMap = hierarchyService.selectTargetTypeHierarchyList(hierarchyService.selectChildHierarchyIds(hierarchyId), targetTypeId);
+        for (Map<String, Long> stringIntegerMap : longIntegerMap) {
+            Map<String, Object> nn = new  HashMap<>();
+            Long count = stringIntegerMap.get("count");
+            Hierarchy hierarchy = hierarchyService.getById( stringIntegerMap.get("hierarchy_id"));
+            nn.put("name",hierarchy.getName());
+            nn.put("count",count);
+            put.add(nn);
         }
-        List<Hierarchy> hierarchies = hierarchyService.listByIds(list);
-
-        Map<String, Long> nameStatistics = hierarchies.stream()
-            .filter(h -> h.getName() != null) // 过滤掉 name 为 null 的记录
-            .collect(Collectors.groupingBy(
-                Hierarchy::getName,
-                Collectors.counting()
-            ));
-
-        return nameStatistics.entrySet().stream()
-            .map(entry -> {
-                Map<String, Object> item = new HashMap<>();
-                item.put("name", entry.getKey());
-                item.put("count", entry.getValue());
-                return item;
-            })
-            .collect(Collectors.toList());
+        return put;
     }
 
 
@@ -261,6 +251,31 @@ public class StatisticsServiceImpl implements IStatisticsService {
             targetTypeId, targetHierarchies.size(), totalSensorCount, totalAlarmSensorCount, totalOfflineSensorCount);
 
         return result;
+    }
+
+    /**
+     * 递归查找hierarchyId下所有type_id=targetTypeId的层级
+     * @param hierarchyId 当前层级ID
+     * @param targetTypeId 目标类型ID
+     * @param targetHierarchyIds 匹配的层级ID集合
+     */
+    private void findTargetTypeHierarchies(Long hierarchyId, Long targetTypeId, List<Long> targetHierarchyIds) {
+        // 先检查当前层级是否匹配
+        Hierarchy current = hierarchyService.getById(hierarchyId);
+        if (current != null && targetTypeId.equals(current.getTypeId())) {
+            targetHierarchyIds.add(hierarchyId);
+            // 如果当前层级匹配目标类型，仍然继续查找其子级，因为可能存在多层相同类型的层级
+        }
+
+        // 获取直接子级
+        LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Hierarchy::getParentId, hierarchyId);
+        List<Hierarchy> children = hierarchyService.list(wrapper);
+
+        // 递归查找每个子级
+        for (Hierarchy child : children) {
+            findTargetTypeHierarchies(child.getId(), targetTypeId, targetHierarchyIds);
+        }
     }
 
     /**

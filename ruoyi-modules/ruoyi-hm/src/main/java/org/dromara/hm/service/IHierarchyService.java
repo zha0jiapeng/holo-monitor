@@ -100,7 +100,7 @@ public interface IHierarchyService extends IService<Hierarchy> {
 
     List<Long> selectChildHierarchyIds(Long hierarchyId);
 
-    List<Long> selectTargetTypeHierarchyList(List<Long> longs, Long targetTypeId);
+    List<Map<String,Long>> selectTargetTypeHierarchyList(List<Long> longs, Long targetTypeId);
 
     List<HierarchyVo> selectByIds(List<Long> matchedIds);
 

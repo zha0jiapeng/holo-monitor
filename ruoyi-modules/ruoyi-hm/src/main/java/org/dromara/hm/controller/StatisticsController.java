@@ -33,8 +33,7 @@
 
     @GetMapping("/getTargetTypeCount")
     public R<List<Map<String, Object>>> getTargetTypeList(Long hierarchyId,Long targetTypeId) {
-         List<Map<String, Object>> result =  statisticsService.getTargetTypeList(hierarchyId,targetTypeId);
-        return R.ok(result);
+        return R.ok(statisticsService.getTargetTypeList(hierarchyId,targetTypeId));
      }
 
      @GetMapping("/getNextHierarchyList")

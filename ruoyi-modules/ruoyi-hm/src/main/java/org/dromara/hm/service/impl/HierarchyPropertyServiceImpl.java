@@ -4,26 +4,20 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
-import org.dromara.common.core.exception.ServiceException;
+import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.utils.MapstructUtils;
-import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.HierarchyTypeProperty;
 import org.dromara.hm.domain.HierarchyTypePropertyDict;
 import org.dromara.hm.domain.bo.HierarchyPropertyBo;
 import org.dromara.hm.domain.vo.HierarchyPropertyVo;
-import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
 import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.enums.DataTypeEnum;
-import org.dromara.hm.mapper.HierarchyMapper;
 import org.dromara.hm.mapper.HierarchyPropertyMapper;
-import org.dromara.hm.mapper.HierarchyTypePropertyDictMapper;
-import org.dromara.hm.mapper.HierarchyTypePropertyMapper;
 import org.dromara.hm.service.IHierarchyPropertyService;
 import org.dromara.hm.service.IHierarchyService;
 import org.dromara.hm.service.IHierarchyTypePropertyDictService;
@@ -31,8 +25,7 @@ import org.dromara.hm.service.IHierarchyTypePropertyService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collection;
-import java.util.List;
+import java.util.*;
 
 /**
  * 层级属性Service业务层处理
@@ -42,6 +35,7 @@ import java.util.List;
  */
 @RequiredArgsConstructor
 @Service
+@Slf4j
 public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyMapper, HierarchyProperty>  implements IHierarchyPropertyService {
 
     private final HierarchyPropertyMapper baseMapper;
@@ -117,31 +111,94 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
         if(property==null) return false;
         HierarchyTypePropertyVo hierarchyTypeProperty = hierarchyTypePropertyService.queryById(property.getTypePropertyId());
         if(hierarchyTypeProperty.getDict().getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())){
-            String[] split = bo.getPropertyValue().split("\\,");
-            for (String hierarchyIdStr : split) {
-                Long hierarchyId = Long.valueOf(hierarchyIdStr);
-                HierarchyVo hierarchyVo = hierarchyService.queryById(hierarchyId, true);
-                Long l = baseMapper.selectCount(new LambdaQueryWrapper<HierarchyProperty>()
-                    .eq(HierarchyProperty::getHierarchyId, hierarchyVo.getId())
-                    .eq(HierarchyProperty::getPropertyValue, property.getPropertyValue())
-                );
-                if(l!=0){
-                    continue;
+            String propertyValue = property.getPropertyValue();
+            String[] oldProperty = propertyValue.split("\\,"); // 库里现有的属性
+            String[] newProperty = bo.getPropertyValue().split("\\,"); // 传来的新属性
+
+            // 转换为Set便于比较
+            Set<String> existingIds = new HashSet<>(Arrays.asList(oldProperty));
+            Set<String> newIds = new HashSet<>(Arrays.asList(newProperty));
+
+            // 找出要删除的关联（在现有中但不在新的中）
+            Set<String> toDelete = new HashSet<>(existingIds);
+            toDelete.removeAll(newIds);
+
+            // 找出要新增的关联（在新的中但不在现有中）
+            Set<String> toAdd = new HashSet<>(newIds);
+            toAdd.removeAll(existingIds);
+
+            // 获取sensor_device字典配置
+            HierarchyTypePropertyDict sensorDevice = hierarchyTypePropertyDictService.getOne(
+                new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_device"));
+
+            // 处理删除的关联
+            for (String hierarchyIdStr : toDelete) {
+                if (hierarchyIdStr.trim().isEmpty()) continue;
+
+                try {
+                    Long hierarchyId = Long.valueOf(hierarchyIdStr.trim());
+                    HierarchyVo hierarchyVo = hierarchyService.queryById(hierarchyId, true);
+                    if (hierarchyVo == null) continue;
+
+                    Long typeId = hierarchyVo.getTypeId();
+                    HierarchyTypeProperty typeProperty = hierarchyTypePropertyService.getOne(
+                        new LambdaQueryWrapper<HierarchyTypeProperty>()
+                            .eq(HierarchyTypeProperty::getTypeId, typeId)
+                            .eq(HierarchyTypeProperty::getPropertyDictId, sensorDevice.getId())
+                    );
+
+                    if (typeProperty != null) {
+                        // 删除对应的sensor_device关联
+                        baseMapper.delete(new LambdaQueryWrapper<HierarchyProperty>()
+                            .eq(HierarchyProperty::getHierarchyId, hierarchyId)
+                            .eq(HierarchyProperty::getTypePropertyId, typeProperty.getId())
+                            .eq(HierarchyProperty::getPropertyValue, property.getHierarchyId() + "")
+                        );
+                        log.info("删除sensor_device关联: hierarchyId={}, 关联到={}", hierarchyId, property.getHierarchyId());
+                    }
+                } catch (NumberFormatException e) {
+                    log.warn("删除关联时层级ID格式错误: {}", hierarchyIdStr, e);
                 }
-                HierarchyProperty hierarchyProperty = new  HierarchyProperty();
-                hierarchyProperty.setScope(0);
-                Long typeId = hierarchyVo.getTypeId();
-                HierarchyTypePropertyDict sensorDevice = hierarchyTypePropertyDictService.getOne(
-                    new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_device"));
-                HierarchyTypeProperty one = hierarchyTypePropertyService.getOne(
-                    new LambdaQueryWrapper<HierarchyTypeProperty>()
-                        .eq(HierarchyTypeProperty::getTypeId, typeId)
-                        .eq(HierarchyTypeProperty::getPropertyDictId, sensorDevice.getId())
-                );
-                hierarchyProperty.setTypePropertyId(one.getId());
-                hierarchyProperty.setHierarchyId(hierarchyId);
-                hierarchyProperty.setPropertyValue(property.getHierarchyId() + "");
-                baseMapper.insert(hierarchyProperty);
+            }
+
+            // 处理新增的关联
+            for (String hierarchyIdStr : toAdd) {
+                if (hierarchyIdStr.trim().isEmpty()) continue;
+
+                try {
+                    Long hierarchyId = Long.valueOf(hierarchyIdStr.trim());
+                    HierarchyVo hierarchyVo = hierarchyService.queryById(hierarchyId, true);
+                    if (hierarchyVo == null) continue;
+
+                    // 检查是否已存在相同的关联
+                    Long existingCount = baseMapper.selectCount(new LambdaQueryWrapper<HierarchyProperty>()
+                        .eq(HierarchyProperty::getHierarchyId, hierarchyVo.getId())
+                        .eq(HierarchyProperty::getPropertyValue, property.getHierarchyId() + "")
+                    );
+                    if (existingCount > 0) {
+                        continue; // 已存在，跳过
+                    }
+
+                    Long typeId = hierarchyVo.getTypeId();
+                    HierarchyTypeProperty typeProperty = hierarchyTypePropertyService.getOne(
+                        new LambdaQueryWrapper<HierarchyTypeProperty>()
+                            .eq(HierarchyTypeProperty::getTypeId, typeId)
+                            .eq(HierarchyTypeProperty::getPropertyDictId, sensorDevice.getId())
+                    );
+
+                    if (typeProperty != null) {
+                        // 新增sensor_device关联
+                        HierarchyProperty hierarchyProperty = new HierarchyProperty();
+                        hierarchyProperty.setScope(0);
+                        hierarchyProperty.setTypePropertyId(typeProperty.getId());
+                        hierarchyProperty.setHierarchyId(hierarchyId);
+                        hierarchyProperty.setPropertyValue(property.getHierarchyId() + "");
+                        baseMapper.insert(hierarchyProperty);
+                        log.info("新增sensor_device关联: hierarchyId={}, 关联到={}", hierarchyId, property.getHierarchyId());
+                    }
+                } catch (NumberFormatException e) {
+                    log.warn("新增关联时层级ID格式错误: {}", hierarchyIdStr, e);
+                }
             }
         }
 

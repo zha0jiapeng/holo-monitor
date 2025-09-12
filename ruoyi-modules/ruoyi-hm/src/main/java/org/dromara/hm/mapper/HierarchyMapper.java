@@ -14,6 +14,7 @@ import org.dromara.hm.domain.vo.HierarchyVo;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 层级Mapper接口
@@ -55,7 +56,7 @@ public interface HierarchyMapper extends BaseMapperPlus<Hierarchy, HierarchyVo> 
     @Select({
         "<script>",
         "SELECT",
-        "    hhp.property_value hierarchy_id",
+        "     hhp.property_value hierarchy_id ,COUNT(1) count",
         "FROM",
         "    hm_hierarchy_property hhp",
         "    LEFT JOIN hm_hierarchy_type_property hhtp ON hhp.type_property_id = hhtp.id",
@@ -63,12 +64,13 @@ public interface HierarchyMapper extends BaseMapperPlus<Hierarchy, HierarchyVo> 
         "    INNER JOIN hm_hierarchy hh ON hh.id = hhp.hierarchy_id",
         "WHERE",
         "    hhtpd.dict_values = #{targetTypeId}",
-        "    AND hhp.scope = 1",
+        "    AND hhp.scope = 1" +
+        "    GROUP BY hhp.property_value",
 //        "    AND hh.id IN",
 //        "    <foreach item='id' collection='ids' open='(' close=')' separator=','>",
 //        "        #{id}",
 //        "    </foreach>",
         "</script>"
     })
-    List<Long> selectTargetTypeHierarchyList(@Param("ids") List<Long> ids, @Param("targetTypeId") Long targetTypeId);
+    List<Map<String,Long>> selectTargetTypeHierarchyList(@Param("ids") List<Long> ids, @Param("targetTypeId") Long targetTypeId);
 }

@@ -19,7 +19,7 @@
      List<HierarchyVo> getNextHierarchyList(Long hierarchyId, Long targetTypeId);
 
     Map<String, Object> alarm(Long hierarchyId, Long targetTypeId, Integer statisticalType);
-    
+
     /**
      * 实时报警列表统计
      * @param hierarchyId 层级ID
