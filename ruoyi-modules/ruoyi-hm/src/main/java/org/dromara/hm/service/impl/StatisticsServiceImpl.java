@@ -69,7 +69,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         if (matchedIds.isEmpty()) {
             return new ArrayList<>();
         }
-        return hierarchyService.selectByIds(matchedIds,false);
+        return hierarchyService.selectByIds(matchedIds,true);
     }
 
 

@@ -601,6 +601,24 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             if (list.size() != ids.size()) {
                 throw new ServiceException("您没有删除权限!");
             }
+            for (Hierarchy hierarchy : list) {
+                HierarchyType sensor = hierarchyTypeMapper.selectOne(new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "sensor"));
+                if(hierarchy.getTypeId().equals(sensor.getId())){
+                    HierarchyTypePropertyDict sensorDevice = hierarchyTypePropertyDictMapper.selectOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_device"));
+                    HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(new LambdaQueryWrapper<HierarchyTypeProperty>()
+                        .eq(HierarchyTypeProperty::getPropertyDictId, sensorDevice.getId())
+                        .eq(HierarchyTypeProperty::getTypeId, hierarchy.getTypeId())
+                    );
+                    HierarchyProperty hierarchyProperty = hierarchyPropertyMapper.selectOne(
+                        new LambdaQueryWrapper<HierarchyProperty>()
+                            .eq(HierarchyProperty::getHierarchyId, hierarchy.getId())
+                            .eq(HierarchyProperty::getTypePropertyId, hierarchyTypeProperty.getId())
+                    );
+                    if(hierarchyProperty!=null){
+                        throw new ServiceException("传感器已绑定设备，无法删除");
+                    }
+                }
+            }
             hierarchyPropertyMapper.delete(Wrappers.<HierarchyProperty>lambdaQuery().in(HierarchyProperty::getHierarchyId, ids));
         }
         return baseMapper.deleteByIds(ids) > 0;
