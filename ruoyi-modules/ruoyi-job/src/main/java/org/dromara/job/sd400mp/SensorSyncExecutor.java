@@ -103,7 +103,7 @@ public class SensorSyncExecutor {
                             hp.setPropertyValue(item.get("val").toString());
                             hierarchyPropertyService.saveOrUpdate(hp);
                         }
-                        if(key.equals("sys:st") && !item.getStr("val").equals("0")){
+                        if(key.equals("sys:st")){
                             LocalDateTime parse = LocalDateTime.parse(item.getStr("dt"));
                             HierarchyTypePropertyDict reportTime = hierarchyTypePropertyDictService.getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "report_time"));
                             HierarchyTypeProperty reportTimee = hierarchyTypePropertyService.getOne(new LambdaQueryWrapper<HierarchyTypeProperty>().eq(HierarchyTypeProperty::getTypeId, hierarchyVo.getTypeId()).eq(HierarchyTypeProperty::getPropertyDictId,reportTime.getId()));
@@ -115,7 +115,7 @@ public class SensorSyncExecutor {
                             hpp.setTypePropertyId(reportTimee.getId());
                             hpp.setScope(0);
                             hpp.setPropertyValue(parse.format(dateTimeFormatter));
-                            hierarchyPropertyService.save(hpp);
+                            hierarchyPropertyService.saveOrUpdate(hpp);
                         }
                     }
                 }

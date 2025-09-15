@@ -285,21 +285,26 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
      * @param hierarchyId 当前层级ID
      * @return 父级层级ID，如果没有找到返回null
      */
-    private Long findCascadeParentAndSetRelation(List<HierarchyProperty> properties, Long hierarchyId) {
+    private Map<String,Object> findCascadeParentAndSetRelation(List<HierarchyProperty> properties, Long hierarchyId) {
+        Map<String,Object> map = new HashMap<>();
+        List<Long> ids = new ArrayList<>();
         for (HierarchyProperty property : properties) {
             HierarchyTypeProperty typeProperty = hierarchyTypePropertyMapper.selectById(property.getTypePropertyId());
             HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(typeProperty.getPropertyDictId());
 
             if (dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
                 HierarchyType relatedType = hierarchyTypeMapper.selectById(Long.valueOf(dictVo.getDictValues()));
+                Long parentId = Long.valueOf(property.getPropertyValue());
                 if (relatedType != null && relatedType.getCascadeFlag()) {
-                    Long parentId = Long.valueOf(property.getPropertyValue());
                     updateHierarchyParent(hierarchyId, parentId);
-                    return parentId;
+                    map.put("parentId", parentId);
+                }else{
+                    ids.add(parentId);
                 }
+                map.put("otherIds", ids);
             }
         }
-        return null;
+        return map;
     }
 
     /**
@@ -532,11 +537,18 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         List<HierarchyProperty> extraProperties = new ArrayList<>();
         Long hierarchyId = bo.getId();
         bo.getProperties().forEach(property -> property.setHierarchyId(hierarchyId));
-        Long parentHierarchyId = findCascadeParentAndSetRelation(bo.getProperties(), hierarchyId);
-        if (parentHierarchyId != null) {
-            createHiddenPropertiesFromParent(hierarchyId, parentHierarchyId, extraProperties);
+        Map<String, Object> cascadeParentAndSetRelation = findCascadeParentAndSetRelation(bo.getProperties(), hierarchyId);
+        Object parentIdObj = cascadeParentAndSetRelation.get("parentId");
+        Object otherIdsObj = cascadeParentAndSetRelation.get("otherIds");
+        if (parentIdObj != null) {
+            Long parentId = Long.valueOf(parentIdObj.toString());
+            List<Long> otherIds = (List<Long>) otherIdsObj;
+            otherIds.add(parentId);
+            for (Long otherId : otherIds) {
+                createHiddenPropertiesFromParent(hierarchyId, otherId, extraProperties);
+            }
+            bo.setParentId(parentId);
         }
-        bo.setParentId(parentHierarchyId);
         batchInsertProperties(bo.getProperties(), extraProperties);
         bo.setNeedGenerateCode(isBottomLevel(bo.getTypeId()) && type.getCascadeFlag());
     }

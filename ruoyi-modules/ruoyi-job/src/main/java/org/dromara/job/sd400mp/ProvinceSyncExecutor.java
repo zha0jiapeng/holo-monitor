@@ -55,7 +55,7 @@ public class ProvinceSyncExecutor {
             String province = stringObjectEntry.getKey();
             List<String> citys = (List<String>)stringObjectEntry.getValue();
             Hierarchy hierarchy = new Hierarchy();
-            hierarchy.setParentId(335l);
+            hierarchy.setParentId(1050l);
             hierarchy.setTypeId(28l);
             hierarchy.setName(province);
             hierarchy.setCode(null);
