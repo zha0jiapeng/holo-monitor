@@ -26,4 +26,6 @@
      * @return 实时报警统计数据
      */
     Map<String, Object> alarmList(Long hierarchyId);
-}
+
+     List<HierarchyVo> sensorList(Long hierarchyId, boolean showAllFlag);
+ }

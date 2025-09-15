@@ -2,6 +2,7 @@ package org.dromara.hm.domain.vo;
 
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.dromara.common.excel.annotation.ExcelRequired;
 import org.dromara.hm.domain.HierarchyProperty;
 import io.github.linpeilie.annotations.AutoMapper;
@@ -19,6 +20,7 @@ import java.io.Serializable;
 @Data
 @ExcelIgnoreUnannotated
 @AutoMapper(target = HierarchyProperty.class)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class HierarchyPropertyVo implements Serializable {
 
     @Serial

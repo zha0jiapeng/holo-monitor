@@ -3,6 +3,7 @@ package org.dromara.hm.domain.vo;
 import cn.hutool.json.JSONArray;
 import cn.idev.excel.annotation.ExcelIgnoreUnannotated;
 import cn.idev.excel.annotation.ExcelProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.github.therapi.runtimejavadoc.repack.com.eclipsesource.json.JsonObject;
 import org.dromara.common.excel.annotation.ExcelRequired;
 import org.dromara.hm.domain.Hierarchy;
@@ -24,6 +25,7 @@ import java.util.List;
 @Data
 @ExcelIgnoreUnannotated
 @AutoMapper(target = Hierarchy.class)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class HierarchyVo implements Serializable {
 
     @Serial
@@ -65,6 +67,8 @@ public class HierarchyVo implements Serializable {
     private List<HierarchyPropertyVo> properties;
 
     private JSONArray dataSet;
+
+    private Integer alarmType = 0;
 
     private boolean haveSensorFlag;
 

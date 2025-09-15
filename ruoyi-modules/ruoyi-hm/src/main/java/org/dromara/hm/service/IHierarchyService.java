@@ -1,5 +1,6 @@
 package org.dromara.hm.service;
 
+import cn.hutool.json.JSONObject;
 import com.baomidou.mybatisplus.extension.service.IService;
 import jakarta.validation.constraints.NotNull;
 import org.dromara.common.mybatis.core.page.PageQuery;
@@ -104,7 +105,9 @@ public interface IHierarchyService extends IService<Hierarchy> {
 
     List<Map<String,Long>> selectTargetTypeHierarchyList(List<Long> longs, Long targetTypeId);
 
-    List<HierarchyVo> selectByIds(List<Long> matchedIds);
+    List<HierarchyVo> selectByIds(List<Long> matchedIds,boolean needProperty);
+
+    List<HierarchyVo> selectByIds(List<Long> matchedIds,List<String> diceNames);
 
     List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId);
 
@@ -116,4 +119,6 @@ public interface IHierarchyService extends IService<Hierarchy> {
     List<HierarchyVo> getAllSensorsWithConfiguration();
 
     Map<String, List<HierarchyVo>> sensorList(Long parentId, Long hierarchyId);
+
+    JSONObject getLocationByHierarchyId(Long hierarchyId);
 }

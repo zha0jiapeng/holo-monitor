@@ -274,6 +274,16 @@ public class SD400MPUtils {
         return JSONUtil.parseObj(body);
     }
 
+    public static JSONObject locationResult(Map<String,Object> map) {
+
+        String body = HttpUtil.createPost(URI + "/api/location/result")
+            .header(Header.AUTHORIZATION,"GlbToken "+getToken())
+            .body(JSONUtil.toJsonStr(map))
+            .execute().body();
+        return JSONUtil.parseObj(body);
+    }
+
+
 
     public static JSONObject single(Map<String,Object> map) {
         String body = HttpUtil.createPost(URI + "/api/single")

@@ -67,10 +67,12 @@ public class StatisticsServiceImpl implements IStatisticsService {
         findMatchingDescendants(hierarchyId, targetTypeId, matchedIds);
 
         if (matchedIds.isEmpty()) {
-            return new ArrayList<HierarchyVo>();
+            return new ArrayList<>();
         }
-        return hierarchyService.selectByIds(matchedIds);
+        return hierarchyService.selectByIds(matchedIds,false);
     }
+
+
 
     @Override
     public Map<String, Object> alarm(Long hierarchyId, Long targetTypeId, Integer statisticalType) {
@@ -339,7 +341,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
      */
     private List<Long> getOfflineFlagHierarchyIds(Long typeId) {
         // 验证字典是否存在
-        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey,"offline_flag"));
+        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey,"sys:cs"));
 
         HierarchyTypeProperty one = hierarchyTypePropertyService.getOne(Wrappers.<HierarchyTypeProperty>lambdaQuery()
             .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId())
@@ -351,17 +353,6 @@ public class StatisticsServiceImpl implements IStatisticsService {
         propertyWrapper.eq(HierarchyProperty::getTypePropertyId, one.getId());
         List<HierarchyProperty> allOfflineFlagProperties = hierarchyPropertyService.list(propertyWrapper);
 
-        log.info("找到 {} 个offline_flag属性记录", allOfflineFlagProperties.size());
-
-        // 调试：输出所有找到的属性记录
-        if (!allOfflineFlagProperties.isEmpty()) {
-            log.debug("offline_flag属性记录详情 (前10条):");
-            allOfflineFlagProperties.stream().limit(10).forEach(prop ->
-                log.debug("属性: id={}, hierarchyId={}, typePropertyId={}, value='{}'",
-                    prop.getId(), prop.getHierarchyId(), prop.getTypePropertyId(), prop.getPropertyValue())
-            );
-        }
-
         List<HierarchyProperty> validProperties = allOfflineFlagProperties.stream()
             .filter(property -> "1".equals(property.getPropertyValue()))
             .toList();
@@ -372,7 +363,6 @@ public class StatisticsServiceImpl implements IStatisticsService {
             .distinct()
             .toList();
 
-        log.info("找到 {} 个包含offline_flag值为 '1' 的层级: {}", hierarchyIds.size(), hierarchyIds);
         return hierarchyIds;
     }
 
@@ -659,6 +649,13 @@ public class StatisticsServiceImpl implements IStatisticsService {
         }
 
         return result;
+    }
+
+    @Override
+    public List<HierarchyVo> sensorList(Long hierarchyId, boolean showAllFlag) {
+        List<HierarchyVo> sensorListByDeviceId = hierarchyService.getSensorListByDeviceId(hierarchyId);
+
+        return sensorListByDeviceId;
     }
 
     /**

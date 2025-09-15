@@ -2,6 +2,7 @@ package org.dromara.hm.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaIgnore;
+import cn.hutool.json.JSONObject;
 import org.dromara.common.core.domain.R;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.validate.AddGroup;
@@ -18,6 +19,7 @@ import org.dromara.common.log.annotation.Log;
 import org.dromara.common.log.enums.BusinessType;
 import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.bo.HierarchyBo;
+import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
 import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.service.IHierarchyService;
 import lombok.RequiredArgsConstructor;
@@ -177,5 +179,18 @@ public class HierarchyController extends BaseController {
         @RequestParam Long hierarchyId){
         return R.ok(hierarchyService.sensorList(parentId, hierarchyId));
     }
+
+
+    /**
+     * 根据类型ID获取属性列表
+     */
+    //@SaCheckPermission("hm:hierarchyTypeProperty:list")
+    @GetMapping("/getLocationByHierarchyId/{hierarchyId}")
+    @SaIgnore
+    public R<JSONObject> getLocationByHierarchyId(@PathVariable("hierarchyId") Long hierarchyId) {
+        return R.ok(hierarchyService.getLocationByHierarchyId(hierarchyId));
+    }
+
+
 
 }

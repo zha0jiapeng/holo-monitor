@@ -54,4 +54,10 @@
         return R.ok(result);
      }
 
+     @GetMapping("/sensorList")
+     public R<List<HierarchyVo>> sensorList(Long hierarchyId,boolean showAllFlag) {
+         List<HierarchyVo> list =  statisticsService.sensorList(hierarchyId,showAllFlag);
+         return R.ok(list);
+     }
+
  }

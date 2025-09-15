@@ -48,6 +48,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     @Override
     public HierarchyVo queryById(Long id, boolean needProperty) {
         HierarchyVo hierarchyVo = baseMapper.selectVoById(id);
+        if(hierarchyVo==null) return null;
         if(needProperty) {
             List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
                 Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, id)
@@ -736,16 +737,63 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     }
 
     @Override
-    public List<HierarchyVo> selectByIds(List<Long> matchedIds) {
+    public List<HierarchyVo> selectByIds(List<Long> matchedIds,boolean needProperty) {
         List<HierarchyVo> hierarchies = baseMapper.selectVoByIds(matchedIds);
-        for (HierarchyVo hierarchy : hierarchies) {
-            List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
-                Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, hierarchy.getId())
-            );
-            initProperty(properties,hierarchy);
+        if(needProperty) {
+            for (HierarchyVo hierarchy : hierarchies) {
+                List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
+                    Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, hierarchy.getId())
+                );
+                initProperty(properties, hierarchy);
+            }
         }
         return hierarchies;
     }
+
+    @Override
+    public List<HierarchyVo> selectByIds(List<Long> matchedIds, List<String> diceNames) {
+        List<HierarchyVo> hierarchies = baseMapper.selectVoByIds(matchedIds);
+        if(diceNames!=null) {
+            List<HierarchyTypePropertyDictVo> dicts = hierarchyTypePropertyDictMapper.selectVoList(
+                new LambdaQueryWrapper<HierarchyTypePropertyDict>().in(HierarchyTypePropertyDict::getDictKey, diceNames)
+            );
+            List<Long> idList = dicts.stream()
+                .map(HierarchyTypePropertyDictVo::getId)
+                .toList();
+            for (HierarchyVo hierarchy : hierarchies) {
+                List<HierarchyTypePropertyVo> hierarchyTypePropertyVos = hierarchyTypePropertyMapper.selectVoList(new LambdaQueryWrapper<HierarchyTypeProperty>()
+                    .in(HierarchyTypeProperty::getPropertyDictId, idList)
+                    .eq(HierarchyTypeProperty::getTypeId, hierarchy.getTypeId())
+                );
+                List<Long> ids = hierarchyTypePropertyVos.stream()
+                    .map(HierarchyTypePropertyVo::getId)
+                    .toList();
+                List<HierarchyPropertyVo> hierarchyPropertyVos = hierarchyPropertyMapper.selectVoList(new LambdaQueryWrapper<HierarchyProperty>()
+                    .in(HierarchyProperty::getTypePropertyId, ids)
+                    .eq(HierarchyProperty::getHierarchyId, hierarchy.getId())
+                );
+                for (HierarchyPropertyVo hierarchyPropertyVo : hierarchyPropertyVos) {
+                    for (HierarchyTypePropertyVo hierarchyTypePropertyVo : hierarchyTypePropertyVos) {
+                        if(hierarchyTypePropertyVo.getId().equals(hierarchyPropertyVo.getTypePropertyId())) {
+                            hierarchyPropertyVo.setTypeProperty(hierarchyTypePropertyVo);
+                            break;
+                        }
+                    }
+                }
+                for (HierarchyTypePropertyVo hierarchyTypePropertyVo : hierarchyTypePropertyVos) {
+                    for (HierarchyTypePropertyDictVo dict : dicts) {
+                        if(dict.getId().equals(hierarchyTypePropertyVo.getPropertyDictId())){
+                            hierarchyTypePropertyVo.setDict(dict);
+                            break;
+                        }
+                    }
+                }
+                hierarchy.setProperties(hierarchyPropertyVos);
+            }
+        }
+        return hierarchies;
+    }
+
 
     @Override
     public List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId) {
@@ -761,22 +809,29 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             }
             String[] split = sensorStrs.split("\\,");
             for (String sensorIdStr : split) {
-                HierarchyVo hierarchyVo = queryById(Long.valueOf(sensorIdStr), true);
-
-                //TODO 可视化 400MP 数据
-                List<String> tags = List.of("sys:cs","mont/pd/mag","mont/pd/au","sys:st");;
-                JSONObject entries = SD400MPUtils.testpointFind(hierarchyVo.getCode());
-                if(entries.getInt("code") == 200){
-                    String id = entries.getJSONObject("data").getStr("id");
-                    JSONObject data = SD400MPUtils.data(Long.valueOf(id), tags, null);
-                    if(data.getInt("code")==200){
-                        Object online = data.getByPath("data.groups[0].online");
-                        if(online==null) continue;
-                        JSONArray onlines = (JSONArray) online;
-                        hierarchyVo.setDataSet(onlines);
+                HierarchyVo hierarchyVo = queryById(Long.valueOf(sensorIdStr), false);
+                if(hierarchyVo!=null) {
+                    HierarchyTypePropertyDict sensorLocation = hierarchyTypePropertyDictMapper.selectOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_location"));
+                    if(sensorLocation==null) continue;
+                    HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(new LambdaQueryWrapper<HierarchyTypeProperty>().eq(HierarchyTypeProperty::getPropertyDictId, sensorLocation.getId()));
+                    if(hierarchyTypeProperty==null) continue;
+                    HierarchyPropertyVo hierarchyProperties = hierarchyPropertyMapper.selectVoOne(new LambdaQueryWrapper<HierarchyProperty>().eq(HierarchyProperty::getHierarchyId, Long.valueOf(sensorIdStr)).eq(HierarchyProperty::getTypePropertyId, hierarchyTypeProperty.getId()));
+                    if(hierarchyProperties==null) continue;
+                    hierarchyVo.setProperties(List.of(hierarchyProperties));
+                    List<String> tags = List.of("sys:cs", "mont/pd/mag", "mont/pd/au", "sys:st");
+                    JSONObject entries = SD400MPUtils.testpointFind(hierarchyVo.getCode());
+                    if (entries.getInt("code") == 200) {
+                        String id = entries.getJSONObject("data").getStr("id");
+                        JSONObject data = SD400MPUtils.data(Long.valueOf(id), tags, null);
+                        if (data.getInt("code") == 200) {
+                            Object online = data.getByPath("data.groups[0].online");
+                            if (online == null) continue;
+                            JSONArray onlines = (JSONArray) online;
+                            hierarchyVo.setDataSet(onlines);
+                        }
                     }
-                }
                 list.add(hierarchyVo);
+                }
             }
         }
         return list;
@@ -953,6 +1008,25 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         return result;
     }
 
+    @Override
+    public JSONObject getLocationByHierarchyId(Long hierarchyId) {
+        HierarchyVo hierarchyVo = queryById(hierarchyId,true);
+        if (hierarchyVo != null) {
+            List<HierarchyPropertyVo> properties = hierarchyVo.getProperties();
+            for (HierarchyPropertyVo property : properties) {
+                HierarchyTypePropertyDictVo dict = property.getTypeProperty().getDict();
+                if(dict.getDataType().equals(DataTypeEnum.LOCATION_ID.getCode())){
+                    String fileId = property.getPropertyValue();
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("id",fileId);
+                    JSONObject entries = SD400MPUtils.locationResult(result);
+                    return entries;
+                }
+            }
+        }
+        return null;
+    }
+
     private void initProperty(List<HierarchyPropertyVo> properties,HierarchyVo hierarchyVo) {
         for (HierarchyPropertyVo prop : properties) {
             HierarchyTypePropertyVo typeProp = hierarchyTypePropertyMapper.selectVoById(prop.getTypePropertyId());
@@ -960,10 +1034,10 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 HierarchyTypePropertyDictVo dict = hierarchyTypePropertyDictMapper.selectVoById(typeProp.getPropertyDictId());
                 typeProp.setDict(dict);
                 prop.setTypeProperty(typeProp);
-                if(dict.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())){
+                if (dict.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
                     prop.setHierarchyName(baseMapper.selectById(Long.valueOf(prop.getPropertyValue())).getName());
                 }
-                if(dict.getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())){
+                if (dict.getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())) {
                     hierarchyVo.setHaveSensorFlag(true);
                 }
             }
