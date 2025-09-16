@@ -2,6 +2,7 @@ package org.dromara.hm.service.impl;
 
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
+import cn.idev.excel.FastExcel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -26,7 +27,6 @@ import org.dromara.hm.mapper.*;
 import org.dromara.hm.service.IHierarchyService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -1088,6 +1088,13 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         }
         return null;
     }
+
+    @Override
+    public JSONObject downloadTemplate(Long typeId) {
+        //TODO 根据typeId生成表头
+        return null;
+    }
+
 
     private void initProperty(List<HierarchyPropertyVo> properties,HierarchyVo hierarchyVo) {
         for (HierarchyPropertyVo prop : properties) {

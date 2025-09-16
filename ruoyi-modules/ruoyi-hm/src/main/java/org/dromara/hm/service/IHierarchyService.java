@@ -6,9 +6,12 @@ import jakarta.validation.constraints.NotNull;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.Hierarchy;
+import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.bo.HierarchyBo;
 import org.dromara.hm.domain.vo.HierarchyVo;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -121,4 +124,7 @@ public interface IHierarchyService extends IService<Hierarchy> {
     Map<String, List<HierarchyVo>> sensorList(Long parentId, Long hierarchyId);
 
     JSONObject getLocationByHierarchyId(Long hierarchyId);
+
+    JSONObject downloadTemplate(Long typeId);
+
 }

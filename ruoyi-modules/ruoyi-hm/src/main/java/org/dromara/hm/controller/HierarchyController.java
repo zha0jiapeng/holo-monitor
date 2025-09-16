@@ -2,7 +2,13 @@ package org.dromara.hm.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaIgnore;
+import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
+import cn.idev.excel.FastExcel;
+import cn.idev.excel.read.builder.ExcelReaderBuilder;
+import cn.idev.excel.read.listener.PageReadListener;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.dromara.common.core.domain.R;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.validate.AddGroup;
@@ -18,8 +24,10 @@ import org.dromara.common.excel.utils.ExcelUtil;
 import org.dromara.common.log.annotation.Log;
 import org.dromara.common.log.enums.BusinessType;
 import org.dromara.hm.domain.Hierarchy;
+import org.dromara.hm.domain.HierarchyProperty;
+import org.dromara.hm.domain.HierarchyTypeProperty;
 import org.dromara.hm.domain.bo.HierarchyBo;
-import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
+import org.dromara.hm.domain.template.HierarchyExcelTemplate;
 import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.service.IHierarchyService;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +40,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -191,6 +202,51 @@ public class HierarchyController extends BaseController {
         return R.ok(hierarchyService.getLocationByHierarchyId(hierarchyId));
     }
 
+    /**
+     * 根据类型ID获取属性列表
+     */
+    @GetMapping("/download/template/{typeId}")
+    @SaIgnore
+    public void downloadTemplate(@PathVariable("typeId") Long typeId,HttpServletResponse response) throws IOException {
+        List<HierarchyExcelTemplate> list = new ArrayList<>();
+        HierarchyExcelTemplate hierarchyExcelTemplate = new HierarchyExcelTemplate();
+        list.add(hierarchyExcelTemplate);
 
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
+        response.setCharacterEncoding("utf-8");
+        String fileName = URLEncoder.encode("模板", "UTF-8").replaceAll("\\+", "%20");
+        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
+        FastExcel.write(response.getOutputStream(), HierarchyExcelTemplate.class)
+            .sheet("传感器模板")
+            .doWrite(list);
+    }
+
+    @PostMapping("/upload/template")
+    @SaIgnore
+    public R<Object> uploadTemplate(@RequestParam(name="properties") String properties,
+                               @RequestParam(name="typeId") Long typeId,
+                               @RequestParam(name="file") MultipartFile file
+    ) {
+        if(typeId!=19){
+            return R.fail("只支持上传传感器模板");
+        }
+
+        List<HierarchyExcelTemplate>  hierarchyExcelTemplates = new ArrayList<>();
+        try {
+             hierarchyExcelTemplates = ExcelUtil.importExcel(file.getInputStream(), HierarchyExcelTemplate.class);
+        } catch (IOException e) {
+            return R.fail("上传模板失败");
+        }
+        JSONArray objects = JSONUtil.parseArray(properties);
+        List<HierarchyProperty> list = objects.toList(HierarchyProperty.class);
+        for (HierarchyExcelTemplate item : hierarchyExcelTemplates) {
+            HierarchyBo bo = new HierarchyBo();
+            bo.setProperties(list);
+            bo.setName(item.getName());
+            bo.setTypeId(typeId);
+            hierarchyService.insertByBo(bo);
+        }
+        return R.ok("上传成功");
+    }
 }
