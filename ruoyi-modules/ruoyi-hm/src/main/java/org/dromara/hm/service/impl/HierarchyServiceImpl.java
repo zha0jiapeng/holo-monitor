@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.MapstructUtils;
@@ -382,7 +383,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
      * 如需要则创建隐藏属性
      */
     private void createHiddenPropertyIfNeeded(Long currentHierarchyId, Long parentHierarchyId,
-                                            HierarchyTypeProperty parentTypeProperty, List<HierarchyProperty> extraProperties) {
+                                              HierarchyTypeProperty parentTypeProperty, List<HierarchyProperty> extraProperties) {
         HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(parentTypeProperty.getPropertyDictId());
         if (dictVo == null || !dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
             return;
@@ -578,17 +579,17 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
      */
     private void validEntityBeforeSave(Hierarchy entity) {
         // 校验层级名称不能重复
-        if (StringUtils.isNotBlank(entity.getName())) {
-            LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
-            wrapper.eq(Hierarchy::getName, entity.getName());
-            wrapper.eq(Hierarchy::getTypeId, entity.getTypeId());
-            if (entity.getId() != null) {
-                wrapper.ne(Hierarchy::getId, entity.getId());
-            }
-            if (baseMapper.exists(wrapper)) {
-                throw new ServiceException("层级名称已存在");
-            }
-        }
+       // if (StringUtils.isNotBlank(entity.getName())) {
+//            LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
+//            wrapper.eq(Hierarchy::getName, entity.getName());
+//            wrapper.eq(Hierarchy::getTypeId, entity.getTypeId());
+//            if (entity.getId() != null) {
+//                wrapper.ne(Hierarchy::getId, entity.getId());
+//            }
+//            if (baseMapper.exists(wrapper)) {
+//                throw new ServiceException("层级名称已存在");
+//            }
+        //}
 
         // 校验父级层级是否存在
         if (entity.getParentId() != null) {
@@ -613,11 +614,25 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             if (list.size() != ids.size()) {
                 throw new ServiceException("您没有删除权限!");
             }
+            HierarchyTypePropertyDict hierarchyDict = hierarchyTypePropertyDictMapper.selectOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDataType, DataTypeEnum.HIERARCHY.getCode()));
+            HierarchyType sensor = hierarchyTypeMapper.selectOne(new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "sensor"));
+            HierarchyTypePropertyDict sensorDevice = hierarchyTypePropertyDictMapper.selectOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_device"));
             for (Hierarchy hierarchy : list) {
-                HierarchyType sensor = hierarchyTypeMapper.selectOne(new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "sensor"));
+                HierarchyTypeProperty hierarchyDictTypeProperty = hierarchyTypePropertyMapper.selectOne(
+                    new LambdaQueryWrapper<HierarchyTypeProperty>()
+                        .eq(HierarchyTypeProperty::getTypeId, hierarchy.getTypeId())
+                        .eq(HierarchyTypeProperty::getPropertyDictId, hierarchyDict.getId())
+                );
+                Long count = hierarchyPropertyMapper.selectCount(new LambdaQueryWrapper<HierarchyProperty>()
+                    .eq(HierarchyProperty::getPropertyValue, hierarchy.getId().toString())
+                    .eq(HierarchyProperty::getTypePropertyId, hierarchyDictTypeProperty.getId())
+                );
+                if(count > 0){
+                    throw new ServiceException("层级已绑定子层级，无法删除");
+                }
+
                 if(hierarchy.getTypeId().equals(sensor.getId())){
-                    HierarchyTypePropertyDict sensorDevice = hierarchyTypePropertyDictMapper.selectOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_device"));
-                    HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(new LambdaQueryWrapper<HierarchyTypeProperty>()
+                     HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(new LambdaQueryWrapper<HierarchyTypeProperty>()
                         .eq(HierarchyTypeProperty::getPropertyDictId, sensorDevice.getId())
                         .eq(HierarchyTypeProperty::getTypeId, hierarchy.getTypeId())
                     );
@@ -658,8 +673,8 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
         // 过滤出指定类型的层级
         return result.stream()
-                .filter(hierarchy -> targetTypeId.equals(hierarchy.getTypeId()))
-                .collect(Collectors.toList());
+            .filter(hierarchy -> targetTypeId.equals(hierarchy.getTypeId()))
+            .collect(Collectors.toList());
     }
 
     /**
@@ -826,7 +841,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
 
     @Override
-    public List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId) {
+    public List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId,boolean showAllFlag) {
         List<HierarchyVo> list = new ArrayList<>();
         HierarchyVo hierarchy = queryById(hierarchyId,true);
         if(hierarchy.isHaveSensorFlag()){
@@ -845,10 +860,17 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                     if(sensorLocation==null) continue;
                     HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(new LambdaQueryWrapper<HierarchyTypeProperty>().eq(HierarchyTypeProperty::getPropertyDictId, sensorLocation.getId()));
                     if(hierarchyTypeProperty==null) continue;
-                    HierarchyPropertyVo hierarchyProperties = hierarchyPropertyMapper.selectVoOne(new LambdaQueryWrapper<HierarchyProperty>().eq(HierarchyProperty::getHierarchyId, Long.valueOf(sensorIdStr)).eq(HierarchyProperty::getTypePropertyId, hierarchyTypeProperty.getId()));
+                    HierarchyPropertyVo hierarchyProperties = hierarchyPropertyMapper.selectVoOne(
+                        new LambdaQueryWrapper<HierarchyProperty>()
+                            .eq(HierarchyProperty::getHierarchyId, Long.valueOf(sensorIdStr))
+                            .eq(HierarchyProperty::getTypePropertyId, hierarchyTypeProperty.getId())
+                    );
                     if(hierarchyProperties==null) continue;
                     hierarchyVo.setProperties(List.of(hierarchyProperties));
-                    List<String> tags = List.of("sys:cs", "mont/pd/mag", "mont/pd/au", "sys:st");
+
+                    List<HierarchyTypePropertyDict> hierarchyTypePropertyDicts = hierarchyTypePropertyDictMapper.selectList(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getSystemFlag, 1));
+                    List<String> tags = hierarchyTypePropertyDicts.stream().map(item -> item.getDictKey()).toList();
+                    //List<String> tags = List.of("sys:cs", "mont/pd/mag", "mont/pd/au", "sys:st");
                     JSONObject entries = SD400MPUtils.testpointFind(hierarchyVo.getCode());
                     if (entries.getInt("code") == 200) {
                         String id = entries.getJSONObject("data").getStr("id");
@@ -857,10 +879,20 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                             Object online = data.getByPath("data.groups[0].online");
                             if (online == null) continue;
                             JSONArray onlines = (JSONArray) online;
-                            hierarchyVo.setDataSet(onlines);
+                            boolean addFlag = true;
+                            for (Object o : onlines) {
+                                JSONObject item = (JSONObject) o;
+                                if(!showAllFlag && "sys:st".equals(item.getStr("key"))){
+                                    String val = item.getStr("val");
+                                    if(!val.equals("0")){
+                                        addFlag = false;
+                                    }
+                                }
+                            }
+                            if(addFlag) hierarchyVo.setDataSet(onlines);
                         }
                     }
-                list.add(hierarchyVo);
+                    list.add(hierarchyVo);
                 }
             }
         }

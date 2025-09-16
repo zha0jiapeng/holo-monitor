@@ -114,7 +114,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         // 获取设备类型（typeKey = "device"）
         HierarchyType deviceHierarchyType = hierarchyTypeService.getOne(
-            new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "device"));
+            new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "device_group"));
 
         if (deviceHierarchyType == null) {
             log.warn("未找到device类型");
@@ -653,7 +653,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     @Override
     public List<HierarchyVo> sensorList(Long hierarchyId, boolean showAllFlag) {
-        List<HierarchyVo> sensorListByDeviceId = hierarchyService.getSensorListByDeviceId(hierarchyId);
+        List<HierarchyVo> sensorListByDeviceId = hierarchyService.getSensorListByDeviceId(hierarchyId,showAllFlag);
 
         return sensorListByDeviceId;
     }

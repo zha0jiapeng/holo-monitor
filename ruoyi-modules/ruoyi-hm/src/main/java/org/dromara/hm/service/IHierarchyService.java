@@ -109,7 +109,7 @@ public interface IHierarchyService extends IService<Hierarchy> {
 
     List<HierarchyVo> selectByIds(List<Long> matchedIds,List<String> diceNames);
 
-    List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId);
+    List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId,boolean showAllFlag);
 
     /**
      * 获取所有具有采集配置(CONFIGURATION, 1005)属性的传感器列表

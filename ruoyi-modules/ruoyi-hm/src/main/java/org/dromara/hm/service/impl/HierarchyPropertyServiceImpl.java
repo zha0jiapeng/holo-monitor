@@ -102,6 +102,7 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Boolean updateByBo(HierarchyPropertyBo bo) {
         HierarchyProperty update = MapstructUtils.convert(bo, HierarchyProperty.class);
         if (update != null) {
@@ -152,7 +153,7 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
                         baseMapper.delete(new LambdaQueryWrapper<HierarchyProperty>()
                             .eq(HierarchyProperty::getHierarchyId, hierarchyId)
                             .eq(HierarchyProperty::getTypePropertyId, typeProperty.getId())
-                            .eq(HierarchyProperty::getPropertyValue, property.getHierarchyId() + "")
+                            //.eq(HierarchyProperty::getPropertyValue, property.getHierarchyId() + "")
                         );
                         log.info("删除sensor_device关联: hierarchyId={}, 关联到={}", hierarchyId, property.getHierarchyId());
                     }
