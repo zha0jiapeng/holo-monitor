@@ -238,10 +238,11 @@ public class HierarchyController extends BaseController {
         } catch (IOException e) {
             return R.fail("上传模板失败");
         }
-        JSONArray objects = JSONUtil.parseArray(properties);
-        List<HierarchyProperty> list = objects.toList(HierarchyProperty.class);
+
         for (HierarchyExcelTemplate item : hierarchyExcelTemplates) {
             HierarchyBo bo = new HierarchyBo();
+            JSONArray objects = JSONUtil.parseArray(properties);
+            List<HierarchyProperty> list = objects.toList(HierarchyProperty.class);
             bo.setProperties(list);
             bo.setName(item.getName());
             bo.setTypeId(typeId);

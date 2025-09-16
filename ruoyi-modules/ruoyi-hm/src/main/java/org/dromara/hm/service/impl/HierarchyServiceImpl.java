@@ -80,10 +80,9 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         LambdaQueryWrapper<Hierarchy> lqw = buildQueryWrapper(bo);
         Page<HierarchyVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
         if(bo.getNeedProperty()) {
-            // 添加填充逻辑
             for (HierarchyVo vo : result.getRecords()) {
                 List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
-                    Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, vo.getId())
+                    Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, vo.getId()).eq(HierarchyProperty::getScope,1)
                 );
                 initProperty(properties,vo);
             }
@@ -362,18 +361,12 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     private void createHiddenPropertiesFromParent(Long currentHierarchyId, Long parentHierarchyId, List<HierarchyProperty> extraProperties) {
         Hierarchy parentHierarchy = baseMapper.selectById(parentHierarchyId);
         if (parentHierarchy == null) return;
-
-        // 获取父级层级类型的所有隐藏属性
         List<HierarchyTypeProperty> parentTypeProperties = hierarchyTypePropertyMapper.selectList(
             Wrappers.<HierarchyTypeProperty>lambdaQuery().eq(HierarchyTypeProperty::getTypeId, parentHierarchy.getTypeId())
         );
-
-        // 创建隐藏属性
         for (HierarchyTypeProperty parentTypeProperty : parentTypeProperties) {
             createHiddenPropertyIfNeeded(currentHierarchyId, parentHierarchyId, parentTypeProperty, extraProperties);
         }
-
-        // 递归处理父级的父级
         if (parentHierarchy.getParentId() != null) {
             createHiddenPropertiesFromParent(currentHierarchyId, parentHierarchy.getParentId(), extraProperties);
         }
@@ -614,21 +607,20 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             if (list.size() != ids.size()) {
                 throw new ServiceException("您没有删除权限!");
             }
-            HierarchyTypePropertyDict hierarchyDict = hierarchyTypePropertyDictMapper.selectOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDataType, DataTypeEnum.HIERARCHY.getCode()));
             HierarchyType sensor = hierarchyTypeMapper.selectOne(new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "sensor"));
             HierarchyTypePropertyDict sensorDevice = hierarchyTypePropertyDictMapper.selectOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_device"));
             for (Hierarchy hierarchy : list) {
-                HierarchyTypeProperty hierarchyDictTypeProperty = hierarchyTypePropertyMapper.selectOne(
-                    new LambdaQueryWrapper<HierarchyTypeProperty>()
-                        .eq(HierarchyTypeProperty::getTypeId, hierarchy.getTypeId())
-                        .eq(HierarchyTypeProperty::getPropertyDictId, hierarchyDict.getId())
-                );
-                Long count = hierarchyPropertyMapper.selectCount(new LambdaQueryWrapper<HierarchyProperty>()
+                List<HierarchyProperty> hierarchyProperties = hierarchyPropertyMapper.selectList(new LambdaQueryWrapper<HierarchyProperty>()
                     .eq(HierarchyProperty::getPropertyValue, hierarchy.getId().toString())
-                    .eq(HierarchyProperty::getTypePropertyId, hierarchyDictTypeProperty.getId())
                 );
-                if(count > 0){
-                    throw new ServiceException("层级已绑定子层级，无法删除");
+                for (HierarchyProperty hierarchyProperty : hierarchyProperties) {
+                    HierarchyTypeProperty hierarchyDictTypeProperty = hierarchyTypePropertyMapper.selectById(hierarchyProperty.getTypePropertyId());
+                    if(hierarchyDictTypeProperty!=null){
+                        HierarchyTypePropertyDict hierarchyDict = hierarchyTypePropertyDictMapper.selectById(hierarchyDictTypeProperty.getPropertyDictId());
+                        if(hierarchyDict!=null && hierarchyDict.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())){
+                            throw new ServiceException("层级已绑定子层级，无法删除");
+                        }
+                    }
                 }
 
                 if(hierarchy.getTypeId().equals(sensor.getId())){
