@@ -10,6 +10,9 @@ import lombok.Setter;
 @EqualsAndHashCode
 public class HierarchyExcelTemplate {
 
+    @ExcelProperty("采集单元名称")
+    private String hierarchy;
+
     @ExcelProperty("通道名称")
     private String name;
 

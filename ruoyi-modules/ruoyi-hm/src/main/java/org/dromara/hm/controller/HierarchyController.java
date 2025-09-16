@@ -45,6 +45,10 @@ import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.ss.util.CellRangeAddressList;
+import org.dromara.common.core.utils.StringUtils;
 
 /**
  * 层级Controller
@@ -207,26 +211,65 @@ public class HierarchyController extends BaseController {
      */
     @GetMapping("/download/template/{typeId}")
     @SaIgnore
-    public void downloadTemplate(@PathVariable("typeId") Long typeId,HttpServletResponse response) throws IOException {
-        List<HierarchyExcelTemplate> list = new ArrayList<>();
-        HierarchyExcelTemplate hierarchyExcelTemplate = new HierarchyExcelTemplate();
-        list.add(hierarchyExcelTemplate);
+    public void downloadTemplate(@PathVariable("typeId") Long typeId, HttpServletResponse response) throws IOException {
+        if (typeId.equals(19L)) {
+            HierarchyBo bo = new HierarchyBo();
+            bo.setTypeId(16L);
+            List<HierarchyVo> hierarchies = hierarchyService.queryList(bo);
+            String[] names = hierarchies.stream().map(HierarchyVo::getName).toArray(String[]::new);
 
-        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            Workbook workbook = new XSSFWorkbook();
+            Sheet mainSheet = workbook.createSheet("传感器模板");
+            Sheet optionsSheet = workbook.createSheet("Options");
+            workbook.setSheetHidden(1, true); // Hide the options sheet
 
-        response.setCharacterEncoding("utf-8");
-        String fileName = URLEncoder.encode("模板", "UTF-8").replaceAll("\\+", "%20");
-        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
-        FastExcel.write(response.getOutputStream(), HierarchyExcelTemplate.class)
-            .sheet("传感器模板")
-            .doWrite(list);
+            // Write options to hidden sheet
+            for (int i = 0; i < names.length; i++) {
+                Row row = optionsSheet.createRow(i);
+                row.createCell(0).setCellValue(names[i]);
+            }
+
+            // Create header row in main sheet
+            Row headerRow = mainSheet.createRow(0);
+            headerRow.createCell(0).setCellValue("采集单元名称");
+            headerRow.createCell(1).setCellValue("通道名称");
+
+            // Add data validation (从第1行开始，跳过标题行第0行)
+            DataValidationHelper helper = mainSheet.getDataValidationHelper();
+            String formula = "Options!$A$1:$A$" + names.length;
+            DataValidationConstraint constraint = helper.createFormulaListConstraint(formula);
+            CellRangeAddressList addressList = new CellRangeAddressList(1, 1000, 0, 0);
+            DataValidation validation = helper.createValidation(constraint, addressList);
+            validation.setShowErrorBox(true);
+            mainSheet.addValidationData(validation);
+
+            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            response.setCharacterEncoding("utf-8");
+            String fileName = URLEncoder.encode("传感器导入模板", "UTF-8").replaceAll("\\+", "%20");
+            response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
+            workbook.write(response.getOutputStream());
+            workbook.close();
+        } else {
+            // Original code
+            List<HierarchyExcelTemplate> list = new ArrayList<>();
+            HierarchyExcelTemplate hierarchyExcelTemplate = new HierarchyExcelTemplate();
+            list.add(hierarchyExcelTemplate);
+
+            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            response.setCharacterEncoding("utf-8");
+            String fileName = URLEncoder.encode("模板", "UTF-8").replaceAll("\\+", "%20");
+            response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
+            FastExcel.write(response.getOutputStream(), HierarchyExcelTemplate.class)
+                .sheet("传感器模板")
+                .doWrite(list);
+        }
     }
 
     @PostMapping("/upload/template")
     @SaIgnore
     public R<Object> uploadTemplate(@RequestParam(name="properties") String properties,
-                               @RequestParam(name="typeId") Long typeId,
-                               @RequestParam(name="file") MultipartFile file
+                           @RequestParam(name="typeId") Long typeId,
+                           @RequestParam(name="file") MultipartFile file
     ) {
         if(typeId!=19){
             return R.fail("只支持上传传感器模板");
@@ -238,16 +281,8 @@ public class HierarchyController extends BaseController {
         } catch (IOException e) {
             return R.fail("上传模板失败");
         }
+        hierarchyService.upload(hierarchyExcelTemplates,properties,typeId);
 
-        for (HierarchyExcelTemplate item : hierarchyExcelTemplates) {
-            HierarchyBo bo = new HierarchyBo();
-            JSONArray objects = JSONUtil.parseArray(properties);
-            List<HierarchyProperty> list = objects.toList(HierarchyProperty.class);
-            bo.setProperties(list);
-            bo.setName(item.getName());
-            bo.setTypeId(typeId);
-            hierarchyService.insertByBo(bo);
-        }
         return R.ok("上传成功");
     }
 }

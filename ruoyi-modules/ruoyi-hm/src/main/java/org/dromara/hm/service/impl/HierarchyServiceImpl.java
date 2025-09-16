@@ -2,6 +2,7 @@ package org.dromara.hm.service.impl;
 
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import cn.idev.excel.FastExcel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -18,6 +19,7 @@ import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.*;
 import org.dromara.hm.domain.bo.HierarchyBo;
+import org.dromara.hm.domain.template.HierarchyExcelTemplate;
 import org.dromara.hm.domain.vo.HierarchyPropertyVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
@@ -45,6 +47,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     private final HierarchyTypeMapper hierarchyTypeMapper;
     private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
     private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
+    private final DictDataServiceImpl dictDataServiceImpl;
 
     @Override
     public HierarchyVo queryById(Long id, boolean needProperty) {
@@ -1279,6 +1282,54 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             return '0';
         }
         return '0'; // 默认返回0表示需要进位
+    }
+
+    @Override
+    public Long getIdByNameAndType(String name, Long typeId) {
+        List<Hierarchy> list = lambdaQuery()
+            .eq(Hierarchy::getName, name)
+            .eq(Hierarchy::getTypeId, typeId)
+            .list();
+        if (list.isEmpty()) {
+            throw new RuntimeException("No hierarchy found for name: " + name + " and typeId: " + typeId);
+        } else if (list.size() > 1) {
+            throw new RuntimeException("Multiple hierarchies found for name: " + name + " and typeId: " + typeId);
+        }
+        return list.get(0).getId();
+    }
+
+    @Override
+    public void upload(List<HierarchyExcelTemplate> hierarchyExcelTemplates, String properties, Long typeId) {
+
+        for (HierarchyExcelTemplate item : hierarchyExcelTemplates) {
+            HierarchyBo bo = new HierarchyBo();
+            JSONArray objects = JSONUtil.parseArray(properties);
+            List<HierarchyProperty> list = objects.toList(HierarchyProperty.class);
+            bo.setProperties(list);
+            bo.setName(item.getName());
+            bo.setTypeId(typeId);
+
+            // Add parentId mapping
+            String parentName = item.getHierarchy();
+            if (StringUtils.isNotBlank(parentName)) {
+                Long parentId = getIdByNameAndType(parentName, 16L);
+                HierarchyTypePropertyDict unit = hierarchyTypePropertyDictMapper.selectOne(
+                    new LambdaQueryWrapper<HierarchyTypePropertyDict>()
+                        .eq(HierarchyTypePropertyDict::getDictKey, "unit")
+                );
+                HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(new LambdaQueryWrapper<HierarchyTypeProperty>()
+                    .eq(HierarchyTypeProperty::getPropertyDictId, unit.getId())
+                    .eq(HierarchyTypeProperty::getTypeId, typeId)
+                );
+                for (HierarchyProperty hierarchyProperty : list) {
+                    if(hierarchyProperty.getTypePropertyId().equals(hierarchyTypeProperty.getId())) {
+                        hierarchyProperty.setPropertyValue(parentId+"");
+                    }
+                }
+            }
+
+            insertByBo(bo);
+        }
     }
 
 }

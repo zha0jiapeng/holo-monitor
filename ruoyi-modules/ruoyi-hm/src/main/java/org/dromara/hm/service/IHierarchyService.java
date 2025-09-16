@@ -8,6 +8,7 @@ import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.bo.HierarchyBo;
+import org.dromara.hm.domain.template.HierarchyExcelTemplate;
 import org.dromara.hm.domain.vo.HierarchyVo;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -127,4 +128,7 @@ public interface IHierarchyService extends IService<Hierarchy> {
 
     JSONObject downloadTemplate(Long typeId);
 
+    Long getIdByNameAndType(String name, Long typeId);
+
+    void upload(List<HierarchyExcelTemplate> hierarchyExcelTemplates, String properties, Long typeId);
 }
