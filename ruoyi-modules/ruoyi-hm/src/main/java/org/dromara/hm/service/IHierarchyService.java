@@ -108,7 +108,7 @@ public interface IHierarchyService extends IService<Hierarchy> {
 
     List<Long> selectChildHierarchyIds(Long hierarchyId);
 
-    List<Map<String,Long>> selectTargetTypeHierarchyList(List<Long> longs, Long targetTypeId);
+    List<Map<String,String>> selectTargetTypeHierarchyList(List<Long> longs, Long targetTypeId);
 
     List<HierarchyVo> selectByIds(List<Long> matchedIds,boolean needProperty);
 
@@ -132,7 +132,7 @@ public interface IHierarchyService extends IService<Hierarchy> {
     Long getIdByNameAndType(String name, Long typeId);
 
     void upload(List<HierarchyExcelTemplate> hierarchyExcelTemplates, String properties, Long typeId);
-    
+
     /**
      * 根据parentId递归获取unit类型的层级树结构，包含传感器绑定信息
      *

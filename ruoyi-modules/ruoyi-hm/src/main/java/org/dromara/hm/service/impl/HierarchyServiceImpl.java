@@ -771,7 +771,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     }
 
     @Override
-    public List<Map<String,Long>> selectTargetTypeHierarchyList(List<Long> ids, Long targetTypeId) {
+    public List<Map<String,String>> selectTargetTypeHierarchyList(List<Long> ids, Long targetTypeId) {
         return baseMapper.selectTargetTypeHierarchyList(ids,targetTypeId);
     }
 

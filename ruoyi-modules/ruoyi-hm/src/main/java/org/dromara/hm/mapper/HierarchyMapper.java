@@ -73,5 +73,5 @@ public interface HierarchyMapper extends BaseMapperPlus<Hierarchy, HierarchyVo> 
 
         "</script>"
     })
-    List<Map<String,Long>> selectTargetTypeHierarchyList(@Param("ids") List<Long> ids, @Param("targetTypeId") Long targetTypeId);
+    List<Map<String,String>> selectTargetTypeHierarchyList(@Param("ids") List<Long> ids, @Param("targetTypeId") Long targetTypeId);
 }
