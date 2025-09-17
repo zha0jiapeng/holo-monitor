@@ -1057,7 +1057,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             List<Long> list = currentBoundProperties.stream().map(HierarchyProperty::getHierarchyId).toList();
 
             if (!currentBoundProperties.isEmpty()) {
-                boundSensors = queryByIds(list,true);
+                boundSensors = queryByIds(list,false);
             }
         }
         Map<String, List<HierarchyVo>> result = new HashMap<>();
