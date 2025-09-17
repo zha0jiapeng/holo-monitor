@@ -168,7 +168,7 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
 
                 try {
                     Long hierarchyId = Long.valueOf(hierarchyIdStr.trim());
-                    HierarchyVo hierarchyVo = hierarchyService.queryById(hierarchyId, true);
+                    HierarchyVo hierarchyVo = hierarchyService.queryById(hierarchyId, false);
                     if (hierarchyVo == null) continue;
 
                     // 检查是否已存在相同的关联

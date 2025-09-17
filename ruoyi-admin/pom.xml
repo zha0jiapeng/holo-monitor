@@ -76,22 +76,22 @@
         </dependency>
 
         <!-- 代码生成-->
-        <dependency>
+        <!--  <dependency>
             <groupId>org.dromara</groupId>
             <artifactId>ruoyi-generator</artifactId>
-        </dependency>
+        </dependency>-->
 
         <!--  demo模块  -->
-        <dependency>
-            <groupId>org.dromara</groupId>
-            <artifactId>ruoyi-demo</artifactId>
-        </dependency>
+        <!--  <dependency>
+           <groupId>org.dromara</groupId>
+           <artifactId>ruoyi-demo</artifactId>
+       </dependency>-->
 
-        <!--  工作流模块  -->
-        <dependency>
-            <groupId>org.dromara</groupId>
-            <artifactId>ruoyi-workflow</artifactId>
-        </dependency>
+       <!--  工作流模块  -->
+        <!--  <dependency>
+           <groupId>org.dromara</groupId>
+           <artifactId>ruoyi-workflow</artifactId>
+       </dependency>-->
 
         <dependency>
             <groupId>de.codecentric</groupId>

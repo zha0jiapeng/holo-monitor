@@ -11,6 +11,7 @@ import org.dromara.hm.domain.*;
 import org.dromara.hm.domain.sd400mp.MPEventList;
 import org.dromara.hm.domain.vo.HierarchyTypeVo;
 import org.dromara.hm.domain.vo.HierarchyVo;
+import org.dromara.hm.enums.DataTypeEnum;
 import org.dromara.hm.service.*;
 import org.springframework.stereotype.Service;
 
@@ -45,12 +46,43 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     @Override
     public List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId) {
+        List<String> devices = List.of("device", "device_group", "device_point");
+        Hierarchy h = hierarchyService.getById(hierarchyId);
+        HierarchyType type = hierarchyTypeService.getById(h.getTypeId());
+        List<Long> typeIds = new ArrayList<>();
+        while(devices.equals(type.getTypeKey())){
+            HierarchyType one = hierarchyTypeService.lambdaQuery().eq(HierarchyType::getCascadeParentId, type.getId()).one();
+            if(one == null) break;
+            typeIds.add(one.getId());
+        }
+        HierarchyTypePropertyDict sensorsDict = hierarchyTypePropertyDictService.lambdaQuery().eq(HierarchyTypePropertyDict::getDictKey, "sensors").one();
+        List<HierarchyTypeProperty> list = hierarchyTypePropertyService.lambdaQuery()
+            .eq(HierarchyTypeProperty::getPropertyDictId, sensorsDict.getId())
+            .in(HierarchyTypeProperty::getTypeId, typeIds).list();
+        List<Long> typePropertyIds = list.stream().map(item -> item.getId()).toList();
+        List<HierarchyProperty> properties = hierarchyPropertyService.lambdaQuery().in(HierarchyProperty::getTypePropertyId, typePropertyIds).list();
+        List<Long> sensorIds = new ArrayList<>();
+        for (HierarchyProperty property : properties) {
+            String propertyValue = property.getPropertyValue();
+            String[] split = propertyValue.split("\\,");
+            for (String s : split) {
+                sensorIds.add(Long.parseLong(s));
+            }
+        }
+        //目标层级类型
+        HierarchyType targetType = hierarchyTypeService.getById(targetTypeId);
+        //目标层级类型具体层级
+        List<Hierarchy> targetHierarchys = hierarchyService.lambdaQuery().eq(Hierarchy::getTypeId, targetType.getId()).list();
+        for (Hierarchy targetHierarchy : targetHierarchys) {
+
+        }
+
         List<Map<String, Object>> put = new ArrayList<>();
         List<Map<String,Long>> longIntegerMap = hierarchyService.selectTargetTypeHierarchyList(hierarchyService.selectChildHierarchyIds(hierarchyId), targetTypeId);
         for (Map<String, Long> stringIntegerMap : longIntegerMap) {
             Map<String, Object> nn = new  HashMap<>();
             Long count = stringIntegerMap.get("count");
-            Hierarchy hierarchy = hierarchyService.getById( stringIntegerMap.get("hierarchy_id"));
+            Hierarchy hierarchy = hierarchyService.getById(stringIntegerMap.get("hierarchy_id"));
             nn.put("name",hierarchy.getName());
             nn.put("count",count);
             put.add(nn);
@@ -478,7 +510,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         try {
             // 1. 计算时间范围：当前时间-1天到现在
             LocalDateTime now = LocalDateTime.now();
-            LocalDateTime yesterday = now.minusDays(7);
+            LocalDateTime yesterday = now.minusDays(30);
 
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'+08:00'");
             String fromTime = yesterday.format(formatter);
@@ -512,7 +544,6 @@ public class StatisticsServiceImpl implements IStatisticsService {
             log.info("开始转换传感器code为测点ID，传感器详情：");
             for (Hierarchy sensor : sensors) {
                 log.info("传感器: id={}, name={}, code={}", sensor.getId(), sensor.getName(), sensor.getCode());
-
                 if (sensor.getCode() != null && !sensor.getCode().trim().isEmpty()) {
                     try {
                         JSONObject response = SD400MPUtils.testpointFind(sensor.getCode());
@@ -578,6 +609,10 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
                     eventList.getGroups().forEach((key, group) -> {
                         String tagTitle = group.getTag() != null ? group.getTag().getTitle() : null;
+                        // 只保留这两个key
+                        if(!key.equals("sys:st") && !key.equals("sys:mont/pd/dia/st/mag") ){
+                            return;
+                        }
 
                         // 处理该分组中的所有事件
                         group.getEvents().forEach(event -> {
@@ -613,6 +648,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
                                     log.warn("格式化结束时间失败: {}", event.getEnd(), e);
                                 }
                             }
+//                            if(endTime==null){
+//                                return;
+//                            }
                             eventInfo.put("end", endTime);
                             eventInfo.put("satelliteValue", event.getSatelliteValue());
 

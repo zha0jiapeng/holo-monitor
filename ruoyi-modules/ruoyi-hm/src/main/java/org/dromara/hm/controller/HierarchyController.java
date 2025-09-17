@@ -2,13 +2,8 @@ package org.dromara.hm.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaIgnore;
-import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
-import cn.hutool.json.JSONUtil;
 import cn.idev.excel.FastExcel;
-import cn.idev.excel.read.builder.ExcelReaderBuilder;
-import cn.idev.excel.read.listener.PageReadListener;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import org.dromara.common.core.domain.R;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.validate.AddGroup;
@@ -24,8 +19,6 @@ import org.dromara.common.excel.utils.ExcelUtil;
 import org.dromara.common.log.annotation.Log;
 import org.dromara.common.log.enums.BusinessType;
 import org.dromara.hm.domain.Hierarchy;
-import org.dromara.hm.domain.HierarchyProperty;
-import org.dromara.hm.domain.HierarchyTypeProperty;
 import org.dromara.hm.domain.bo.HierarchyBo;
 import org.dromara.hm.domain.template.HierarchyExcelTemplate;
 import org.dromara.hm.domain.vo.HierarchyVo;
@@ -41,14 +34,9 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
-import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.apache.poi.ss.util.CellRangeAddressList;
-import org.dromara.common.core.utils.StringUtils;
 
 /**
  * 层级Controller
@@ -212,44 +200,7 @@ public class HierarchyController extends BaseController {
     @GetMapping("/download/template/{typeId}")
     @SaIgnore
     public void downloadTemplate(@PathVariable("typeId") Long typeId, HttpServletResponse response) throws IOException {
-        if (typeId.equals(19L)) {
-            HierarchyBo bo = new HierarchyBo();
-            bo.setTypeId(16L);
-            List<HierarchyVo> hierarchies = hierarchyService.queryList(bo);
-            String[] names = hierarchies.stream().map(HierarchyVo::getName).toArray(String[]::new);
 
-            Workbook workbook = new XSSFWorkbook();
-            Sheet mainSheet = workbook.createSheet("传感器模板");
-            Sheet optionsSheet = workbook.createSheet("Options");
-            workbook.setSheetHidden(1, true); // Hide the options sheet
-
-            // Write options to hidden sheet
-            for (int i = 0; i < names.length; i++) {
-                Row row = optionsSheet.createRow(i);
-                row.createCell(0).setCellValue(names[i]);
-            }
-
-            // Create header row in main sheet
-            Row headerRow = mainSheet.createRow(0);
-            headerRow.createCell(0).setCellValue("采集单元名称");
-            headerRow.createCell(1).setCellValue("通道名称");
-
-            // Add data validation (从第1行开始，跳过标题行第0行)
-            DataValidationHelper helper = mainSheet.getDataValidationHelper();
-            String formula = "Options!$A$1:$A$" + names.length;
-            DataValidationConstraint constraint = helper.createFormulaListConstraint(formula);
-            CellRangeAddressList addressList = new CellRangeAddressList(1, 1000, 0, 0);
-            DataValidation validation = helper.createValidation(constraint, addressList);
-            validation.setShowErrorBox(true);
-            mainSheet.addValidationData(validation);
-
-            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-            response.setCharacterEncoding("utf-8");
-            String fileName = URLEncoder.encode("传感器导入模板", "UTF-8").replaceAll("\\+", "%20");
-            response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
-            workbook.write(response.getOutputStream());
-            workbook.close();
-        } else {
             // Original code
             List<HierarchyExcelTemplate> list = new ArrayList<>();
             HierarchyExcelTemplate hierarchyExcelTemplate = new HierarchyExcelTemplate();
@@ -262,7 +213,7 @@ public class HierarchyController extends BaseController {
             FastExcel.write(response.getOutputStream(), HierarchyExcelTemplate.class)
                 .sheet("传感器模板")
                 .doWrite(list);
-        }
+
     }
 
     @PostMapping("/upload/template")

@@ -65,11 +65,12 @@ public interface HierarchyMapper extends BaseMapperPlus<Hierarchy, HierarchyVo> 
         "WHERE",
         "    hhtpd.dict_values = #{targetTypeId}",
         "    AND hhp.scope = 1" +
+        "    AND hh.id IN",
+        "    <foreach item='id' collection='ids' open='(' close=')' separator=','>",
+        "        #{id}",
+        "    </foreach>",
         "    GROUP BY hhp.property_value",
-//        "    AND hh.id IN",
-//        "    <foreach item='id' collection='ids' open='(' close=')' separator=','>",
-//        "        #{id}",
-//        "    </foreach>",
+
         "</script>"
     })
     List<Map<String,Long>> selectTargetTypeHierarchyList(@Param("ids") List<Long> ids, @Param("targetTypeId") Long targetTypeId);

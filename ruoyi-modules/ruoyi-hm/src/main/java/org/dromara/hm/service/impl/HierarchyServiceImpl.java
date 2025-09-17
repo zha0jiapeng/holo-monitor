@@ -1308,26 +1308,6 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             bo.setProperties(list);
             bo.setName(item.getName());
             bo.setTypeId(typeId);
-
-            // Add parentId mapping
-            String parentName = item.getHierarchy();
-            if (StringUtils.isNotBlank(parentName)) {
-                Long parentId = getIdByNameAndType(parentName, 16L);
-                HierarchyTypePropertyDict unit = hierarchyTypePropertyDictMapper.selectOne(
-                    new LambdaQueryWrapper<HierarchyTypePropertyDict>()
-                        .eq(HierarchyTypePropertyDict::getDictKey, "unit")
-                );
-                HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(new LambdaQueryWrapper<HierarchyTypeProperty>()
-                    .eq(HierarchyTypeProperty::getPropertyDictId, unit.getId())
-                    .eq(HierarchyTypeProperty::getTypeId, typeId)
-                );
-                for (HierarchyProperty hierarchyProperty : list) {
-                    if(hierarchyProperty.getTypePropertyId().equals(hierarchyTypeProperty.getId())) {
-                        hierarchyProperty.setPropertyValue(parentId+"");
-                    }
-                }
-            }
-
             insertByBo(bo);
         }
     }
