@@ -22,6 +22,7 @@ import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.bo.HierarchyBo;
 import org.dromara.hm.domain.template.HierarchyExcelTemplate;
 import org.dromara.hm.domain.vo.HierarchyVo;
+import org.dromara.hm.domain.vo.HierarchyTreeVo;
 import org.dromara.hm.service.IHierarchyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -169,22 +170,6 @@ public class HierarchyController extends BaseController {
     }
 
     /**
-     * 查询未绑定传感器列表
-     *
-     * @param parentId 父级ID（用于查询未绑定传感器）
-     * @param hierarchyId 当前层级ID（用于查询已绑定传感器回显）
-     */
-    @SaCheckPermission("hm:hierarchy:list")
-    @GetMapping("/getSensorList")
-    @SaIgnore
-    public R<Map<String, List<HierarchyVo>>> sensorList(
-        @NotNull(message = "父级ID不能为空") @RequestParam Long parentId,
-        @RequestParam Long hierarchyId){
-        return R.ok(hierarchyService.sensorList(parentId, hierarchyId));
-    }
-
-
-    /**
      * 根据类型ID获取属性列表
      */
     //@SaCheckPermission("hm:hierarchyTypeProperty:list")
@@ -235,5 +220,20 @@ public class HierarchyController extends BaseController {
         hierarchyService.upload(hierarchyExcelTemplates,properties,typeId);
 
         return R.ok("上传成功");
+    }
+
+    /**
+     * 根据父级ID递归获取unit类型的层级树结构，包含传感器绑定信息
+     *
+     * @param parentId 父级ID
+     * @param hierarchyId 设备ID（用于查询传感器绑定情况）
+     */
+    @SaCheckPermission("hm:hierarchy:list")
+    @GetMapping("/getSensorList")
+    @SaIgnore
+    public R<List<HierarchyTreeVo>> getUnitHierarchyTree(
+        @RequestParam(value = "parentId", required = false) Long parentId,
+        @RequestParam(value = "hierarchyId", required = false) Long hierarchyId) {
+        return R.ok(hierarchyService.getUnitHierarchyTree(parentId, hierarchyId));
     }
 }

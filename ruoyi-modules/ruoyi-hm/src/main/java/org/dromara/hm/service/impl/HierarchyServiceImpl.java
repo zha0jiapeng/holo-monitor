@@ -3,13 +3,11 @@ package org.dromara.hm.service.impl;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import cn.idev.excel.FastExcel;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.MapstructUtils;
@@ -24,6 +22,7 @@ import org.dromara.hm.domain.vo.HierarchyPropertyVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
 import org.dromara.hm.domain.vo.HierarchyVo;
+import org.dromara.hm.domain.vo.HierarchyTreeVo;
 import org.dromara.hm.enums.DataTypeEnum;
 import org.dromara.hm.mapper.*;
 import org.dromara.hm.service.IHierarchyService;
@@ -964,6 +963,8 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
     @Override
     public Map<String, List<HierarchyVo>> sensorList(Long parentId, Long hierarchyId) {
+
+
         // 1. 获取传感器类型ID（type_key = "sensor"）
         HierarchyType sensorType = hierarchyTypeMapper.selectOne(
             Wrappers.<HierarchyType>lambdaQuery()
@@ -1310,6 +1311,111 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             bo.setTypeId(typeId);
             insertByBo(bo);
         }
+    }
+
+    @Override
+    public List<HierarchyTreeVo> getUnitHierarchyTree(Long parentId, Long hierarchyId) {
+        // 1. 获取unit类型ID（type_key = "unit"）
+        HierarchyType unitType = hierarchyTypeMapper.selectOne(
+            Wrappers.<HierarchyType>lambdaQuery()
+                .eq(HierarchyType::getTypeKey, "unit")
+        );
+
+        if (unitType == null) {
+            return new ArrayList<>();
+        }
+
+        // 2. 获取所有unit层级的传感器绑定情况
+        Map<String, List<HierarchyVo>> sensorMap = sensorList(parentId, hierarchyId);
+        List<HierarchyVo> unboundSensors = sensorMap.getOrDefault("unbound", new ArrayList<>());
+        List<HierarchyVo> boundSensors = sensorMap.getOrDefault("bound", new ArrayList<>());
+
+        // 3. 创建传感器按unit分组的Map
+        Map<Long, List<HierarchyVo>> unboundSensorMap = groupSensorsByUnit(unboundSensors);
+        Map<Long, List<HierarchyVo>> boundSensorMap = groupSensorsByUnit(boundSensors);
+
+        // 4. 从指定父级开始递归构建树，遇到unit类型停止递归
+        return buildHierarchyTreeToUnit(parentId, unitType.getId(), unboundSensorMap, boundSensorMap);
+    }
+
+    /**
+     * 递归构建层级树结构，直到遇到unit类型为止
+     *
+     * @param parentId 父级层级ID
+     * @param unitTypeId unit类型ID
+     * @param unboundSensorMap 未绑定传感器按unit分组的Map
+     * @param boundSensorMap 已绑定传感器按unit分组的Map
+     * @return 层级树结构
+     */
+    private List<HierarchyTreeVo> buildHierarchyTreeToUnit(Long parentId, Long unitTypeId,
+            Map<Long, List<HierarchyVo>> unboundSensorMap, Map<Long, List<HierarchyVo>> boundSensorMap) {
+        List<HierarchyTreeVo> result = new ArrayList<>();
+
+        // 查询指定父级下的所有直接子层级
+        List<HierarchyVo> children = baseMapper.selectVoList(
+            Wrappers.<Hierarchy>lambdaQuery()
+                .eq(parentId != null, Hierarchy::getParentId, parentId)
+                .ne (Hierarchy::getTypeId, 24)
+                .isNull(parentId == null, Hierarchy::getParentId)
+                .orderByAsc(Hierarchy::getCode)
+        );
+
+        for (HierarchyVo hierarchyVo : children) {
+            // 创建树节点
+            HierarchyTreeVo treeVo = convertToTreeVo(hierarchyVo);
+
+            // 如果当前层级不是unit类型，继续递归查询子层级
+            if (!unitTypeId.equals(hierarchyVo.getTypeId())) {
+                List<HierarchyTreeVo> childrenTree = buildHierarchyTreeToUnit(hierarchyVo.getId(), unitTypeId, unboundSensorMap, boundSensorMap);
+                if (!childrenTree.isEmpty()) {
+                    treeVo.setChildren(childrenTree);
+                }
+            } else {
+                // 如果是unit类型，为其添加传感器信息
+                treeVo.setUnboundSensors(unboundSensorMap.get(hierarchyVo.getId()));
+                treeVo.setBoundSensors(boundSensorMap.get(hierarchyVo.getId()));
+            }
+
+            result.add(treeVo);
+        }
+
+        return result;
+    }
+
+    /**
+     * 将传感器按unit分组
+     *
+     * @param sensors 传感器列表
+     * @return 按unit ID分组的传感器Map
+     */
+    private Map<Long, List<HierarchyVo>> groupSensorsByUnit(List<HierarchyVo> sensors) {
+        Map<Long, List<HierarchyVo>> sensorMap = new HashMap<>();
+        if (sensors == null || sensors.isEmpty()) {
+            return sensorMap;
+        }
+
+        for (HierarchyVo sensor : sensors) {
+            Long unitId = sensor.getParentId();
+            if (unitId != null) {
+                sensorMap.computeIfAbsent(unitId, k -> new ArrayList<>()).add(sensor);
+            }
+        }
+
+        return sensorMap;
+    }
+
+    /**
+     * 将HierarchyVo转换为HierarchyTreeVo
+     */
+    private HierarchyTreeVo convertToTreeVo(HierarchyVo hierarchyVo) {
+        HierarchyTreeVo treeVo = new HierarchyTreeVo();
+        treeVo.setId(hierarchyVo.getId());
+        treeVo.setTypeId(hierarchyVo.getTypeId());
+        treeVo.setParentId(hierarchyVo.getParentId());
+        treeVo.setName(hierarchyVo.getName());
+        treeVo.setCode(hierarchyVo.getCode());
+
+        return treeVo;
     }
 
 }

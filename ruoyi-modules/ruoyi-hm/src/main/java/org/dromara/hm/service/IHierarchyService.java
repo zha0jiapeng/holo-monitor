@@ -10,6 +10,7 @@ import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.bo.HierarchyBo;
 import org.dromara.hm.domain.template.HierarchyExcelTemplate;
 import org.dromara.hm.domain.vo.HierarchyVo;
+import org.dromara.hm.domain.vo.HierarchyTreeVo;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
@@ -131,4 +132,13 @@ public interface IHierarchyService extends IService<Hierarchy> {
     Long getIdByNameAndType(String name, Long typeId);
 
     void upload(List<HierarchyExcelTemplate> hierarchyExcelTemplates, String properties, Long typeId);
+    
+    /**
+     * 根据parentId递归获取unit类型的层级树结构，包含传感器绑定信息
+     *
+     * @param parentId 父级ID
+     * @param hierarchyId 设备ID（用于查询传感器绑定情况）
+     * @return unit类型层级的树结构（包含传感器分组）
+     */
+    List<HierarchyTreeVo> getUnitHierarchyTree(Long parentId, Long hierarchyId);
 }
