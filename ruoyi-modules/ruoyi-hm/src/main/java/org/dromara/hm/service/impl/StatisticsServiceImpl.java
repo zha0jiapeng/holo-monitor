@@ -45,51 +45,88 @@ public class StatisticsServiceImpl implements IStatisticsService {
     private final EventParserService eventParserService;
 
     @Override
-    public List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId) {
-        List<String> devices = List.of("device", "device_group", "device_point");
+    public List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId, Long statisticsTypeId) {
+        List<String> devices = List.of("device_group", "device", "device_point");
         Hierarchy h = hierarchyService.getById(hierarchyId);
         HierarchyType type = hierarchyTypeService.getById(h.getTypeId());
         List<Long> typeIds = new ArrayList<>();
-        while(devices.equals(type.getTypeKey())){
-            HierarchyType one = hierarchyTypeService.lambdaQuery().eq(HierarchyType::getCascadeParentId, type.getId()).one();
-            if(one == null) break;
-            typeIds.add(one.getId());
-        }
-        HierarchyTypePropertyDict sensorsDict = hierarchyTypePropertyDictService.lambdaQuery().eq(HierarchyTypePropertyDict::getDictKey, "sensors").one();
-        List<HierarchyTypeProperty> list = hierarchyTypePropertyService.lambdaQuery()
-            .eq(HierarchyTypeProperty::getPropertyDictId, sensorsDict.getId())
-            .in(HierarchyTypeProperty::getTypeId, typeIds).list();
-        List<Long> typePropertyIds = list.stream().map(item -> item.getId()).toList();
-        List<HierarchyProperty> properties = hierarchyPropertyService.lambdaQuery().in(HierarchyProperty::getTypePropertyId, typePropertyIds).list();
-        List<Long> sensorIds = new ArrayList<>();
-        for (HierarchyProperty property : properties) {
-            String propertyValue = property.getPropertyValue();
-            String[] split = propertyValue.split("\\,");
-            for (String s : split) {
-                sensorIds.add(Long.parseLong(s));
+        if (devices.contains(type.getTypeKey())) {
+            Long typeId = type.getId();
+            typeIds.add(typeId);
+            while(typeId!=null) {
+                HierarchyType one = hierarchyTypeService.lambdaQuery()
+                    .eq(HierarchyType::getCascadeParentId, typeId).one();
+                if (one != null) {
+                    typeIds.add(one.getId());
+                    typeId = one.getId();
+                }else{
+                    typeId = null;
+                }
             }
-        }
-        //目标层级类型
-        HierarchyType targetType = hierarchyTypeService.getById(targetTypeId);
-        //目标层级类型具体层级
-        List<Hierarchy> targetHierarchys = hierarchyService.lambdaQuery().eq(Hierarchy::getTypeId, targetType.getId()).list();
-        for (Hierarchy targetHierarchy : targetHierarchys) {
+            HierarchyTypePropertyDict sensorsDict = hierarchyTypePropertyDictService.lambdaQuery()
+                    .eq(HierarchyTypePropertyDict::getDictKey, "sensors").one();
+            List<HierarchyTypeProperty> list = hierarchyTypePropertyService.lambdaQuery()
+                    .eq(HierarchyTypeProperty::getPropertyDictId, sensorsDict.getId())
+                    .in(HierarchyTypeProperty::getTypeId, typeIds).list();
+            List<Long> typePropertyIds = list.stream().map(item -> item.getId()).toList();
+            List<HierarchyProperty> properties = hierarchyPropertyService.lambdaQuery()
+                .ne(HierarchyProperty::getPropertyValue,"")
+                    .in(HierarchyProperty::getTypePropertyId, typePropertyIds).list();
+            List<Long> sensorIds = new ArrayList<>();
+            for (HierarchyProperty property : properties) {
+                String propertyValue = property.getPropertyValue();
+                String[] split = propertyValue.split("\\,");
+                for (String s : split) {
+                    sensorIds.add(Long.parseLong(s));
+                }
+            }
+            // 目标层级类型
+            HierarchyType targetType = hierarchyTypeService.getById(targetTypeId);
+            // 目标层级类型具体层级
+            List<Hierarchy> targetHierarchys = hierarchyService.lambdaQuery()
+                    .eq(Hierarchy::getTypeId, targetType.getId()).list();
 
-        }
+            // 根据传感器ID列表，统计每个目标层级下的传感器数量
+            Map<Long, Long> sensorCountMap = new HashMap<>();
+            for (Long sensorId : sensorIds) {
+                // 获取传感器的层级信息
+                Hierarchy sensorHierarchy = hierarchyService.getById(sensorId);
+                if (sensorHierarchy == null) continue;
 
-        List<Map<String, Object>> put = new ArrayList<>();
-        List<Map<String,Long>> longIntegerMap = hierarchyService.selectTargetTypeHierarchyList(hierarchyService.selectChildHierarchyIds(hierarchyId), targetTypeId);
-        for (Map<String, Long> stringIntegerMap : longIntegerMap) {
-            Map<String, Object> nn = new  HashMap<>();
-            Long count = stringIntegerMap.get("count");
-            Hierarchy hierarchy = hierarchyService.getById(stringIntegerMap.get("hierarchy_id"));
-            nn.put("name",hierarchy.getName());
-            nn.put("count",count);
-            put.add(nn);
+                // 向上查找该传感器所属的目标层级
+                Long targetHierarchyId = findBelongingTargetHierarchy(sensorHierarchy.getId(), targetType.getId());
+                if (targetHierarchyId != null) {
+                    sensorCountMap.put(targetHierarchyId, sensorCountMap.getOrDefault(targetHierarchyId, 0L) + 1);
+                }
+            }
+
+            // 构造返回结果
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Hierarchy targetHierarchy : targetHierarchys) {
+                Map<String, Object> hierarchyResult = new HashMap<>();
+                hierarchyResult.put("name", targetHierarchy.getName());
+                hierarchyResult.put("count", sensorCountMap.getOrDefault(targetHierarchy.getId(), 0L));
+                result.add(hierarchyResult);
+            }
+
+            return result;
+        } else {
+            HierarchyType statisticsType = hierarchyTypeService.getById(statisticsTypeId);
+
+            List<Map<String, Object>> put = new ArrayList<>();
+            List<Map<String, Long>> longIntegerMap = hierarchyService
+                    .selectTargetTypeHierarchyList(hierarchyService.selectChildHierarchyIds(hierarchyId), targetTypeId);
+            for (Map<String, Long> stringIntegerMap : longIntegerMap) {
+                Map<String, Object> nn = new HashMap<>();
+                Long count = stringIntegerMap.get("count");
+                Hierarchy hierarchy = hierarchyService.getById(stringIntegerMap.get("hierarchy_id"));
+                nn.put("name", hierarchy.getName());
+                nn.put("count", count);
+                put.add(nn);
+            }
+            return put;
         }
-        return put;
     }
-
 
     @Override
     public List<HierarchyVo> getNextHierarchyList(Long hierarchyId, Long targetTypeId) {
@@ -101,10 +138,8 @@ public class StatisticsServiceImpl implements IStatisticsService {
         if (matchedIds.isEmpty()) {
             return new ArrayList<>();
         }
-        return hierarchyService.selectByIds(matchedIds,true);
+        return hierarchyService.selectByIds(matchedIds, true);
     }
-
-
 
     @Override
     public Map<String, Object> alarm(Long hierarchyId, Long targetTypeId, Integer statisticalType) {
@@ -114,7 +149,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         // 通用前置逻辑：获取传感器类型和目标层级列表
         HierarchyType sensorHierarchyType = hierarchyTypeService.getOne(
-            new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "sensor"));
+                new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "sensor"));
 
         if (sensorHierarchyType == null) {
             return createEmptyResult(targetTypeId, statisticalType);
@@ -141,12 +176,13 @@ public class StatisticsServiceImpl implements IStatisticsService {
      * 统计维度：按目标层级统计设备报警情况
      * 每个目标层级下统计设备，设备的report_st等于该设备及其递归子集关联的所有传感器中的最高报警等级
      */
-    private Map<String, Object> alarmByDeviceLevel(List<Hierarchy> targetHierarchies, HierarchyType sensorHierarchyType, Long targetTypeId) {
+    private Map<String, Object> alarmByDeviceLevel(List<Hierarchy> targetHierarchies, HierarchyType sensorHierarchyType,
+            Long targetTypeId) {
         log.info("执行按目标层级设备报警统计 - 目标层级数: {}", targetHierarchies.size());
 
         // 获取设备类型（typeKey = "device"）
         HierarchyType deviceHierarchyType = hierarchyTypeService.getOne(
-            new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "device_group"));
+                new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "device_group"));
 
         if (deviceHierarchyType == null) {
             log.warn("未找到device类型");
@@ -160,18 +196,19 @@ public class StatisticsServiceImpl implements IStatisticsService {
         List<Map<String, Object>> statistics = new ArrayList<>();
         int totalDeviceCount = 0;
         int totalAlarmDeviceCount = 0;
-        int totalGeneralCount = 0;  // 全局一般报警设备数量
-        int totalSeriousCount = 0;  // 全局严重报警设备数量
+        int totalGeneralCount = 0; // 全局一般报警设备数量
+        int totalSeriousCount = 0; // 全局严重报警设备数量
 
         for (Hierarchy targetHierarchy : targetHierarchies) {
             // 查找该目标层级下的所有device类型的层级
-            List<Hierarchy> devicesUnderTarget = findDevicesUnderTarget(targetHierarchy.getId(), deviceHierarchyType.getId());
+            List<Hierarchy> devicesUnderTarget = findDevicesUnderTarget(targetHierarchy.getId(),
+                    deviceHierarchyType.getId());
 
             // 统计该层级下的报警设备
             List<Map<String, Object>> alarmDevices = new ArrayList<>();
             int hierarchyAlarmDeviceCount = 0;
-            int hierarchyGeneralCount = 0;   // 该层级一般报警设备数量
-            int hierarchySeriousCount = 0;   // 该层级严重报警设备数量
+            int hierarchyGeneralCount = 0; // 该层级一般报警设备数量
+            int hierarchySeriousCount = 0; // 该层级严重报警设备数量
 
             for (Hierarchy device : devicesUnderTarget) {
                 // 计算该设备及其递归子集中关联的所有传感器的最高报警级别
@@ -221,7 +258,8 @@ public class StatisticsServiceImpl implements IStatisticsService {
         result.put("statistics", statistics);
 
         log.info("按目标层级设备统计完成：共{}个层级，{}个设备，{}个报警设备（一般{}个，严重{}个）",
-                targetHierarchies.size(), totalDeviceCount, totalAlarmDeviceCount, totalGeneralCount, totalSeriousCount);
+                targetHierarchies.size(), totalDeviceCount, totalAlarmDeviceCount, totalGeneralCount,
+                totalSeriousCount);
 
         return result;
     }
@@ -229,7 +267,8 @@ public class StatisticsServiceImpl implements IStatisticsService {
     /**
      * 被监测设备统计（原有逻辑）
      */
-    private Map<String, Object> alarmByMonitoredDevice(List<Hierarchy> targetHierarchies, HierarchyType sensorHierarchyType, Long targetTypeId) {
+    private Map<String, Object> alarmByMonitoredDevice(List<Hierarchy> targetHierarchies,
+            HierarchyType sensorHierarchyType, Long targetTypeId) {
         log.info("执行被监测设备报警统计 - 目标层级数: {}", targetHierarchies.size());
 
         // 获取所有报警的传感器ID列表
@@ -247,27 +286,27 @@ public class StatisticsServiceImpl implements IStatisticsService {
         for (Hierarchy targetHierarchy : targetHierarchies) {
             // 查找该目标层级下的所有传感器
             List<Hierarchy> allSensorsUnderTarget = findAllSensorsUnderTarget(
-                targetHierarchy.getId(), sensorHierarchyType.getId());
+                    targetHierarchy.getId(), sensorHierarchyType.getId());
 
             // 查找该目标层级下的所有报警传感器
             List<Hierarchy> alarmSensorsUnderTarget = findAlarmSensorsUnderTarget(
-                targetHierarchy.getId(), sensorHierarchyType.getId(), alarmSensorIds);
+                    targetHierarchy.getId(), sensorHierarchyType.getId(), alarmSensorIds);
 
             // 查找该目标层级下的所有离线传感器
             List<Hierarchy> offlineSensorsUnderTarget = findAlarmSensorsUnderTarget(
-                targetHierarchy.getId(), sensorHierarchyType.getId(), offlineSensorIds);
+                    targetHierarchy.getId(), sensorHierarchyType.getId(), offlineSensorIds);
 
             Map<String, Object> stat = new HashMap<>();
             stat.put("targetHierarchyName", targetHierarchy.getName());
             stat.put("totalSensorCount", allSensorsUnderTarget.size());
             stat.put("alarmSensorCount", alarmSensorsUnderTarget.size());
             stat.put("alarmSensors", alarmSensorsUnderTarget.stream()
-                .map(h -> Map.of("id", h.getId(), "name", h.getName(), "typeId", h.getTypeId()))
-                .toList());
+                    .map(h -> Map.of("id", h.getId(), "name", h.getName(), "typeId", h.getTypeId()))
+                    .toList());
             stat.put("offlineSensorCount", offlineSensorsUnderTarget.size());
             stat.put("offlineSensors", offlineSensorsUnderTarget.stream()
-                .map(h -> Map.of("id", h.getId(), "name", h.getName(), "typeId", h.getTypeId()))
-                .toList());
+                    .map(h -> Map.of("id", h.getId(), "name", h.getName(), "typeId", h.getTypeId()))
+                    .toList());
 
             statistics.add(stat);
             totalSensorCount += allSensorsUnderTarget.size();
@@ -282,16 +321,45 @@ public class StatisticsServiceImpl implements IStatisticsService {
         result.put("statistics", statistics);
 
         log.info("被监测设备统计完成：targetTypeId={}, 共找到{}个目标层级，包含{}个传感器（{}个报警，{}个离线）",
-            targetTypeId, targetHierarchies.size(), totalSensorCount, totalAlarmSensorCount, totalOfflineSensorCount);
+                targetTypeId, targetHierarchies.size(), totalSensorCount, totalAlarmSensorCount,
+                totalOfflineSensorCount);
 
         return result;
     }
 
     /**
-     * 递归查找匹配指定类型的子孙层级，找到匹配类型就停止递归
-     * @param hierarchyId 当前层级ID
+     * 从指定层级向上查找，找到第一个属于目标类型的父层级
+     *
+     * @param hierarchyId  当前层级ID
      * @param targetTypeId 目标类型ID
-     * @param matchedIds 匹配的层级ID集合
+     * @return 目标类型的层级ID，如果未找到返回null
+     */
+    private Long findBelongingTargetHierarchy(Long hierarchyId, Long targetTypeId) {
+        Hierarchy current = hierarchyService.getById(hierarchyId);
+        if (current == null) {
+            return null;
+        }
+
+        // 如果当前层级就是目标类型，直接返回
+        if (targetTypeId.equals(current.getTypeId())) {
+            return current.getId();
+        }
+
+        // 向上查找父层级
+        Long parentId = current.getParentId();
+        if (parentId != null) {
+            return findBelongingTargetHierarchy(parentId, targetTypeId);
+        }
+
+        return null;
+    }
+
+    /**
+     * 递归查找匹配指定类型的子孙层级，找到匹配类型就停止递归
+     *
+     * @param hierarchyId  当前层级ID
+     * @param targetTypeId 目标类型ID
+     * @param matchedIds   匹配的层级ID集合
      */
     private void findMatchingDescendants(Long hierarchyId, Long targetTypeId, List<Long> matchedIds) {
         // 先检查当前层级是否匹配
@@ -318,23 +386,22 @@ public class StatisticsServiceImpl implements IStatisticsService {
         }
     }
 
-
-
-
     /**
      * 获取包含指定字典属性且属性值为 "1" 的层级ID列表
      * 根据用户数据，使用 type_property_id=70 的字典
+     *
      * @return 包含属性值为 "1" 的层级ID列表
      */
     private List<Long> getReportStHierarchyIds(Long typeId) {
 
         // 验证字典是否存在
-        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey,"sys:st"));
+        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService
+                .getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey,
+                        "sys:st"));
 
         HierarchyTypeProperty one = hierarchyTypePropertyService.getOne(Wrappers.<HierarchyTypeProperty>lambdaQuery()
-            .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId())
-            .eq(HierarchyTypeProperty::getTypeId, typeId)
-        );
+                .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId())
+                .eq(HierarchyTypeProperty::getTypeId, typeId));
         // 2. 查找包含指定字典属性的层级（所有记录）
 
         LambdaQueryWrapper<HierarchyProperty> propertyWrapper = Wrappers.lambdaQuery();
@@ -346,21 +413,20 @@ public class StatisticsServiceImpl implements IStatisticsService {
         // 调试：输出所有找到的属性记录
         if (!allReportStProperties.isEmpty()) {
             log.debug("属性记录详情 (前10条):");
-            allReportStProperties.stream().limit(10).forEach(prop ->
-                log.debug("属性: id={}, hierarchyId={}, typePropertyId={}, value='{}'",
-                    prop.getId(), prop.getHierarchyId(), prop.getTypePropertyId(), prop.getPropertyValue())
-            );
+            allReportStProperties.stream().limit(10)
+                    .forEach(prop -> log.debug("属性: id={}, hierarchyId={}, typePropertyId={}, value='{}'",
+                            prop.getId(), prop.getHierarchyId(), prop.getTypePropertyId(), prop.getPropertyValue()));
         }
 
         List<HierarchyProperty> validProperties = allReportStProperties.stream()
-            .filter(this::isValidPropertyValue)
-            .toList();
+                .filter(this::isValidPropertyValue)
+                .toList();
 
         // 4. 提取有效的层级ID
         List<Long> hierarchyIds = validProperties.stream()
-            .map(HierarchyProperty::getHierarchyId)
-            .distinct()
-            .toList();
+                .map(HierarchyProperty::getHierarchyId)
+                .distinct()
+                .toList();
 
         log.info("找到 {} 个包含属性值不为为 0 的层级: {}", hierarchyIds.size(), hierarchyIds);
         return hierarchyIds;
@@ -368,17 +434,19 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 获取包含offline_flag属性且属性值为 "1" 的层级ID列表
+     *
      * @param typeId 类型ID
      * @return 包含offline_flag属性值为 "1" 的层级ID列表
      */
     private List<Long> getOfflineFlagHierarchyIds(Long typeId) {
         // 验证字典是否存在
-        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey,"sys:cs"));
+        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService
+                .getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey,
+                        "sys:cs"));
 
         HierarchyTypeProperty one = hierarchyTypePropertyService.getOne(Wrappers.<HierarchyTypeProperty>lambdaQuery()
-            .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId())
-            .eq(HierarchyTypeProperty::getTypeId, typeId)
-        );
+                .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId())
+                .eq(HierarchyTypeProperty::getTypeId, typeId));
 
         // 查找包含指定字典属性的层级（所有记录）
         LambdaQueryWrapper<HierarchyProperty> propertyWrapper = Wrappers.lambdaQuery();
@@ -386,20 +454,21 @@ public class StatisticsServiceImpl implements IStatisticsService {
         List<HierarchyProperty> allOfflineFlagProperties = hierarchyPropertyService.list(propertyWrapper);
 
         List<HierarchyProperty> validProperties = allOfflineFlagProperties.stream()
-            .filter(property -> "1".equals(property.getPropertyValue()))
-            .toList();
+                .filter(property -> "1".equals(property.getPropertyValue()))
+                .toList();
 
         // 提取有效的层级ID
         List<Long> hierarchyIds = validProperties.stream()
-            .map(HierarchyProperty::getHierarchyId)
-            .distinct()
-            .toList();
+                .map(HierarchyProperty::getHierarchyId)
+                .distinct()
+                .toList();
 
         return hierarchyIds;
     }
 
     /**
      * 检查属性值是否大于0
+     *
      * @param property 属性对象
      * @return 是否大于0
      */
@@ -418,16 +487,18 @@ public class StatisticsServiceImpl implements IStatisticsService {
             return false;
         }
     }
+
     /**
      * 从目标层级出发，查找其下所有的报警传感器
+     *
      * @param targetHierarchyId 目标层级ID
-     * @param sensorTypeId 传感器类型ID
-     * @param alarmSensorIds 报警传感器ID列表
+     * @param sensorTypeId      传感器类型ID
+     * @param alarmSensorIds    报警传感器ID列表
      * @return 该目标层级下的所有报警传感器列表
      */
     private List<Hierarchy> findAlarmSensorsUnderTarget(Long targetHierarchyId,
-                                                        Long sensorTypeId,
-                                                        List<Long> alarmSensorIds) {
+            Long sensorTypeId,
+            List<Long> alarmSensorIds) {
         List<Hierarchy> alarmSensors = new ArrayList<>();
         findAlarmSensorsRecursive(targetHierarchyId, sensorTypeId, alarmSensorIds, alarmSensors);
         return alarmSensors;
@@ -435,15 +506,16 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 递归查找目标层级下的报警传感器
-     * @param hierarchyId 当前层级ID
-     * @param sensorTypeId 传感器类型ID
+     *
+     * @param hierarchyId    当前层级ID
+     * @param sensorTypeId   传感器类型ID
      * @param alarmSensorIds 报警传感器ID列表
-     * @param alarmSensors 找到的报警传感器集合
+     * @param alarmSensors   找到的报警传感器集合
      */
     private void findAlarmSensorsRecursive(Long hierarchyId,
-                                          Long sensorTypeId,
-                                          List<Long> alarmSensorIds,
-                                          List<Hierarchy> alarmSensors) {
+            Long sensorTypeId,
+            List<Long> alarmSensorIds,
+            List<Hierarchy> alarmSensors) {
         // 获取直接子级
         LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Hierarchy::getParentId, hierarchyId);
@@ -455,7 +527,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
             if (Objects.equals(sensorTypeId, child.getTypeId()) && alarmSensorIds.contains(child.getId())) {
                 alarmSensors.add(child);
                 log.debug("找到报警传感器: id={}, name={}, typeId={}",
-                    child.getId(), child.getName(), child.getTypeId());
+                        child.getId(), child.getName(), child.getTypeId());
             } else {
                 // 递归查找子级的子级（继续查找非传感器类型的子级）
                 findAlarmSensorsRecursive(child.getId(), sensorTypeId, alarmSensorIds, alarmSensors);
@@ -465,8 +537,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 从目标层级出发，查找其下所有的传感器（不区分报警或离线状态）
+     *
      * @param targetHierarchyId 目标层级ID
-     * @param sensorTypeId 传感器类型ID
+     * @param sensorTypeId      传感器类型ID
      * @return 该目标层级下的所有传感器列表
      */
     private List<Hierarchy> findAllSensorsUnderTarget(Long targetHierarchyId, Long sensorTypeId) {
@@ -477,13 +550,14 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 递归查找目标层级下的所有传感器
-     * @param hierarchyId 当前层级ID
+     *
+     * @param hierarchyId  当前层级ID
      * @param sensorTypeId 传感器类型ID
-     * @param allSensors 找到的所有传感器集合
+     * @param allSensors   找到的所有传感器集合
      */
     private void findAllSensorsRecursive(Long hierarchyId,
-                                        Long sensorTypeId,
-                                        List<Hierarchy> allSensors) {
+            Long sensorTypeId,
+            List<Hierarchy> allSensors) {
         // 获取直接子级
         LambdaQueryWrapper<Hierarchy> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Hierarchy::getParentId, hierarchyId);
@@ -495,7 +569,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
             if (Objects.equals(sensorTypeId, child.getTypeId())) {
                 allSensors.add(child);
                 log.debug("找到传感器: id={}, name={}, typeId={}",
-                    child.getId(), child.getName(), child.getTypeId());
+                        child.getId(), child.getName(), child.getTypeId());
             } else {
                 // 递归查找子级的子级（继续查找非传感器类型的子级）
                 findAllSensorsRecursive(child.getId(), sensorTypeId, allSensors);
@@ -520,7 +594,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
             // 2. 获取传感器类型
             HierarchyType sensorHierarchyType = hierarchyTypeService.getOne(
-                new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "sensor"));
+                    new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "sensor"));
 
             if (sensorHierarchyType == null) {
                 log.warn("未找到传感器类型");
@@ -552,18 +626,17 @@ public class StatisticsServiceImpl implements IStatisticsService {
                             if (data != null && data.getStr("id") != null) {
                                 testpointIds.add(Long.valueOf(data.getStr("id")));
                                 log.info("成功转换 - 传感器 {} (code: {}) → 测点ID: {}",
-                                    sensor.getName(), sensor.getCode(), data.getStr("id"));
+                                        sensor.getName(), sensor.getCode(), data.getStr("id"));
                             }
                         } else {
                             log.warn("转换失败 - 传感器 {} (code: {}) 未找到对应的测点ID，响应: {}",
-                                sensor.getName(), sensor.getCode(), response);
+                                    sensor.getName(), sensor.getCode(), response);
                         }
                     } catch (Exception e) {
                         log.error("转换异常 - 传感器 {} (code: {}) 时发生异常", sensor.getName(), sensor.getCode(), e);
                     }
                 }
             }
-
 
             if (testpointIds.isEmpty()) {
                 result.put("totalEvents", 0);
@@ -589,19 +662,19 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
                     // 8. 构建返回结果，避免循环引用
                     // 统计总事件数
-//                    int totalEvents = eventList.getGroups().values().stream()
-//                            .mapToInt(group -> group.getEvents().size())
-//                            .sum();
-//                    result.put("totalEvents", totalEvents);
+                    // int totalEvents = eventList.getGroups().values().stream()
+                    // .mapToInt(group -> group.getEvents().size())
+                    // .sum();
+                    // result.put("totalEvents", totalEvents);
 
-                     //统计各状态事件数量
-//                    Map<Integer, Long> stateStatistics = new HashMap<>();
-//                    eventList.getGroups().values().forEach(group -> {
-//                        group.getEvents().forEach(event -> {
-//                            stateStatistics.merge(event.getState(), 1L, Long::sum);
-//                        });
-//                    });
-//                    result.put("stateStatistics", stateStatistics);
+                    // 统计各状态事件数量
+                    // Map<Integer, Long> stateStatistics = new HashMap<>();
+                    // eventList.getGroups().values().forEach(group -> {
+                    // group.getEvents().forEach(event -> {
+                    // stateStatistics.merge(event.getState(), 1L, Long::sum);
+                    // });
+                    // });
+                    // result.put("stateStatistics", stateStatistics);
 
                     // 不再分组，将所有事件合并到一个列表中，添加分组key作为事件属性
                     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -610,7 +683,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                     eventList.getGroups().forEach((key, group) -> {
                         String tagTitle = group.getTag() != null ? group.getTag().getTitle() : null;
                         // 只保留这两个key
-                        if(!key.equals("sys:st") && !key.equals("sys:mont/pd/dia/st/mag") ){
+                        if (!key.equals("sys:st") && !key.equals("sys:mont/pd/dia/st/mag")) {
                             return;
                         }
 
@@ -648,9 +721,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
                                     log.warn("格式化结束时间失败: {}", event.getEnd(), e);
                                 }
                             }
-//                            if(endTime==null){
-//                                return;
-//                            }
+                            // if(endTime==null){
+                            // return;
+                            // }
                             eventInfo.put("end", endTime);
                             eventInfo.put("satelliteValue", event.getSatelliteValue());
 
@@ -668,8 +741,10 @@ public class StatisticsServiceImpl implements IStatisticsService {
                     allEvents.sort((e1, e2) -> {
                         Long timestamp1 = (Long) e1.get("startTimestamp");
                         Long timestamp2 = (Long) e2.get("startTimestamp");
-                        if (timestamp1 == null) timestamp1 = 0L;
-                        if (timestamp2 == null) timestamp2 = 0L;
+                        if (timestamp1 == null)
+                            timestamp1 = 0L;
+                        if (timestamp2 == null)
+                            timestamp2 = 0L;
                         return timestamp2.compareTo(timestamp1); // 倒序
                     });
 
@@ -691,7 +766,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     @Override
     public List<HierarchyVo> sensorList(Long hierarchyId, boolean showAllFlag) {
-        List<HierarchyVo> sensorListByDeviceId = hierarchyService.getSensorListByDeviceId(hierarchyId,showAllFlag);
+        List<HierarchyVo> sensorListByDeviceId = hierarchyService.getSensorListByDeviceId(hierarchyId, showAllFlag);
 
         return sensorListByDeviceId;
     }
@@ -728,7 +803,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         findMatchingDescendants(hierarchyId, targetTypeId, matchedIds);
 
         LambdaQueryWrapper<Hierarchy> targetTypeQuery = new LambdaQueryWrapper<Hierarchy>()
-            .eq(Hierarchy::getTypeId, targetTypeId);
+                .eq(Hierarchy::getTypeId, targetTypeId);
 
         if (!matchedIds.isEmpty()) {
             HierarchyTypeVo hierarchyTypeVo = hierarchyTypeService.queryById(targetTypeId);
@@ -748,8 +823,8 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         // 获取sys:st字典
         HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.getOne(
-            new LambdaQueryWrapper<HierarchyTypePropertyDict>()
-                .eq(HierarchyTypePropertyDict::getDictKey, "sys:st"));
+                new LambdaQueryWrapper<HierarchyTypePropertyDict>()
+                        .eq(HierarchyTypePropertyDict::getDictKey, "sys:st"));
 
         if (dict == null) {
             log.warn("未找到sys:st属性字典");
@@ -757,9 +832,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
         }
 
         HierarchyTypeProperty typeProperty = hierarchyTypePropertyService.getOne(
-            Wrappers.<HierarchyTypeProperty>lambdaQuery()
-                .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId())
-                .eq(HierarchyTypeProperty::getTypeId, sensorTypeId));
+                Wrappers.<HierarchyTypeProperty>lambdaQuery()
+                        .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId())
+                        .eq(HierarchyTypeProperty::getTypeId, sensorTypeId));
 
         if (typeProperty == null) {
             log.warn("传感器类型未配置sys:st属性");
@@ -768,8 +843,8 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         // 查找所有report_st属性
         List<HierarchyProperty> properties = hierarchyPropertyService.list(
-            new LambdaQueryWrapper<HierarchyProperty>()
-                .eq(HierarchyProperty::getTypePropertyId, typeProperty.getId()));
+                new LambdaQueryWrapper<HierarchyProperty>()
+                        .eq(HierarchyProperty::getTypePropertyId, typeProperty.getId()));
 
         for (HierarchyProperty property : properties) {
             if (property.getPropertyValue() != null && !property.getPropertyValue().trim().isEmpty()) {
@@ -866,8 +941,8 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         // 获取dictKey=sensors的属性字典
         HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.getOne(
-            new LambdaQueryWrapper<HierarchyTypePropertyDict>()
-                .eq(HierarchyTypePropertyDict::getDictKey, "sensors"));
+                new LambdaQueryWrapper<HierarchyTypePropertyDict>()
+                        .eq(HierarchyTypePropertyDict::getDictKey, "sensors"));
 
         if (dict == null) {
             log.debug("未找到dictKey=sensors的属性字典");
@@ -882,9 +957,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
         }
 
         HierarchyTypeProperty typeProperty = hierarchyTypePropertyService.getOne(
-            new LambdaQueryWrapper<HierarchyTypeProperty>()
-                .eq(HierarchyTypeProperty::getTypeId, device.getTypeId())
-                .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId()));
+                new LambdaQueryWrapper<HierarchyTypeProperty>()
+                        .eq(HierarchyTypeProperty::getTypeId, device.getTypeId())
+                        .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId()));
 
         if (typeProperty == null) {
             log.debug("设备类型 {} 未配置sensors属性", device.getTypeId());
@@ -893,9 +968,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         // 查找该设备的sensors属性值
         List<HierarchyProperty> properties = hierarchyPropertyService.list(
-            new LambdaQueryWrapper<HierarchyProperty>()
-                .eq(HierarchyProperty::getHierarchyId, deviceId)
-                .eq(HierarchyProperty::getTypePropertyId, typeProperty.getId()));
+                new LambdaQueryWrapper<HierarchyProperty>()
+                        .eq(HierarchyProperty::getHierarchyId, deviceId)
+                        .eq(HierarchyProperty::getTypePropertyId, typeProperty.getId()));
 
         for (HierarchyProperty property : properties) {
             if (property.getPropertyValue() != null && !property.getPropertyValue().trim().isEmpty()) {
@@ -915,6 +990,5 @@ public class StatisticsServiceImpl implements IStatisticsService {
         log.debug("设备 {} 关联了 {} 个传感器(sensors): {}", deviceId, sensorIds.size(), sensorIds);
         return sensorIds;
     }
-
 
 }
