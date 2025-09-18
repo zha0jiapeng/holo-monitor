@@ -32,7 +32,7 @@
      private final IStatisticsService statisticsService;
 
     @GetMapping("/getTargetTypeCount")
-    public R<List<Map<String, Object>>> getTargetTypeList(Long hierarchyId,Long targetTypeId,Long statisticsTypeId) {
+    public R<List<Map<String, Object>>> getTargetTypeList(Long hierarchyId,Long targetTypeId,@RequestParam(required = false) Long statisticsTypeId) {
         return R.ok(statisticsService.getTargetTypeList(hierarchyId,targetTypeId,statisticsTypeId));
      }
 

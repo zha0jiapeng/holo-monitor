@@ -251,7 +251,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         if (matchedIds.isEmpty()) {
             return new ArrayList<>();
         }
-        return hierarchyService.selectByIds(matchedIds, true);
+        return hierarchyService.selectByIds(matchedIds, false);
     }
 
     @Override
@@ -295,7 +295,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         // 获取设备类型（typeKey = "device"）
         HierarchyType deviceHierarchyType = hierarchyTypeService.getOne(
-                new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "device_group"));
+                new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "device"));
 
         if (deviceHierarchyType == null) {
             log.warn("未找到device类型");
@@ -602,25 +602,25 @@ public class StatisticsServiceImpl implements IStatisticsService {
      */
     private List<Long> findHierarchiesByType(Long hierarchyId, Long targetTypeId) {
         List<Long> resultIds = new ArrayList<>();
-        
+
         // 首先获取hierarchyId的所有子集层级（只通过parentId关系）
         Set<Long> allDescendantIds = getAllDescendantIds(hierarchyId);
-        
+
         if (allDescendantIds.isEmpty()) {
             return resultIds;
         }
-        
+
         // 在子集范围内查找目标类型的层级
         List<Hierarchy> targetHierarchies = hierarchyService.lambdaQuery()
                 .in(Hierarchy::getId, allDescendantIds)
                 .eq(Hierarchy::getTypeId, targetTypeId)
                 .list();
-        
+
         return targetHierarchies.stream()
                 .map(Hierarchy::getId)
                 .collect(Collectors.toList());
     }
-    
+
     /**
      * 获取hierarchyId的所有子孙层级ID（只通过parentId关系，确保在子集范围内）
      *
@@ -630,24 +630,24 @@ public class StatisticsServiceImpl implements IStatisticsService {
     private Set<Long> getAllDescendantIds(Long hierarchyId) {
         Set<Long> allIds = new HashSet<>();
         Set<Long> toProcess = new HashSet<>();
-        
+
         toProcess.add(hierarchyId);
         allIds.add(hierarchyId);
-        
+
         int maxIterations = 20; // 防止无限循环
         int iteration = 0;
-        
+
         while (!toProcess.isEmpty() && iteration < maxIterations) {
             iteration++;
             Set<Long> currentBatch = new HashSet<>(toProcess);
             toProcess.clear();
-            
+
             if (!currentBatch.isEmpty()) {
                 // 批量查询当前批次的直接子级
                 List<Hierarchy> children = hierarchyService.lambdaQuery()
                         .in(Hierarchy::getParentId, currentBatch)
                         .list();
-                
+
                 for (Hierarchy child : children) {
                     if (!allIds.contains(child.getId())) {
                         allIds.add(child.getId());
@@ -656,7 +656,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 }
             }
         }
-        
+
         return allIds;
     }
 
