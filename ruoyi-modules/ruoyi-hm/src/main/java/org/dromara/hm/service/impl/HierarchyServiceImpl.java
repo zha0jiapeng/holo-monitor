@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.core.utils.StringUtils;
@@ -26,6 +27,7 @@ import org.dromara.hm.domain.vo.HierarchyTreeVo;
 import org.dromara.hm.enums.DataTypeEnum;
 import org.dromara.hm.mapper.*;
 import org.dromara.hm.service.IHierarchyService;
+import org.dromara.hm.utils.HierarchyCodeUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
@@ -37,6 +39,7 @@ import java.util.stream.Collectors;
  * @author Mashir0
  * @date 2024-01-01
  */
+@Slf4j
 @RequiredArgsConstructor
 @Service
 public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy> implements IHierarchyService {
@@ -46,7 +49,6 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     private final HierarchyTypeMapper hierarchyTypeMapper;
     private final HierarchyTypePropertyMapper hierarchyTypePropertyMapper;
     private final HierarchyTypePropertyDictMapper hierarchyTypePropertyDictMapper;
-    private final DictDataServiceImpl dictDataServiceImpl;
 
     @Override
     public HierarchyVo queryById(Long id, boolean needProperty) {
@@ -109,176 +111,16 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
     /**
      * 生成层级完整编码
-     * 根据层级属性中data_type=1001的隐藏属性，按层级类型的code_sort排序组合编码前缀
-     * 然后根据前缀去数据库查找已有编码（code LIKE '前缀%'），按id倒序取最大值并递增生成新编码
-     * 如果没找到已有编码，则用指定长度补零（如长度3就是001）
+     * 调用工具类方法生成编码
      *
      * @param hierarchyId 层级ID
      * @return 生成的编码字符串
      */
     private Map<String, Object> generateHierarchyCode(Long hierarchyId) {
-        List<Map<String, Object>> hierarchyCodeInfoList = new ArrayList<>();
-        List<Map<String, Object>> configurationList = new ArrayList<>();
-
-        // 查询该层级的所有属性
-        List<HierarchyProperty> properties = hierarchyPropertyMapper.selectList(
-            Wrappers.<HierarchyProperty>lambdaQuery()
-                .eq(HierarchyProperty::getHierarchyId, hierarchyId)
-        );
-
-        // 获取当前层级信息（用于后续获取编码长度，但不加入前缀）
-        Hierarchy current = baseMapper.selectById(hierarchyId);
-
-        // 遍历属性，找出data_type=1001的隐藏属性
-        for (HierarchyProperty property : properties) {
-            HierarchyTypeProperty typeProperty = hierarchyTypePropertyMapper.selectById(property.getTypePropertyId());
-            if (typeProperty != null) {
-                HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(typeProperty.getPropertyDictId());
-                if (dictVo != null && dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
-                    // 这是一个层级类型的隐藏属性，property_value代表层级id
-                    Long relatedHierarchyId = Long.valueOf(property.getPropertyValue());
-                    Hierarchy relatedHierarchy = baseMapper.selectById(relatedHierarchyId);
-
-                    if (relatedHierarchy != null && relatedHierarchy.getCode() != null && !relatedHierarchy.getCode().isEmpty()) {
-                        // 获取相关层级的类型信息
-                        HierarchyType relatedType = hierarchyTypeMapper.selectById(relatedHierarchy.getTypeId());
-                        if (relatedType != null) {
-                            Map<String, Object> hierarchyInfo = new HashMap<>();
-                            hierarchyInfo.put("code", relatedHierarchy.getCode());
-                            hierarchyInfo.put("codeSort", relatedType.getCodeSort() != null ? relatedType.getCodeSort() : 0);
-                            hierarchyCodeInfoList.add(hierarchyInfo);
-                        }
-
-                        // 获取相关层级的采集配置属性（data_type=1005）
-                        List<HierarchyProperty> relatedProperties = hierarchyPropertyMapper.selectList(
-                            Wrappers.<HierarchyProperty>lambdaQuery()
-                                .eq(HierarchyProperty::getHierarchyId, relatedHierarchyId)
-                        );
-
-                        for (HierarchyProperty relatedProperty : relatedProperties) {
-                            HierarchyTypeProperty relatedTypeProperty = hierarchyTypePropertyMapper.selectById(relatedProperty.getTypePropertyId());
-                            if (relatedTypeProperty != null) {
-                                HierarchyTypePropertyDictVo relatedDictVo = hierarchyTypePropertyDictMapper.selectVoById(relatedTypeProperty.getPropertyDictId());
-                                if (relatedDictVo != null && relatedDictVo.getDataType().equals(DataTypeEnum.CONFIGURATION.getCode())) {
-                                    // 这是一个采集配置属性
-                                    Map<String, Object> configInfo = new HashMap<>();
-                                    configInfo.put("propertyValue", relatedProperty.getPropertyValue());
-                                    configInfo.put("typePropertyId", relatedTypeProperty.getId());
-                                    configInfo.put("codeSort", relatedType != null ? (relatedType.getCodeSort() != null ? relatedType.getCodeSort() : 0) : 0);
-                                    configurationList.add(configInfo);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (hierarchyCodeInfoList.isEmpty()) {
-            return null;
-        }
-
-        // 按code_sort升序排序
-        hierarchyCodeInfoList.sort(Comparator.comparingInt(info -> (Integer) info.get("codeSort")));
-
-        // 提取排序后的编码
-        List<String> codeParts = hierarchyCodeInfoList.stream()
-            .map(info -> (String) info.get("code"))
-            .collect(Collectors.toList());
-
-        // 选择code_sort最大的采集配置
-        String selectedConfiguration = null;
-        Long typePropertyId = null;
-        if (!configurationList.isEmpty()) {
-            configurationList.sort(Comparator.comparingInt((Map<String, Object> info) -> (Integer) info.get("codeSort")).reversed());
-            selectedConfiguration = (String) configurationList.get(0).get("propertyValue");
-            typePropertyId = (Long) configurationList.get(0).get("typePropertyId");
-        }
-
-        // 拼装属性编码前缀
-        String codePrefix = String.join("", codeParts);
-
-        // 获取当前层级类型信息用于确定编码长度
-        Integer codeLength = 3; // 默认长度3
-        if (current != null) {
-            HierarchyType currentType = hierarchyTypeMapper.selectById(current.getTypeId());
-            codeLength = (currentType != null && currentType.getCodeLength() != null) ? currentType.getCodeLength() : 3;
-        }
-
-        // 根据前缀生成完整编码
-        String completeCode = generateCompleteCodeWithPrefix(codePrefix, codeLength);
-
-        Map<String, Object> result = new HashMap<>();
-        result.put("code", completeCode);
-        result.put("configuration", selectedConfiguration);
-        result.put("typePropertyId", typePropertyId);
-        return result;
+        return HierarchyCodeUtils.generateHierarchyCode(hierarchyId, baseMapper, hierarchyPropertyMapper,
+                hierarchyTypeMapper, hierarchyTypePropertyMapper, hierarchyTypePropertyDictMapper);
     }
 
-    /**
-     * 根据前缀生成完整编码
-     * 根据属性拼装的前缀去数据库中查找已有编码，按id倒序取最大值然后递增
-     * 如果没找到则用指定长度补零
-     *
-     * @param codePrefix 编码前缀
-     * @param codeLength 编码长度（后缀部分）
-     * @return 生成的完整编码
-     */
-    private String generateCompleteCodeWithPrefix(String codePrefix, Integer codeLength) {
-        if (codePrefix == null || codePrefix.isEmpty()) {
-            return null;
-        }
-
-        if (codeLength == null || codeLength <= 0) {
-            codeLength = 3; // 默认长度3
-        }
-
-        // 查找数据库中以该前缀开头的编码，按id倒序取最大的一个
-        LambdaQueryWrapper<Hierarchy> queryWrapper = Wrappers.<Hierarchy>lambdaQuery()
-            .likeRight(Hierarchy::getCode, codePrefix) // code LIKE '前缀%'
-            .isNotNull(Hierarchy::getCode)
-            .orderByDesc(Hierarchy::getId)
-            .last("LIMIT 1");
-
-        Hierarchy latestHierarchy = baseMapper.selectOne(queryWrapper);
-
-        if (latestHierarchy == null || latestHierarchy.getCode() == null) {
-            // 没有找到已有编码，生成第一个编码：前缀 + 001（根据长度补零）
-            return codePrefix + String.format("%0" + codeLength + "d", 1);
-        }
-
-        String existingCode = latestHierarchy.getCode();
-
-        // 找到了已有编码，提取后缀部分并递增
-        if (existingCode.length() <= codePrefix.length() || !existingCode.startsWith(codePrefix)) {
-            // 如果现有编码长度不足或不是以前缀开头，重新开始：前缀 + 001
-            return codePrefix + String.format("%0" + codeLength + "d", 1);
-        }
-
-        // 提取后缀部分
-        String suffix = existingCode.substring(codePrefix.length());
-
-        // 根据后缀长度确定实际的编码长度（不依赖传入的codeLength参数）
-        int actualCodeLength = suffix.length();
-
-        // 尝试将后缀解析为数字并递增
-        try {
-            int suffixNumber = Integer.parseInt(suffix);
-            int nextNumber = suffixNumber + 1;
-
-            // 使用实际的后缀长度来格式化数字，保持长度一致
-            return codePrefix + String.format("%0" + actualCodeLength + "d", nextNumber);
-
-        } catch (NumberFormatException e) {
-            // 后缀不是纯数字，使用现有的字母递增逻辑
-            String nextAlphaSuffix = generateNextCodeFromExisting(suffix, actualCodeLength);
-            if (nextAlphaSuffix == null) {
-                // 无法生成更多编码
-                return null;
-            }
-            return codePrefix + nextAlphaSuffix;
-        }
-    }
 
     /**
      * 查找级联属性并设置父级关系
@@ -416,7 +258,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             HierarchyType type = hierarchyTypeMapper.selectById(currentHierarchy.getTypeId());
             if (type != null && type.getCodeLength() != null) {
                 // 生成单层编码
-                String singleCode = generateNextCode(currentHierarchy.getTypeId(), currentHierarchy.getParentId(), type.getCodeLength());
+                String singleCode = HierarchyCodeUtils.generateNextCode(currentHierarchy.getTypeId(), currentHierarchy.getParentId(), type.getCodeLength(), baseMapper);
                 if (singleCode != null) {
                     Hierarchy updateSingle = new Hierarchy();
                     updateSingle.setId(hierarchyId);
@@ -515,7 +357,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 updateHierarchyCodeInNewTransaction(bo.getId());
             } else if(bo.getCode() == null){
                 // 如果不需要生成完整编码，但编码为空，则生成单层编码
-                String generatedCode = generateNextCode(bo.getTypeId(), bo.getParentId(), type.getCodeLength());
+                String generatedCode = HierarchyCodeUtils.generateNextCode(bo.getTypeId(), bo.getParentId(), type.getCodeLength(), baseMapper);
                 if (generatedCode != null) {
                     bo.setCode(generatedCode);
                     // 更新数据库中的编码
@@ -1058,8 +900,8 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
             if (!currentBoundProperties.isEmpty()) {
                 boundSensors = queryByIds(list,false);
-                // 为boundSensors添加data_type=1006的属性信息
-                addDataType1006Properties(boundSensors);
+                List<String> dictKeys = Arrays.asList("sensor_location");
+                addPropertiesByDictKeys(boundSensors, dictKeys);
             }
         }
         Map<String, List<HierarchyVo>> result = new HashMap<>();
@@ -1069,24 +911,25 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     }
 
     /**
-     * 为层级列表添加data_type=1006的属性信息
+     * 为层级列表添加指定字典key的属性信息
      *
      * @param hierarchyVos 层级VO列表
+     * @param dictKeys 字典key列表
      */
-    private void addDataType1006Properties(List<HierarchyVo> hierarchyVos) {
-        if (hierarchyVos == null || hierarchyVos.isEmpty()) {
+    private void addPropertiesByDictKeys(List<HierarchyVo> hierarchyVos, List<String> dictKeys) {
+        if (hierarchyVos == null || hierarchyVos.isEmpty() || dictKeys == null || dictKeys.isEmpty()) {
             return;
         }
 
         try {
-            // 1. 查找data_type=1006的属性字典
-            List<HierarchyTypePropertyDict> dicts1006 = hierarchyTypePropertyDictMapper.selectList(
+            // 1. 根据dictKeys查找对应的属性字典
+            List<HierarchyTypePropertyDict> dicts = hierarchyTypePropertyDictMapper.selectList(
                 Wrappers.<HierarchyTypePropertyDict>lambdaQuery()
-                    .eq(HierarchyTypePropertyDict::getDataType, 1006)
+                    .in(HierarchyTypePropertyDict::getDictKey, dictKeys)
             );
 
-            if (dicts1006.isEmpty()) {
-                log.debug("未找到data_type=1006的属性字典");
+            if (dicts.isEmpty()) {
+                log.debug("未找到dictKeys对应的属性字典: {}", dictKeys);
                 return;
             }
 
@@ -1095,115 +938,115 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 .map(HierarchyVo::getTypeId)
                 .collect(Collectors.toSet());
 
-            // 3. 查找这些类型对应的1006类型属性
-            List<Long> dictIds = dicts1006.stream()
+            // 3. 获取字典ID列表
+            List<Long> dictIds = dicts.stream()
                 .map(HierarchyTypePropertyDict::getId)
                 .collect(Collectors.toList());
 
-            List<HierarchyTypeProperty> typeProperties1006 = hierarchyTypePropertyMapper.selectList(
+            // 4. 根据typeId和dictId查找类型属性
+            List<HierarchyTypeProperty> typeProperties = hierarchyTypePropertyMapper.selectList(
                 Wrappers.<HierarchyTypeProperty>lambdaQuery()
                     .in(HierarchyTypeProperty::getTypeId, typeIds)
                     .in(HierarchyTypeProperty::getPropertyDictId, dictIds)
             );
 
-            if (typeProperties1006.isEmpty()) {
-                log.debug("未找到对应的1006类型属性");
+            if (typeProperties.isEmpty()) {
+                log.debug("未找到对应的类型属性");
                 return;
             }
 
-            // 4. 建立类型ID到类型属性的映射
-            Map<Long, List<HierarchyTypeProperty>> typeToPropertiesMap = typeProperties1006.stream()
+            // 5. 建立字典映射
+            Map<Long, HierarchyTypePropertyDict> dictMap = dicts.stream()
+                .collect(Collectors.toMap(HierarchyTypePropertyDict::getId, d -> d));
+
+            // 6. 建立类型属性映射 (typeId -> List<HierarchyTypeProperty>)
+            Map<Long, List<HierarchyTypeProperty>> typeToPropertiesMap = typeProperties.stream()
                 .collect(Collectors.groupingBy(HierarchyTypeProperty::getTypeId));
 
-            // 5. 查找所有层级的1006属性值
+            // 7. 获取所有层级ID
             List<Long> hierarchyIds = hierarchyVos.stream()
                 .map(HierarchyVo::getId)
                 .collect(Collectors.toList());
 
-            List<Long> typePropertyIds = typeProperties1006.stream()
+            // 8. 获取类型属性ID列表
+            List<Long> typePropertyIds = typeProperties.stream()
                 .map(HierarchyTypeProperty::getId)
                 .collect(Collectors.toList());
 
-            List<HierarchyProperty> hierarchyProperties1006 = hierarchyPropertyMapper.selectList(
+            // 9. 查找所有相关的属性值（使用selectVoList确保主键被正确查询）
+            List<HierarchyPropertyVo> hierarchyProperties = hierarchyPropertyMapper.selectVoList(
                 Wrappers.<HierarchyProperty>lambdaQuery()
                     .in(HierarchyProperty::getHierarchyId, hierarchyIds)
                     .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
             );
 
-            // 6. 建立层级ID到属性值的映射
-            Map<Long, List<HierarchyProperty>> hierarchyToPropertiesMap = hierarchyProperties1006.stream()
-                .collect(Collectors.groupingBy(HierarchyProperty::getHierarchyId));
+            // 10. 建立层级ID到属性值的映射
+            Map<Long, List<HierarchyPropertyVo>> hierarchyToPropertiesMap = hierarchyProperties.stream()
+                .collect(Collectors.groupingBy(HierarchyPropertyVo::getHierarchyId));
 
-            // 7. 建立属性字典映射
-            Map<Long, HierarchyTypePropertyDict> dictMap = dicts1006.stream()
-                .collect(Collectors.toMap(HierarchyTypePropertyDict::getId, d -> d));
-
-            // 8. 为每个层级添加1006属性信息
+            // 11. 循环每个hierarchyVo，为其添加属性信息
             for (HierarchyVo hierarchyVo : hierarchyVos) {
-                // 获取该类型的1006类型属性
+                // 获取该类型的类型属性
                 List<HierarchyTypeProperty> typeProps = typeToPropertiesMap.get(hierarchyVo.getTypeId());
-                if (typeProps == null) {
+                if (typeProps == null || typeProps.isEmpty()) {
                     continue;
                 }
 
-                // 获取该层级的1006属性值
-                List<HierarchyProperty> hierarchyProps = hierarchyToPropertiesMap.get(hierarchyVo.getId());
+                // 获取该层级的属性值
+                List<HierarchyPropertyVo> hierarchyProps = hierarchyToPropertiesMap.get(hierarchyVo.getId());
 
                 // 初始化properties列表（如果为空）
                 if (hierarchyVo.getProperties() == null) {
                     hierarchyVo.setProperties(new ArrayList<>());
                 }
 
-                // 为每个类型属性创建属性VO
+                // 为每个类型属性查找对应的属性值
                 for (HierarchyTypeProperty typeProperty : typeProps) {
-                    HierarchyPropertyVo propertyVo = new HierarchyPropertyVo();
-                    propertyVo.setHierarchyId(hierarchyVo.getId());
-                    propertyVo.setTypePropertyId(typeProperty.getId());
+                    HierarchyPropertyVo propertyVo = null;
 
-                    // 查找对应的属性值
-                    String propertyValue = "";
+                    // 查找是否已存在该属性
                     if (hierarchyProps != null) {
-                        Optional<HierarchyProperty> foundProperty = hierarchyProps.stream()
+                        Optional<HierarchyPropertyVo> foundProperty = hierarchyProps.stream()
                             .filter(hp -> hp.getTypePropertyId().equals(typeProperty.getId()))
                             .findFirst();
                         if (foundProperty.isPresent()) {
-                            propertyVo.setId(foundProperty.get().getId());
-                            propertyValue = foundProperty.get().getPropertyValue() != null ? 
-                                foundProperty.get().getPropertyValue() : "";
+                            propertyVo = foundProperty.get();
                         }
                     }
-                    propertyVo.setPropertyValue(propertyValue);
 
-                    // 创建类型属性VO
-                    HierarchyTypePropertyVo typePropertyVo = new HierarchyTypePropertyVo();
-                    typePropertyVo.setId(typeProperty.getId());
-                    typePropertyVo.setTypeId(typeProperty.getTypeId());
-                    typePropertyVo.setPropertyDictId(typeProperty.getPropertyDictId());
-                    typePropertyVo.setRequired(typeProperty.getRequired());
+                    // 只有在数据库中找到对应属性时，才添加到结果中
+                    if (propertyVo != null) {
+                        // 创建类型属性VO
+                        HierarchyTypePropertyVo typePropertyVo = new HierarchyTypePropertyVo();
+                        typePropertyVo.setId(typeProperty.getId());
+                        typePropertyVo.setTypeId(typeProperty.getTypeId());
+                        typePropertyVo.setPropertyDictId(typeProperty.getPropertyDictId());
+                        typePropertyVo.setRequired(typeProperty.getRequired());
 
-                    // 创建字典VO
-                    HierarchyTypePropertyDict dict = dictMap.get(typeProperty.getPropertyDictId());
-                    if (dict != null) {
-                        HierarchyTypePropertyDictVo dictVo = new HierarchyTypePropertyDictVo();
-                        dictVo.setId(dict.getId());
-                        dictVo.setDictName(dict.getDictName());
-                        dictVo.setDataType(dict.getDataType());
-                        dictVo.setDictValues(dict.getDictValues());
-                        dictVo.setSystemFlag(dict.getSystemFlag());
-                        dictVo.setDictKey(dict.getDictKey());
-                        
-                        typePropertyVo.setDict(dictVo);
+                        // 创建字典VO
+                        HierarchyTypePropertyDict dict = dictMap.get(typeProperty.getPropertyDictId());
+                        if (dict != null) {
+                            HierarchyTypePropertyDictVo dictVo = new HierarchyTypePropertyDictVo();
+                            dictVo.setId(dict.getId());
+                            dictVo.setDictName(dict.getDictName());
+                            dictVo.setDataType(dict.getDataType());
+                            dictVo.setDictValues(dict.getDictValues());
+                            dictVo.setSystemFlag(dict.getSystemFlag());
+                            dictVo.setDictKey(dict.getDictKey());
+
+                            typePropertyVo.setDict(dictVo);
+                        }
+
+                        propertyVo.setTypeProperty(typePropertyVo);
+                        hierarchyVo.getProperties().add(propertyVo);
                     }
-
-                    propertyVo.setTypeProperty(typePropertyVo);
-                    hierarchyVo.getProperties().add(propertyVo);
                 }
             }
 
-            // 成功为层级添加了data_type=1006的属性信息
+            log.debug("成功为{}个层级添加了{}个字典key的属性信息", hierarchyVos.size(), dictKeys.size());
 
         } catch (Exception e) {
-            log.error("添加data_type=1006属性信息时发生异常", e);
+            log.error("添加属性信息时发生异常，dictKeys: {}", dictKeys, e);
         }
     }
 
@@ -1251,180 +1094,13 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         hierarchyVo.setProperties(properties);
     }
 
-    /**
-     * 生成下一个编码
-     * 根据typeId和parentId查询最近的编码，生成下一个编码
-     *
-     * @param typeId 层级类型ID
-     * @param parentId 父级ID
-     * @param codeLength 编码长度
-     * @return 生成的编码，如果无法生成则返回null
-     */
-    private String generateNextCode(Long typeId, Long parentId, Integer codeLength) {
-        if (codeLength == null || codeLength <= 0) {
-            return null;
-        }
 
-        // 查询同typeId和parentId的最近编码（按id倒序）
-        LambdaQueryWrapper<Hierarchy> queryWrapper = Wrappers.<Hierarchy>lambdaQuery()
-            .eq(Hierarchy::getTypeId, typeId)
-            .eq(parentId != null, Hierarchy::getParentId, parentId)
-            .isNull(parentId == null, Hierarchy::getParentId)
-            .isNotNull(Hierarchy::getCode)
-            .orderByDesc(Hierarchy::getId)
-            .last("LIMIT 1");
 
-        Hierarchy latestHierarchy = baseMapper.selectOne(queryWrapper);
 
-        String nextCode;
-        if (latestHierarchy == null || latestHierarchy.getCode() == null) {
-            // 没有找到已有编码，生成第一个编码
-            nextCode = generateFirstCode(codeLength);
-        } else {
-            // 基于最新编码生成下一个编码
-            nextCode = generateNextCodeFromExisting(latestHierarchy.getCode(), codeLength);
-        }
 
-        return nextCode;
-    }
 
-    /**
-     * 生成第一个编码
-     * 根据长度生成初始编码，如：01, 001, 0001等
-     */
-    private String generateFirstCode(Integer codeLength) {
-        StringBuilder code = new StringBuilder();
-        for (int i = 0; i < codeLength - 1; i++) {
-            code.append("0");
-        }
-        code.append("1");
-        return code.toString();
-    }
 
-    /**
-     * 基于现有编码生成下一个编码
-     * 编码规则：先用完所有数字组合，再用字母
-     * 例如：01->02->...->99->0A->0B->...->0Z->1A->1B->...->9Z->AA->AB->...->ZZ
-     */
-    private String generateNextCodeFromExisting(String currentCode, Integer codeLength) {
-        if (currentCode == null || currentCode.length() != codeLength) {
-            return generateFirstCode(codeLength);
-        }
 
-        // 检查当前编码是否全为数字
-        if (isAllDigits(currentCode)) {
-            // 如果是全数字，尝试数字递增
-            String nextNumericCode = incrementNumericCode(currentCode);
-            if (nextNumericCode != null) {
-                return nextNumericCode;
-            }
-            // 如果数字已达上限，转换为第一个字母编码
-            return getFirstAlphaCode(codeLength);
-        } else {
-            // 如果已包含字母，按字母规则递增
-            return incrementAlphaCode(currentCode, codeLength);
-        }
-    }
-
-    /**
-     * 检查字符串是否全为数字
-     */
-    private boolean isAllDigits(String code) {
-        for (char c : code.toCharArray()) {
-            if (c < '0' || c > '9') {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * 递增纯数字编码
-     */
-    private String incrementNumericCode(String currentCode) {
-        char[] codeArray = currentCode.toCharArray();
-        int codeLength = codeArray.length;
-
-        // 从最后一位开始递增
-        for (int i = codeLength - 1; i >= 0; i--) {
-            if (codeArray[i] < '9') {
-                codeArray[i]++;
-                return new String(codeArray);
-            } else {
-                codeArray[i] = '0';
-                // 如果是第一位也需要进位，说明数字已达上限
-                if (i == 0) {
-                    return null; // 返回null表示数字编码已达上限
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 获取第一个字母编码
-     * 例如：长度2时返回"0A"，长度3时返回"00A"
-     */
-    private String getFirstAlphaCode(Integer codeLength) {
-        StringBuilder code = new StringBuilder();
-        for (int i = 0; i < codeLength - 1; i++) {
-            code.append("0");
-        }
-        code.append("A");
-        return code.toString();
-    }
-
-    /**
-     * 递增字母编码（已包含字母的编码）
-     */
-    private String incrementAlphaCode(String currentCode, Integer codeLength) {
-        char[] codeArray = currentCode.toCharArray();
-
-        // 从最后一位开始进位
-        for (int i = codeLength - 1; i >= 0; i--) {
-            char currentChar = codeArray[i];
-            char nextChar = getNextAlphaChar(currentChar);
-
-            if (nextChar != '0') {
-                // 当前位可以进位，不需要向前进位
-                codeArray[i] = nextChar;
-                return new String(codeArray);
-            } else {
-                // 当前位已到最大值，需要向前进位
-                if (i == 0) {
-                    // 已经到达最大编码，无法再生成
-                    return null;
-                }
-                // 重置当前位为A（字母编码的起始字符）
-                codeArray[i] = 'A';
-                // 继续向前进位
-            }
-        }
-
-        return new String(codeArray);
-    }
-
-    /**
-     * 获取字母编码中字符的下一个字符
-     * 0-9 -> 1-9,A
-     * A-Z -> B-Z,0(进位)
-     */
-    private char getNextAlphaChar(char currentChar) {
-        if (currentChar >= '0' && currentChar <= '8') {
-            // 数字0-8，直接+1
-            return (char) (currentChar + 1);
-        } else if (currentChar == '9') {
-            // 数字9，下一个是A
-            return 'A';
-        } else if (currentChar >= 'A' && currentChar <= 'Y') {
-            // 字母A-Y，直接+1
-            return (char) (currentChar + 1);
-        } else if (currentChar == 'Z') {
-            // 字母Z，需要进位，返回0表示需要进位
-            return '0';
-        }
-        return '0'; // 默认返回0表示需要进位
-    }
 
     @Override
     public Long getIdByNameAndType(String name, Long typeId) {
@@ -1560,4 +1236,5 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     }
 
 }
+
 

@@ -3,6 +3,7 @@ package org.dromara.hm.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import org.dromara.common.core.domain.R;
 import org.dromara.common.core.utils.MapstructUtils;
+import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.core.validate.AddGroup;
 import org.dromara.common.core.validate.EditGroup;
 import org.dromara.common.core.validate.QueryGroup;
@@ -123,6 +124,23 @@ public class HierarchyPropertyController extends BaseController {
     @PutMapping()
     public R<Void> edit(@Validated(EditGroup.class) @RequestBody HierarchyPropertyBo bo) {
         return toAjax(hierarchyPropertyService.updateByBo(bo));
+    }
+
+    /**
+     * 修改层级属性
+     */
+    @SaCheckPermission("hm:hierarchyProperty:edit")
+    @Log(title = "层级属性", businessType = BusinessType.UPDATE)
+    @RepeatSubmit
+    @PutMapping("/byDictKey")
+    public R<Void> byDictKey(@RequestBody HierarchyPropertyBo bo) {
+        if(bo.getHierarchyId() == null){
+            return R.fail("层级id不能为空");
+        }
+        if(StringUtils.isEmpty(bo.getDictKey())){
+            return R.fail("字典不能为空");
+        }
+        return toAjax(hierarchyPropertyService.updateByDictKey(bo));
     }
 
     /**

@@ -44,15 +44,17 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     private final EventParserService eventParserService;
 
-    @Override
-    public List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId, Long statisticsTypeId) {
-        List<String> devices = List.of("device_group", "device", "device_point");
-        Hierarchy h = hierarchyService.getById(hierarchyId);
-        HierarchyType type = hierarchyTypeService.getById(h.getTypeId());
+    // ==================== 公共方法区域 ====================
+
+    /**
+     * 获取级联子类型ID列表
+     * 
+     * @param parentTypeId 父类型ID
+     * @return 包含父类型在内的所有级联子类型ID列表
+     */
+    private List<Long> getCascadeChildTypeIds(Long parentTypeId) {
         List<Long> typeIds = new ArrayList<>();
-        if (devices.contains(type.getTypeKey())) {
-            Long typeId = type.getId();
-            typeIds.add(typeId);
+        typeIds.add(parentTypeId);
 
             // 批量查询所有级联子类型，避免循环查询
             List<HierarchyType> allChildTypes = hierarchyTypeService.list();
@@ -62,7 +64,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
             // 使用队列进行广度优先遍历，收集所有子类型
             Queue<Long> queue = new LinkedList<>();
-            queue.offer(typeId);
+        queue.offer(parentTypeId);
 
             while (!queue.isEmpty()) {
                 Long currentTypeId = queue.poll();
@@ -76,32 +78,237 @@ public class StatisticsServiceImpl implements IStatisticsService {
                     }
                 }
             }
-            HierarchyTypePropertyDict sensorsDict = hierarchyTypePropertyDictService.lambdaQuery()
-                    .eq(HierarchyTypePropertyDict::getDictKey, "sensors").one();
+        return typeIds;
+    }
+
+    /**
+     * 根据字典key获取HierarchyTypePropertyDict
+     * 
+     * @param dictKey 字典key
+     * @return HierarchyTypePropertyDict对象，未找到返回null
+     */
+    private HierarchyTypePropertyDict getPropertyDictByKey(String dictKey) {
+        return hierarchyTypePropertyDictService.lambdaQuery()
+                .eq(HierarchyTypePropertyDict::getDictKey, dictKey)
+                .one();
+    }
+
+    /**
+     * 根据字典ID和类型ID获取HierarchyTypeProperty
+     * 
+     * @param dictId 字典ID
+     * @param typeId 类型ID
+     * @return HierarchyTypeProperty对象，未找到返回null
+     */
+    private HierarchyTypeProperty getTypePropertyByDictAndType(Long dictId, Long typeId) {
+        return hierarchyTypePropertyService.lambdaQuery()
+                .eq(HierarchyTypeProperty::getPropertyDictId, dictId)
+                .eq(HierarchyTypeProperty::getTypeId, typeId)
+                .one();
+    }
+
+    /**
+     * 解析逗号分隔的传感器ID字符串
+     * 
+     * @param propertyValue 属性值（逗号分隔的ID字符串）
+     * @return 传感器ID列表
+     */
+    private List<Long> parseSensorIds(String propertyValue) {
+        List<Long> sensorIds = new ArrayList<>();
+        if (propertyValue != null && !propertyValue.trim().isEmpty()) {
+            String[] split = propertyValue.split("\\,");
+            for (String s : split) {
+                try {
+                    sensorIds.add(Long.parseLong(s.trim()));
+                } catch (NumberFormatException e) {
+                    log.warn("解析传感器ID失败: {}", s);
+                }
+            }
+        }
+        return sensorIds;
+    }
+
+    /**
+     * 获取传感器通过设备类型绑定
+     * 
+     * @param hierarchyId 层级ID
+     * @param typeIds 类型ID列表
+     * @return 传感器ID列表
+     */
+    private List<Long> getSensorIdsByDeviceBinding(Long hierarchyId, List<Long> typeIds) {
+        // 查找sensors字典属性
+        HierarchyTypePropertyDict sensorsDict = getPropertyDictByKey("sensors");
+        if (sensorsDict == null) {
+            log.warn("未找到sensors字典属性");
+            return new ArrayList<>();
+        }
+
             List<HierarchyTypeProperty> list = hierarchyTypePropertyService.lambdaQuery()
                     .eq(HierarchyTypeProperty::getPropertyDictId, sensorsDict.getId())
                     .in(HierarchyTypeProperty::getTypeId, typeIds).list();
-            List<Long> typePropertyIds = list.stream().map(item -> item.getId()).toList();
+
+        List<Long> typePropertyIds = list.stream()
+                .map(HierarchyTypeProperty::getId)
+                .collect(Collectors.toList());
+
+        if (typePropertyIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 获取hierarchyId范围内符合typeIds的设备层级
+        Set<Long> hierarchyDescendants = getAllDescendantIds(hierarchyId);
+        List<Hierarchy> deviceHierarchies = hierarchyService.lambdaQuery()
+                .in(Hierarchy::getId, hierarchyDescendants)
+                .in(Hierarchy::getTypeId, typeIds)
+                .list();
+
+        if (deviceHierarchies.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<Long> deviceHierarchyIds = deviceHierarchies.stream()
+                .map(Hierarchy::getId)
+                .collect(Collectors.toList());
+
+        // 查找这些设备的传感器绑定属性
             List<HierarchyProperty> properties = hierarchyPropertyService.lambdaQuery()
-                .ne(HierarchyProperty::getPropertyValue,"")
-                    .in(HierarchyProperty::getTypePropertyId, typePropertyIds).list();
+                .ne(HierarchyProperty::getPropertyValue, "")
+                .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
+                .in(HierarchyProperty::getHierarchyId, deviceHierarchyIds)
+                .list();
+
+        // 解析传感器ID列表
             List<Long> sensorIds = new ArrayList<>();
             for (HierarchyProperty property : properties) {
-                String propertyValue = property.getPropertyValue();
-                String[] split = propertyValue.split("\\,");
-                for (String s : split) {
-                    sensorIds.add(Long.parseLong(s));
-                }
-            }
-            // 目标层级类型
-            HierarchyType targetType = hierarchyTypeService.getById(targetTypeId);
+            sensorIds.addAll(parseSensorIds(property.getPropertyValue()));
+        }
+
+        return sensorIds;
+    }
+
+    /**
+     * 获取指定字典key和类型的层级ID列表（属性值大于0）
+     * 
+     * @param dictKey 字典key
+     * @param typeId 类型ID
+     * @return 层级ID列表
+     */
+    private List<Long> getHierarchyIdsByDictAndType(String dictKey, Long typeId) {
+        HierarchyTypePropertyDict dict = getPropertyDictByKey(dictKey);
+        if (dict == null) {
+            log.warn("未找到{}字典属性", dictKey);
+            return new ArrayList<>();
+        }
+
+        HierarchyTypeProperty typeProperty = getTypePropertyByDictAndType(dict.getId(), typeId);
+        if (typeProperty == null) {
+            log.warn("类型{}未配置{}属性", typeId, dictKey);
+            return new ArrayList<>();
+        }
+
+        List<HierarchyProperty> properties = hierarchyPropertyService.lambdaQuery()
+                .eq(HierarchyProperty::getTypePropertyId, typeProperty.getId())
+                .list();
+
+        return properties.stream()
+                .filter(this::isValidPropertyValue)
+                .map(HierarchyProperty::getHierarchyId)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 判断设备类型key是否为设备相关类型
+     * 
+     * @param typeKey 类型key
+     * @return 是否为设备类型
+     */
+    private boolean isDeviceType(String typeKey) {
+        List<String> devices = List.of("device_group", "device", "device_point");
+        return devices.contains(typeKey);
+    }
+
+    /**
+     * 根据类型key列表获取类型ID列表
+     * 
+     * @param typeKeys 类型key列表
+     * @return 类型ID列表
+     */
+    private List<Long> getTypeIdsByKeys(List<String> typeKeys) {
+        List<HierarchyType> types = hierarchyTypeService.lambdaQuery()
+                .in(HierarchyType::getTypeKey, typeKeys)
+                .list();
+        return types.stream()
+                .map(HierarchyType::getId)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 根据typeKey获取HierarchyType
+     * 
+     * @param typeKey 类型key
+     * @return HierarchyType对象，未找到返回null
+     */
+    private HierarchyType getHierarchyTypeByKey(String typeKey) {
+        return hierarchyTypeService.getOne(
+                new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, typeKey));
+    }
+
+    /**
+     * 构建统计结果项
+     * 
+     * @param name 名称
+     * @param count 数量
+     * @return 统计结果项
+     */
+    private Map<String, Object> buildResultItem(String name, Long count) {
+        Map<String, Object> resultItem = new HashMap<>();
+        resultItem.put("name", name);
+        resultItem.put("count", count);
+        return resultItem;
+    }
+
+    /**
+     * 按count降序排列结果列表
+     * 
+     * @param result 结果列表
+     */
+    private void sortResultByCountDesc(List<Map<String, Object>> result) {
+        result.sort((a, b) -> Long.compare((Long) b.get("count"), (Long) a.get("count")));
+    }
+
+    @Override
+    public List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId, Long statisticsTypeId) {
+        Hierarchy h = hierarchyService.getById(hierarchyId);
+        HierarchyType type = hierarchyTypeService.getById(h.getTypeId());
+        
+        if (isDeviceType(type.getTypeKey())) {
+            // 设备类型：通过传感器绑定统计
+            return getTargetTypeListByDeviceBinding(hierarchyId, targetTypeId, type);
+        } else {
+            // 非设备类型：通过层级关系统计
+            return getTargetTypeListByHierarchyRelation(hierarchyId, targetTypeId, statisticsTypeId);
+        }
+    }
+
+    /**
+     * 设备类型通过传感器绑定统计目标类型列表
+     */
+    private List<Map<String, Object>> getTargetTypeListByDeviceBinding(Long hierarchyId, Long targetTypeId, HierarchyType type) {
+        // 获取级联子类型ID
+        List<Long> typeIds = getCascadeChildTypeIds(type.getId());
+        
+        // 获取传感器ID列表
+        List<Long> sensorIds = getSensorIdsByDeviceBinding(hierarchyId, typeIds);
+        
             // 目标层级类型具体层级
             List<Hierarchy> targetHierarchys = hierarchyService.lambdaQuery()
-                    .eq(Hierarchy::getTypeId, targetType.getId()).list();
+                .eq(Hierarchy::getTypeId, targetTypeId).list();
 
             // 根据传感器ID列表，统计每个目标层级下的传感器数量
             Map<Long, Long> sensorCountMap = new HashMap<>();
 
+        if (!sensorIds.isEmpty()) {
             // 批量查询传感器层级信息，避免N+1查询问题
             List<Hierarchy> sensorHierarchies = hierarchyService.lambdaQuery()
                 .in(Hierarchy::getId, sensorIds)
@@ -110,7 +317,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
             // 批量查找传感器所属的目标层级，避免重复递归查询
             Map<Long, Long> sensorToTargetMap = findBelongingTargetHierarchiesBatch(
                 sensorHierarchies.stream().map(Hierarchy::getId).collect(Collectors.toList()),
-                targetType.getId()
+                targetTypeId
             );
 
             // 统计每个目标层级的传感器数量
@@ -118,21 +325,26 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 Long targetHierarchyId = entry.getValue();
                 sensorCountMap.put(targetHierarchyId, sensorCountMap.getOrDefault(targetHierarchyId, 0L) + 1);
             }
-
-            // 构造返回结果
-            List<Map<String, Object>> result = new ArrayList<>();
-            for (Hierarchy targetHierarchy : targetHierarchys) {
-                Map<String, Object> hierarchyResult = new HashMap<>();
-                hierarchyResult.put("name", targetHierarchy.getName());
-                hierarchyResult.put("count", sensorCountMap.getOrDefault(targetHierarchy.getId(), 0L));
-                result.add(hierarchyResult);
             }
 
-            // 按count降序排列
-            result.sort((a, b) -> Long.compare((Long) b.get("count"), (Long) a.get("count")));
+        // 构造返回结果 - 只返回有数据的结果
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Hierarchy targetHierarchy : targetHierarchys) {
+            Long count = sensorCountMap.get(targetHierarchy.getId());
+            if (count != null && count > 0) {
+                result.add(buildResultItem(targetHierarchy.getName(), count));
+            }
+        }
 
-            return result;
-        } else {
+        // 按count降序排列
+        sortResultByCountDesc(result);
+        return result;
+    }
+
+    /**
+     * 非设备类型通过层级关系统计目标类型列表
+     */
+    private List<Map<String, Object>> getTargetTypeListByHierarchyRelation(Long hierarchyId, Long targetTypeId, Long statisticsTypeId) {
             List<Map<String, Object>> result = new ArrayList<>();
 
             // 直接查询所有targetTypeId类型的层级（统计维度，如±1100kV、±800kV等）
@@ -152,93 +364,79 @@ public class StatisticsServiceImpl implements IStatisticsService {
             // 从hierarchyId开始，只查找statisticsTypeId类型的层级
             List<Long> statisticsTypeHierarchyIds = findHierarchiesByType(hierarchyId, statisticsTypeId);
 
-            if (statisticsTypeHierarchyIds.isEmpty()) {
-                // 如果没有statisticsTypeId类型的层级，返回0计数
-                for (Hierarchy targetHierarchy : targetHierarchies) {
-                    Map<String, Object> resultItem = new HashMap<>();
-                    resultItem.put("name", targetHierarchy.getName());
-                    resultItem.put("count", 0L);
-                    result.add(resultItem);
-                }
-                return result;
-            }
-
-            // 批量查询层级属性：只查询statisticsTypeId类型层级中property_value为目标层级ID的属性记录
-            List<String> targetIdStrings = targetHierarchyIds.stream()
-                .map(String::valueOf)
-                .collect(Collectors.toList());
-
-            List<HierarchyProperty> relatedProperties = hierarchyPropertyService.list(
-                Wrappers.<HierarchyProperty>lambdaQuery()
-                    .in(HierarchyProperty::getHierarchyId, statisticsTypeHierarchyIds)
-                    .in(HierarchyProperty::getPropertyValue, targetIdStrings)
-            );
-
-            if (relatedProperties.isEmpty()) {
-                // 如果没有关联属性，返回0计数
-                for (Hierarchy targetHierarchy : targetHierarchies) {
-                    Map<String, Object> resultItem = new HashMap<>();
-                    resultItem.put("name", targetHierarchy.getName());
-                    resultItem.put("count", 0L);
-                    result.add(resultItem);
-                }
-                return result;
-            }
-
-            // 批量查询类型属性
-            Set<Long> typePropertyIds = relatedProperties.stream()
-                .map(HierarchyProperty::getTypePropertyId)
-                .collect(Collectors.toSet());
-
-            List<HierarchyTypeProperty> typeProperties = hierarchyTypePropertyService.list(
-                Wrappers.<HierarchyTypeProperty>lambdaQuery()
-                    .in(HierarchyTypeProperty::getId, typePropertyIds)
-            );
-
-            Map<Long, HierarchyTypeProperty> typePropertyMap = typeProperties.stream()
-                .collect(Collectors.toMap(HierarchyTypeProperty::getId, tp -> tp));
-
-            // 批量查询属性字典，筛选data_type=1001的
-            Set<Long> dictIds = typeProperties.stream()
-                .map(HierarchyTypeProperty::getPropertyDictId)
-                .collect(Collectors.toSet());
-
-            List<HierarchyTypePropertyDict> dicts = hierarchyTypePropertyDictService.list(
-                Wrappers.<HierarchyTypePropertyDict>lambdaQuery()
-                    .in(HierarchyTypePropertyDict::getId, dictIds)
-                    .eq(HierarchyTypePropertyDict::getDataType, DataTypeEnum.HIERARCHY.getCode())
-            );
-
-            Set<Long> validDictIds = dicts.stream()
-                .map(HierarchyTypePropertyDict::getId)
-                .collect(Collectors.toSet());
-
-            // 统计每个目标层级的关联数量
-            Map<Long, Long> targetCountMap = new HashMap<>();
-
-            for (HierarchyProperty property : relatedProperties) {
-                HierarchyTypeProperty typeProperty = typePropertyMap.get(property.getTypePropertyId());
-
-                if (typeProperty != null && validDictIds.contains(typeProperty.getPropertyDictId())) {
-                    // 符合条件：来自statisticsTypeId类型层级 且 data_type=1001
-                    Long targetHierarchyId = Long.valueOf(property.getPropertyValue());
-                    targetCountMap.put(targetHierarchyId, targetCountMap.getOrDefault(targetHierarchyId, 0L) + 1);
-                }
-            }
-
-            // 构造返回结果
-            for (Hierarchy targetHierarchy : targetHierarchies) {
-                Map<String, Object> resultItem = new HashMap<>();
-                resultItem.put("name", targetHierarchy.getName());
-                resultItem.put("count", targetCountMap.getOrDefault(targetHierarchy.getId(), 0L));
-                result.add(resultItem);
-            }
-
-            // 按count降序排列
-            result.sort((a, b) -> Long.compare((Long) b.get("count"), (Long) a.get("count")));
-
+        if (statisticsTypeHierarchyIds.isEmpty()) {
+            // 如果没有statisticsTypeId类型的层级，直接返回空结果
             return result;
         }
+
+        // 批量查询层级属性：只查询statisticsTypeId类型层级中property_value为目标层级ID的属性记录
+        List<String> targetIdStrings = targetHierarchyIds.stream()
+            .map(String::valueOf)
+            .collect(Collectors.toList());
+
+        List<HierarchyProperty> relatedProperties = hierarchyPropertyService.list(
+            Wrappers.<HierarchyProperty>lambdaQuery()
+                .in(HierarchyProperty::getHierarchyId, statisticsTypeHierarchyIds)
+                .in(HierarchyProperty::getPropertyValue, targetIdStrings)
+        );
+
+        if (relatedProperties.isEmpty()) {
+            // 如果没有关联属性，直接返回空结果
+            return result;
+        }
+
+        // 批量查询类型属性
+        Set<Long> typePropertyIds = relatedProperties.stream()
+            .map(HierarchyProperty::getTypePropertyId)
+            .collect(Collectors.toSet());
+
+        List<HierarchyTypeProperty> typeProperties = hierarchyTypePropertyService.list(
+            Wrappers.<HierarchyTypeProperty>lambdaQuery()
+                .in(HierarchyTypeProperty::getId, typePropertyIds)
+        );
+
+        Map<Long, HierarchyTypeProperty> typePropertyMap = typeProperties.stream()
+            .collect(Collectors.toMap(HierarchyTypeProperty::getId, tp -> tp));
+
+        // 批量查询属性字典，筛选data_type=1001的
+        Set<Long> dictIds = typeProperties.stream()
+            .map(HierarchyTypeProperty::getPropertyDictId)
+            .collect(Collectors.toSet());
+
+        List<HierarchyTypePropertyDict> dicts = hierarchyTypePropertyDictService.list(
+            Wrappers.<HierarchyTypePropertyDict>lambdaQuery()
+                .in(HierarchyTypePropertyDict::getId, dictIds)
+                .eq(HierarchyTypePropertyDict::getDataType, DataTypeEnum.HIERARCHY.getCode())
+        );
+
+        Set<Long> validDictIds = dicts.stream()
+            .map(HierarchyTypePropertyDict::getId)
+            .collect(Collectors.toSet());
+
+        // 统计每个目标层级的关联数量
+        Map<Long, Long> targetCountMap = new HashMap<>();
+
+        for (HierarchyProperty property : relatedProperties) {
+            HierarchyTypeProperty typeProperty = typePropertyMap.get(property.getTypePropertyId());
+
+            if (typeProperty != null && validDictIds.contains(typeProperty.getPropertyDictId())) {
+                // 符合条件：来自statisticsTypeId类型层级 且 data_type=1001
+                Long targetHierarchyId = Long.valueOf(property.getPropertyValue());
+                targetCountMap.put(targetHierarchyId, targetCountMap.getOrDefault(targetHierarchyId, 0L) + 1);
+            }
+        }
+
+        // 构造返回结果 - 只返回有数据的结果
+        for (Hierarchy targetHierarchy : targetHierarchies) {
+            Long count = targetCountMap.get(targetHierarchy.getId());
+            if (count != null && count > 0) {
+                result.add(buildResultItem(targetHierarchy.getName(), count));
+            }
+        }
+
+        // 按count降序排列
+        sortResultByCountDesc(result);
+        return result;
     }
 
     @Override
@@ -261,19 +459,16 @@ public class StatisticsServiceImpl implements IStatisticsService {
         }
 
         // 通用前置逻辑：获取传感器类型
-        HierarchyType sensorHierarchyType = hierarchyTypeService.getOne(
-                new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "sensor"));
-
+        HierarchyType sensorHierarchyType = getHierarchyTypeByKey("sensor");
         if (sensorHierarchyType == null) {
             return createEmptyResult(targetTypeId, statisticalType);
         }
 
         // 判断hierarchyId的类型，决定使用哪种统计策略
-        List<String> devices = List.of("device_group", "device", "device_point");
         Hierarchy hierarchy = hierarchyService.getById(hierarchyId);
         HierarchyType hierarchyType = hierarchyTypeService.getById(hierarchy.getTypeId());
 
-        if (devices.contains(hierarchyType.getTypeKey())) {
+        if (isDeviceType(hierarchyType.getTypeKey())) {
             // 设备类型：使用反向统计逻辑
             return alarmByReverseStatistics(hierarchyId, targetTypeId, statisticalType, sensorHierarchyType, hierarchyType);
         } else {
@@ -304,100 +499,21 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 hierarchyId, targetTypeId, statisticalType);
 
         // 获取hierarchyId及其级联子类型的所有typeIds
-        List<Long> typeIds = new ArrayList<>();
-        typeIds.add(hierarchyType.getId());
+        List<Long> typeIds;
 
         // 对于statisticalType=1，只统计device和device_point
         if (statisticalType == 1) {
-            typeIds.clear();
-            List<String> allowedTypes = List.of("device", "device_point");
-            List<HierarchyType> allTypes = hierarchyTypeService.lambdaQuery().in(HierarchyType::getTypeKey, allowedTypes).list();
-            for (HierarchyType type : allTypes) {
-                typeIds.add(type.getId());
-            }
+            typeIds = getTypeIdsByKeys(List.of("device", "device_point"));
         } else {
             // 获取级联子类型
-            List<HierarchyType> allChildTypes = hierarchyTypeService.list();
-            Map<Long, List<HierarchyType>> parentToChildMap = allChildTypes.stream()
-                    .filter(ht -> ht.getCascadeParentId() != null)
-                    .collect(Collectors.groupingBy(HierarchyType::getCascadeParentId));
-
-            Queue<Long> queue = new LinkedList<>();
-            queue.offer(hierarchyType.getId());
-
-            while (!queue.isEmpty()) {
-                Long currentTypeId = queue.poll();
-                List<HierarchyType> children = parentToChildMap.get(currentTypeId);
-                if (children != null) {
-                    for (HierarchyType child : children) {
-                        if (!typeIds.contains(child.getId())) {
-                            typeIds.add(child.getId());
-                            queue.offer(child.getId());
-                        }
-                    }
-                }
-            }
+            typeIds = getCascadeChildTypeIds(hierarchyType.getId());
         }
 
-        // 查找sensors字典属性
-        HierarchyTypePropertyDict sensorsDict = hierarchyTypePropertyDictService.lambdaQuery()
-                .eq(HierarchyTypePropertyDict::getDictKey, "sensors").one();
-
-        if (sensorsDict == null) {
-            log.warn("未找到sensors字典属性");
+        // 获取传感器ID列表
+        List<Long> sensorIds = getSensorIdsByDeviceBinding(hierarchyId, typeIds);
+        if (sensorIds.isEmpty()) {
+            log.warn("未找到有效的传感器");
             return createEmptyResult(targetTypeId, statisticalType);
-        }
-
-        List<HierarchyTypeProperty> list = hierarchyTypePropertyService.lambdaQuery()
-                .eq(HierarchyTypeProperty::getPropertyDictId, sensorsDict.getId())
-                .in(HierarchyTypeProperty::getTypeId, typeIds).list();
-
-        List<Long> typePropertyIds = list.stream().map(HierarchyTypeProperty::getId).collect(Collectors.toList());
-
-        if (typePropertyIds.isEmpty()) {
-            log.warn("未找到sensors类型属性");
-            return createEmptyResult(targetTypeId, statisticalType);
-        }
-
-        // 先获取hierarchyId范围内符合typeIds的设备层级
-        Set<Long> hierarchyDescendants = getAllDescendantIds(hierarchyId);
-        List<Hierarchy> deviceHierarchies = hierarchyService.lambdaQuery()
-                .in(Hierarchy::getId, hierarchyDescendants)
-                .in(Hierarchy::getTypeId, typeIds)
-                .list();
-
-        if (deviceHierarchies.isEmpty()) {
-            log.warn("在hierarchyId={}范围内未找到符合类型的设备", hierarchyId);
-            return createEmptyResult(targetTypeId, statisticalType);
-        }
-
-        List<Long> deviceHierarchyIds = deviceHierarchies.stream()
-                .map(Hierarchy::getId)
-                .collect(Collectors.toList());
-
-        log.info("在hierarchyId={}范围内找到{}个符合类型的设备", hierarchyId, deviceHierarchyIds.size());
-
-        // 查找这些设备的传感器绑定属性
-        List<HierarchyProperty> properties = hierarchyPropertyService.lambdaQuery()
-                .ne(HierarchyProperty::getPropertyValue, "")
-                .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
-                .in(HierarchyProperty::getHierarchyId, deviceHierarchyIds)
-                .list();
-
-        // 解析传感器ID列表
-        List<Long> sensorIds = new ArrayList<>();
-        if (!properties.isEmpty()) {
-            for (HierarchyProperty property : properties) {
-                String propertyValue = property.getPropertyValue();
-                String[] split = propertyValue.split("\\,");
-                for (String s : split) {
-                    try {
-                        sensorIds.add(Long.parseLong(s.trim()));
-                    } catch (NumberFormatException e) {
-                        log.warn("解析传感器ID失败: {}", s);
-                    }
-                }
-            }
         }
 
         log.info("找到 {} 个传感器进行反向统计", sensorIds.size());
@@ -739,9 +855,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         log.info("执行按目标层级设备报警统计 - 目标层级数: {}", targetHierarchies.size());
 
         // 获取设备类型（typeKey = "device"）
-        HierarchyType deviceHierarchyType = hierarchyTypeService.getOne(
-                new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "device"));
-
+        HierarchyType deviceHierarchyType = getHierarchyTypeByKey("device");
         if (deviceHierarchyType == null) {
             log.warn("未找到device类型");
             return createEmptyResult(targetTypeId, 1);
@@ -1265,83 +1379,55 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     /**
-     * 获取包含指定字典属性且属性值为 "1" 的层级ID列表
-     * 根据用户数据，使用 type_property_id=70 的字典
+     * 获取报警状态层级ID列表（sys:st属性值大于0）
      *
-     * @return 包含属性值为 "1" 的层级ID列表
+     * @param typeId 类型ID 
+     * @return 报警状态的层级ID列表
      */
     private List<Long> getReportStHierarchyIds(Long typeId) {
-
-        // 验证字典是否存在
-        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService
-                .getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey,
-                        "sys:st"));
-
-        HierarchyTypeProperty one = hierarchyTypePropertyService.getOne(Wrappers.<HierarchyTypeProperty>lambdaQuery()
-                .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId())
-                .eq(HierarchyTypeProperty::getTypeId, typeId));
-        // 2. 查找包含指定字典属性的层级（所有记录）
-
-        LambdaQueryWrapper<HierarchyProperty> propertyWrapper = Wrappers.lambdaQuery();
-        propertyWrapper.eq(HierarchyProperty::getTypePropertyId, one.getId());
-        List<HierarchyProperty> allReportStProperties = hierarchyPropertyService.list(propertyWrapper);
-
-        log.info("找到 {} 个属性记录", allReportStProperties.size());
-
-        // 调试：输出所有找到的属性记录
-        if (!allReportStProperties.isEmpty()) {
-            log.debug("属性记录详情 (前10条):");
-            allReportStProperties.stream().limit(10)
-                    .forEach(prop -> log.debug("属性: id={}, hierarchyId={}, typePropertyId={}, value='{}'",
-                            prop.getId(), prop.getHierarchyId(), prop.getTypePropertyId(), prop.getPropertyValue()));
-        }
-
-        List<HierarchyProperty> validProperties = allReportStProperties.stream()
-                .filter(this::isValidPropertyValue)
-                .toList();
-
-        // 4. 提取有效的层级ID
-        List<Long> hierarchyIds = validProperties.stream()
-                .map(HierarchyProperty::getHierarchyId)
-                .distinct()
-                .toList();
-
-        log.info("找到 {} 个包含属性值不为为 0 的层级: {}", hierarchyIds.size(), hierarchyIds);
-        return hierarchyIds;
+        return getHierarchyIdsByDictAndType("sys:st", typeId);
     }
 
     /**
-     * 获取包含offline_flag属性且属性值为 "1" 的层级ID列表
+     * 获取离线标志层级ID列表（sys:cs属性值为"1"）
      *
      * @param typeId 类型ID
-     * @return 包含offline_flag属性值为 "1" 的层级ID列表
+     * @return 离线标志的层级ID列表
      */
     private List<Long> getOfflineFlagHierarchyIds(Long typeId) {
-        // 验证字典是否存在
-        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService
-                .getOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey,
-                        "sys:cs"));
+        return getHierarchyIdsByDictAndValue("sys:cs", typeId, "1");
+    }
 
-        HierarchyTypeProperty one = hierarchyTypePropertyService.getOne(Wrappers.<HierarchyTypeProperty>lambdaQuery()
-                .eq(HierarchyTypeProperty::getPropertyDictId, dict.getId())
-                .eq(HierarchyTypeProperty::getTypeId, typeId));
+    /**
+     * 获取指定字典key、类型和属性值的层级ID列表
+     * 
+     * @param dictKey 字典key
+     * @param typeId 类型ID
+     * @param expectedValue 期望的属性值
+     * @return 层级ID列表
+     */
+    private List<Long> getHierarchyIdsByDictAndValue(String dictKey, Long typeId, String expectedValue) {
+        HierarchyTypePropertyDict dict = getPropertyDictByKey(dictKey);
+        if (dict == null) {
+            log.warn("未找到{}字典属性", dictKey);
+            return new ArrayList<>();
+        }
 
-        // 查找包含指定字典属性的层级（所有记录）
-        LambdaQueryWrapper<HierarchyProperty> propertyWrapper = Wrappers.lambdaQuery();
-        propertyWrapper.eq(HierarchyProperty::getTypePropertyId, one.getId());
-        List<HierarchyProperty> allOfflineFlagProperties = hierarchyPropertyService.list(propertyWrapper);
+        HierarchyTypeProperty typeProperty = getTypePropertyByDictAndType(dict.getId(), typeId);
+        if (typeProperty == null) {
+            log.warn("类型{}未配置{}属性", typeId, dictKey);
+            return new ArrayList<>();
+        }
 
-        List<HierarchyProperty> validProperties = allOfflineFlagProperties.stream()
-                .filter(property -> "1".equals(property.getPropertyValue()))
-                .toList();
+        List<HierarchyProperty> properties = hierarchyPropertyService.lambdaQuery()
+                .eq(HierarchyProperty::getTypePropertyId, typeProperty.getId())
+                .list();
 
-        // 提取有效的层级ID
-        List<Long> hierarchyIds = validProperties.stream()
+        return properties.stream()
+                .filter(property -> expectedValue.equals(property.getPropertyValue()))
                 .map(HierarchyProperty::getHierarchyId)
                 .distinct()
-                .toList();
-
-        return hierarchyIds;
+                .collect(Collectors.toList());
     }
 
     /**
@@ -1471,9 +1557,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
             log.info("查询时间范围: {} 到 {}", fromTime, toTime);
 
             // 2. 获取传感器类型
-            HierarchyType sensorHierarchyType = hierarchyTypeService.getOne(
-                    new LambdaQueryWrapper<HierarchyType>().eq(HierarchyType::getTypeKey, "sensor"));
-
+            HierarchyType sensorHierarchyType = getHierarchyTypeByKey("sensor");
             if (sensorHierarchyType == null) {
                 log.warn("未找到传感器类型");
                 result.put("error", "未找到传感器类型");

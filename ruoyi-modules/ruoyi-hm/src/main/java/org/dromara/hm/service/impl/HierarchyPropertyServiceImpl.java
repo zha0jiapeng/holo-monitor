@@ -9,6 +9,7 @@ import org.dromara.common.core.utils.MapstructUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.HierarchyTypeProperty;
 import org.dromara.hm.domain.HierarchyTypePropertyDict;
@@ -100,6 +101,27 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
         }
         return flag;
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Boolean updateByDictKey(HierarchyPropertyBo bo) {
+        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.lambdaQuery().eq(HierarchyTypePropertyDict::getDictKey, bo.getDictKey()).one();
+        if(dict==null) return false;
+        Hierarchy hierarchy = hierarchyService.getById(bo.getHierarchyId());
+        if(hierarchy==null) return false;
+        HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyService.lambdaQuery().eq(HierarchyTypeProperty::getTypeId, hierarchy.getTypeId()).eq(HierarchyTypeProperty::getPropertyDictId, dict.getId()).one();
+        if(hierarchyTypeProperty==null) return false;
+        HierarchyProperty property = lambdaQuery().eq(HierarchyProperty::getHierarchyId, hierarchy.getId())
+            .eq(HierarchyProperty::getTypePropertyId, hierarchyTypeProperty.getId()).one();
+        if(property==null) {
+            property = new HierarchyProperty();
+            property.setHierarchyId(hierarchy.getId());
+            property.setTypePropertyId(hierarchyTypeProperty.getId());
+        }
+        property.setPropertyValue(bo.getPropertyValue());
+        return baseMapper.insertOrUpdate(property);
+    }
+
 
     @Override
     @Transactional(rollbackFor = Exception.class)

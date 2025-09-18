@@ -89,4 +89,5 @@ public interface IHierarchyPropertyService extends IService<HierarchyProperty> {
      */
     HierarchyPropertyVo getPropertyByTypeIdAndName(Long typeId, String propertyDictId);
 
+    Boolean updateByDictKey(HierarchyPropertyBo bo);
 }

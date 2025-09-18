@@ -100,7 +100,6 @@ public class EventParserService {
                 }
             }
 
-            log.info("成功解析events，共{}个分组: {}", result.getGroups().size(), result.getGroups().keySet());
             return result;
 
         } catch (Exception e) {
@@ -197,11 +196,8 @@ public class EventParserService {
                                     MPEventList result, Map<String, MPTag> tagsMap) {
         JSONArray tags = testpoint.getJSONArray("tags");
         if (tags == null) {
-            log.debug("测点{}没有tags数据", testpointId);
             return;
         }
-
-        log.debug("处理测点{}, 共{}个标签", testpointId, tags.size());
 
         for (Object tagObj : tags) {
             JSONObject tagJson = (JSONObject) tagObj;
@@ -211,35 +207,27 @@ public class EventParserService {
                 continue;
             }
 
-            log.debug("处理标签: {}", tagKey);
-
             MPTag tag = tagsMap.get(tagKey);
             if (tag == null) {
-                log.debug("未找到标签定义: {}", tagKey);
                 continue; // 如果找不到标签定义，跳过
             }
 
             // 先检查事件数据是否有效（与JavaScript端逻辑一致）
             JSONObject events = tagJson.getJSONObject("events");
             if (events == null) {
-                log.debug("标签{}没有events数据", tagKey);
                 continue;
             }
 
             String payload = events.getStr("payload");
             if (payload == null || payload.trim().isEmpty()) {
-                log.debug("标签{}的events payload为空", tagKey);
                 continue;
             }
-
-            log.debug("标签{}有有效的events数据，payload长度: {}", tagKey, payload.length());
 
             // 只有在有有效事件数据时才创建事件分组（与JavaScript端逻辑一致）
             MPEventGroup group = result.getGroups().get(tag.getKey());
             if (group == null) {
                 group = new MPEventGroup(tag, result);
                 result.getGroups().put(tag.getKey(), group);
-                log.debug("创建新的事件分组: {}", tag.getKey());
             }
 
             // 处理卫星数据（需要主events的payload不为空）
@@ -253,7 +241,6 @@ public class EventParserService {
 
             // 解析主要事件数据
             processEventPayload(payload, group, equipmentId, testpointId, satelliteMap);
-            log.debug("成功处理标签{}的事件数据，当前group中事件数: {}", tagKey, group.getEvents().size());
         }
     }
 
@@ -342,17 +329,13 @@ public class EventParserService {
         Map<String, MPTag> tagsMap = new HashMap<>();
         
         try {
-            log.info("开始获取真实标签映射...");
             // 构建请求参数，对应JavaScript中的this.requestCulture()
             Map<String, Object> requestMap = new HashMap<>();
             requestMap.put("token", SD400MPUtils.getToken());
             requestMap.put("data", Map.of("culture", "zh-CN")); // 默认文化
             
-            log.debug("请求参数: {}", requestMap);
-            
             // 调用/api/tagsJson获取真实标签数据
             JSONObject tagsResponse = SD400MPUtils.postJsonAndCheck("/api/tagsJson", requestMap);
-            log.debug("标签API响应: {}", tagsResponse != null ? "成功" : "失败");
             if (tagsResponse != null && tagsResponse.getInt("code") == 200) {
                 JSONObject data = tagsResponse.getJSONObject("data");
                 if (data != null) {
@@ -363,25 +346,18 @@ public class EventParserService {
                             JSONObject tagJson = (JSONObject) itemObj;
                             MPTag tag = new MPTag(tagJson); // 从JSON构建MPTag
                             tagsMap.put(tag.getKey(), tag);
-                            log.debug("添加标签: key={}, title={}", tag.getKey(), tag.getTitle());
                         }
                     }
                 }
             } else {
-                log.warn("获取标签映射失败，响应: {}, 使用备用标签映射", tagsResponse);
-                Map<String, MPTag> fallbackTags = getTagsMapping();
-                log.warn("使用备用标签映射，共{}个标签: {}", fallbackTags.size(), fallbackTags.keySet());
-                return fallbackTags; // 如果获取失败，使用备用方法
+                return getTagsMapping(); // 如果获取失败，使用备用方法
             }
             
-            log.info("成功获取真实标签映射，共{}个标签: {}", tagsMap.size(), tagsMap.keySet());
             return tagsMap;
             
         } catch (Exception e) {
             log.error("获取真实标签映射异常，使用备用标签映射", e);
-            Map<String, MPTag> fallbackTags = getTagsMapping();
-            log.warn("使用备用标签映射，共{}个标签: {}", fallbackTags.size(), fallbackTags.keySet());
-            return fallbackTags; // 如果异常，使用备用方法
+            return getTagsMapping(); // 如果异常，使用备用方法
         }
     }
 
@@ -455,7 +431,6 @@ public class EventParserService {
         avgAmplitudeTag.setUnits("mV");
         tagsMap.put(MPTag.AVERAGE_AMPLITUDE, avgAmplitudeTag);
         
-        log.warn("使用备用标签映射方法，创建标签映射，共{}个标签: {}", tagsMap.size(), tagsMap.keySet());
         return tagsMap;
     }
 

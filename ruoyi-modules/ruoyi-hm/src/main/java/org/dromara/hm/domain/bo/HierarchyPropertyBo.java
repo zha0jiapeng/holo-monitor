@@ -43,6 +43,8 @@ public class HierarchyPropertyBo {
      */
     private String propertyValue;
 
+    private String dictKey;
+
     private Integer scope;
 
 }
