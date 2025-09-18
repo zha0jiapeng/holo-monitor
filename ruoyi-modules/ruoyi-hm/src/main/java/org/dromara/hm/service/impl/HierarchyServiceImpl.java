@@ -1058,12 +1058,153 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
             if (!currentBoundProperties.isEmpty()) {
                 boundSensors = queryByIds(list,false);
+                // 为boundSensors添加data_type=1006的属性信息
+                addDataType1006Properties(boundSensors);
             }
         }
         Map<String, List<HierarchyVo>> result = new HashMap<>();
         result.put("unbound", unboundSensors);
         result.put("bound", boundSensors);
         return result;
+    }
+
+    /**
+     * 为层级列表添加data_type=1006的属性信息
+     *
+     * @param hierarchyVos 层级VO列表
+     */
+    private void addDataType1006Properties(List<HierarchyVo> hierarchyVos) {
+        if (hierarchyVos == null || hierarchyVos.isEmpty()) {
+            return;
+        }
+
+        try {
+            // 1. 查找data_type=1006的属性字典
+            List<HierarchyTypePropertyDict> dicts1006 = hierarchyTypePropertyDictMapper.selectList(
+                Wrappers.<HierarchyTypePropertyDict>lambdaQuery()
+                    .eq(HierarchyTypePropertyDict::getDataType, 1006)
+            );
+
+            if (dicts1006.isEmpty()) {
+                log.debug("未找到data_type=1006的属性字典");
+                return;
+            }
+
+            // 2. 获取所有层级的类型ID
+            Set<Long> typeIds = hierarchyVos.stream()
+                .map(HierarchyVo::getTypeId)
+                .collect(Collectors.toSet());
+
+            // 3. 查找这些类型对应的1006类型属性
+            List<Long> dictIds = dicts1006.stream()
+                .map(HierarchyTypePropertyDict::getId)
+                .collect(Collectors.toList());
+
+            List<HierarchyTypeProperty> typeProperties1006 = hierarchyTypePropertyMapper.selectList(
+                Wrappers.<HierarchyTypeProperty>lambdaQuery()
+                    .in(HierarchyTypeProperty::getTypeId, typeIds)
+                    .in(HierarchyTypeProperty::getPropertyDictId, dictIds)
+            );
+
+            if (typeProperties1006.isEmpty()) {
+                log.debug("未找到对应的1006类型属性");
+                return;
+            }
+
+            // 4. 建立类型ID到类型属性的映射
+            Map<Long, List<HierarchyTypeProperty>> typeToPropertiesMap = typeProperties1006.stream()
+                .collect(Collectors.groupingBy(HierarchyTypeProperty::getTypeId));
+
+            // 5. 查找所有层级的1006属性值
+            List<Long> hierarchyIds = hierarchyVos.stream()
+                .map(HierarchyVo::getId)
+                .collect(Collectors.toList());
+
+            List<Long> typePropertyIds = typeProperties1006.stream()
+                .map(HierarchyTypeProperty::getId)
+                .collect(Collectors.toList());
+
+            List<HierarchyProperty> hierarchyProperties1006 = hierarchyPropertyMapper.selectList(
+                Wrappers.<HierarchyProperty>lambdaQuery()
+                    .in(HierarchyProperty::getHierarchyId, hierarchyIds)
+                    .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
+            );
+
+            // 6. 建立层级ID到属性值的映射
+            Map<Long, List<HierarchyProperty>> hierarchyToPropertiesMap = hierarchyProperties1006.stream()
+                .collect(Collectors.groupingBy(HierarchyProperty::getHierarchyId));
+
+            // 7. 建立属性字典映射
+            Map<Long, HierarchyTypePropertyDict> dictMap = dicts1006.stream()
+                .collect(Collectors.toMap(HierarchyTypePropertyDict::getId, d -> d));
+
+            // 8. 为每个层级添加1006属性信息
+            for (HierarchyVo hierarchyVo : hierarchyVos) {
+                // 获取该类型的1006类型属性
+                List<HierarchyTypeProperty> typeProps = typeToPropertiesMap.get(hierarchyVo.getTypeId());
+                if (typeProps == null) {
+                    continue;
+                }
+
+                // 获取该层级的1006属性值
+                List<HierarchyProperty> hierarchyProps = hierarchyToPropertiesMap.get(hierarchyVo.getId());
+
+                // 初始化properties列表（如果为空）
+                if (hierarchyVo.getProperties() == null) {
+                    hierarchyVo.setProperties(new ArrayList<>());
+                }
+
+                // 为每个类型属性创建属性VO
+                for (HierarchyTypeProperty typeProperty : typeProps) {
+                    HierarchyPropertyVo propertyVo = new HierarchyPropertyVo();
+                    propertyVo.setHierarchyId(hierarchyVo.getId());
+                    propertyVo.setTypePropertyId(typeProperty.getId());
+
+                    // 查找对应的属性值
+                    String propertyValue = "";
+                    if (hierarchyProps != null) {
+                        Optional<HierarchyProperty> foundProperty = hierarchyProps.stream()
+                            .filter(hp -> hp.getTypePropertyId().equals(typeProperty.getId()))
+                            .findFirst();
+                        if (foundProperty.isPresent()) {
+                            propertyVo.setId(foundProperty.get().getId());
+                            propertyValue = foundProperty.get().getPropertyValue() != null ? 
+                                foundProperty.get().getPropertyValue() : "";
+                        }
+                    }
+                    propertyVo.setPropertyValue(propertyValue);
+
+                    // 创建类型属性VO
+                    HierarchyTypePropertyVo typePropertyVo = new HierarchyTypePropertyVo();
+                    typePropertyVo.setId(typeProperty.getId());
+                    typePropertyVo.setTypeId(typeProperty.getTypeId());
+                    typePropertyVo.setPropertyDictId(typeProperty.getPropertyDictId());
+                    typePropertyVo.setRequired(typeProperty.getRequired());
+
+                    // 创建字典VO
+                    HierarchyTypePropertyDict dict = dictMap.get(typeProperty.getPropertyDictId());
+                    if (dict != null) {
+                        HierarchyTypePropertyDictVo dictVo = new HierarchyTypePropertyDictVo();
+                        dictVo.setId(dict.getId());
+                        dictVo.setDictName(dict.getDictName());
+                        dictVo.setDataType(dict.getDataType());
+                        dictVo.setDictValues(dict.getDictValues());
+                        dictVo.setSystemFlag(dict.getSystemFlag());
+                        dictVo.setDictKey(dict.getDictKey());
+                        
+                        typePropertyVo.setDict(dictVo);
+                    }
+
+                    propertyVo.setTypeProperty(typePropertyVo);
+                    hierarchyVo.getProperties().add(propertyVo);
+                }
+            }
+
+            // 成功为层级添加了data_type=1006的属性信息
+
+        } catch (Exception e) {
+            log.error("添加data_type=1006属性信息时发生异常", e);
+        }
     }
 
     @Override

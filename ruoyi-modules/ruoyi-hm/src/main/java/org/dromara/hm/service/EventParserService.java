@@ -81,8 +81,8 @@ public class EventParserService {
                 fetchNamesAsync(result, eqList, tpList);
             }
 
-            // 5. 获取标签映射
-            Map<String, MPTag> tagsMap = getTagsMapping();
+            // 5. 获取标签映射（从服务器获取真实标签，与JavaScript端保持一致）
+            Map<String, MPTag> tagsMap = getRealTagsMapping();
 
             // 6. 处理每个设备的事件数据
             for (Object equipmentObj : equipmentArray) {
@@ -100,7 +100,7 @@ public class EventParserService {
                 }
             }
 
-            log.info("成功解析events，共{}个分组", result.getGroups().size());
+            log.info("成功解析events，共{}个分组: {}", result.getGroups().size(), result.getGroups().keySet());
             return result;
 
         } catch (Exception e) {
@@ -197,8 +197,11 @@ public class EventParserService {
                                     MPEventList result, Map<String, MPTag> tagsMap) {
         JSONArray tags = testpoint.getJSONArray("tags");
         if (tags == null) {
+            log.debug("测点{}没有tags数据", testpointId);
             return;
         }
+
+        log.debug("处理测点{}, 共{}个标签", testpointId, tags.size());
 
         for (Object tagObj : tags) {
             JSONObject tagJson = (JSONObject) tagObj;
@@ -208,39 +211,49 @@ public class EventParserService {
                 continue;
             }
 
+            log.debug("处理标签: {}", tagKey);
+
             MPTag tag = tagsMap.get(tagKey);
             if (tag == null) {
                 log.debug("未找到标签定义: {}", tagKey);
                 continue; // 如果找不到标签定义，跳过
             }
 
-            // 获取或创建事件分组
-            MPEventGroup group = result.getGroups().get(tag.getKey());
-            if (group == null) {
-                group = new MPEventGroup(tag, result);
-                result.getGroups().put(tag.getKey(), group);
-            }
-
-            // 处理事件数据
+            // 先检查事件数据是否有效（与JavaScript端逻辑一致）
             JSONObject events = tagJson.getJSONObject("events");
             if (events == null) {
+                log.debug("标签{}没有events数据", tagKey);
                 continue;
             }
 
             String payload = events.getStr("payload");
             if (payload == null || payload.trim().isEmpty()) {
+                log.debug("标签{}的events payload为空", tagKey);
                 continue;
             }
 
-            // 处理卫星数据
+            log.debug("标签{}有有效的events数据，payload长度: {}", tagKey, payload.length());
+
+            // 只有在有有效事件数据时才创建事件分组（与JavaScript端逻辑一致）
+            MPEventGroup group = result.getGroups().get(tag.getKey());
+            if (group == null) {
+                group = new MPEventGroup(tag, result);
+                result.getGroups().put(tag.getKey(), group);
+                log.debug("创建新的事件分组: {}", tag.getKey());
+            }
+
+            // 处理卫星数据（需要主events的payload不为空）
             Map<Long, Double> satelliteMap = new HashMap<>();
             JSONObject satellite = tagJson.getJSONObject("satelite");
-            if (satellite != null) {
+            if (satellite != null && satellite.getJSONObject("events") != null && 
+                satellite.getJSONObject("events").getStr("payload") != null && 
+                !payload.isEmpty()) { // 注意：这里检查的是主events的payload
                 processSatelliteData(satellite, group, testpointId, satelliteMap, tagsMap);
             }
 
             // 解析主要事件数据
             processEventPayload(payload, group, equipmentId, testpointId, satelliteMap);
+            log.debug("成功处理标签{}的事件数据，当前group中事件数: {}", tagKey, group.getEvents().size());
         }
     }
 
@@ -322,7 +335,58 @@ public class EventParserService {
     }
 
     /**
-     * 获取标签映射
+     * 获取真实的标签映射（从服务器获取，与JavaScript端完全一致）
+     * 对应JavaScript中通过/api/tagsJson获取的this.tags
+     */
+    private Map<String, MPTag> getRealTagsMapping() {
+        Map<String, MPTag> tagsMap = new HashMap<>();
+        
+        try {
+            log.info("开始获取真实标签映射...");
+            // 构建请求参数，对应JavaScript中的this.requestCulture()
+            Map<String, Object> requestMap = new HashMap<>();
+            requestMap.put("token", SD400MPUtils.getToken());
+            requestMap.put("data", Map.of("culture", "zh-CN")); // 默认文化
+            
+            log.debug("请求参数: {}", requestMap);
+            
+            // 调用/api/tagsJson获取真实标签数据
+            JSONObject tagsResponse = SD400MPUtils.postJsonAndCheck("/api/tagsJson", requestMap);
+            log.debug("标签API响应: {}", tagsResponse != null ? "成功" : "失败");
+            if (tagsResponse != null && tagsResponse.getInt("code") == 200) {
+                JSONObject data = tagsResponse.getJSONObject("data");
+                if (data != null) {
+                    JSONArray items = data.getJSONArray("items");
+                    if (items != null) {
+                        // 对应JavaScript中的tagsResponse.data.items.forEach逻辑
+                        for (Object itemObj : items) {
+                            JSONObject tagJson = (JSONObject) itemObj;
+                            MPTag tag = new MPTag(tagJson); // 从JSON构建MPTag
+                            tagsMap.put(tag.getKey(), tag);
+                            log.debug("添加标签: key={}, title={}", tag.getKey(), tag.getTitle());
+                        }
+                    }
+                }
+            } else {
+                log.warn("获取标签映射失败，响应: {}, 使用备用标签映射", tagsResponse);
+                Map<String, MPTag> fallbackTags = getTagsMapping();
+                log.warn("使用备用标签映射，共{}个标签: {}", fallbackTags.size(), fallbackTags.keySet());
+                return fallbackTags; // 如果获取失败，使用备用方法
+            }
+            
+            log.info("成功获取真实标签映射，共{}个标签: {}", tagsMap.size(), tagsMap.keySet());
+            return tagsMap;
+            
+        } catch (Exception e) {
+            log.error("获取真实标签映射异常，使用备用标签映射", e);
+            Map<String, MPTag> fallbackTags = getTagsMapping();
+            log.warn("使用备用标签映射，共{}个标签: {}", fallbackTags.size(), fallbackTags.keySet());
+            return fallbackTags; // 如果异常，使用备用方法
+        }
+    }
+
+    /**
+     * 获取标签映射（备用方法）
      * 创建基本的标签映射，对应JavaScript中this.tags的功能
      */
     private Map<String, MPTag> getTagsMapping() {
@@ -353,6 +417,22 @@ public class EventParserService {
         pdDiagnosisTag.setState(true);
         tagsMap.put("sys:mont/pd/dia/st/class", pdDiagnosisTag);
         
+        // PD诊断状态幅值标签
+        MPTag pdDiagnosisMagTag = new MPTag();
+        pdDiagnosisMagTag.setKey("sys:mont/pd/dia/st/mag");
+        pdDiagnosisMagTag.setTitle("PD诊断状态幅值");
+        pdDiagnosisMagTag.setUnits("");
+        pdDiagnosisMagTag.setState(true);
+        tagsMap.put("sys:mont/pd/dia/st/mag", pdDiagnosisMagTag);
+        
+        // PD诊断状态总和标签
+        MPTag pdDiagnosisSumTag = new MPTag();
+        pdDiagnosisSumTag.setKey("sys:mont/pd/dia/st/sum");
+        pdDiagnosisSumTag.setTitle("PD诊断状态总和");
+        pdDiagnosisSumTag.setUnits("");
+        pdDiagnosisSumTag.setState(true);
+        tagsMap.put("sys:mont/pd/dia/st/sum", pdDiagnosisSumTag);
+        
         // PD类别枚举标签（卫星标签）
         MPTag pdClassEnumTag = new MPTag();
         pdClassEnumTag.setKey(MPTag.PD_CLASS_ENUM);
@@ -375,7 +455,8 @@ public class EventParserService {
         avgAmplitudeTag.setUnits("mV");
         tagsMap.put(MPTag.AVERAGE_AMPLITUDE, avgAmplitudeTag);
         
-        log.debug("创建标签映射，共{}个标签", tagsMap.size());
+        log.warn("使用备用标签映射方法，创建标签映射，共{}个标签: {}", tagsMap.size(), tagsMap.keySet());
         return tagsMap;
     }
+
 }

@@ -11,7 +11,7 @@ import lombok.Data;
  */
 @Data
 public class MPTag {
-    
+
     // 静态常量定义，对应JavaScript中的静态字段
     public static final String AMPLITUDE_UNITS = "mont/pd/au";
     public static final String SENSOR_TYPE = "mont/pd/mt";
@@ -22,67 +22,67 @@ public class MPTag {
     public static final String PD_CLASS_ENUM = "sys:mont/pd/dia/class/enum";
     public static final String CONNECTION_STATE = "sys:cs";
     public static final String TESTPOINT_STATE = "sys:st";
-    
+
     /**
      * 标签键
      */
     private String key;
-    
+
     /**
      * 标题
      */
     private String title;
-    
+
     /**
      * 单位
      */
     private String units;
-    
+
     /**
      * 父级
      */
     private String parent;
-    
+
     /**
      * 保存类型
      */
     private Integer saveType;
-    
+
     /**
      * 状态
      */
     private Boolean state;
-    
+
     /**
      * 趋势
      */
     private Boolean trend;
-    
+
     /**
      * 位标志
      */
     private Boolean bit;
-    
+
     /**
      * 隐藏标志
      */
     private Boolean hidden;
-    
+
     /**
      * 属性
      */
     private Integer prop;
-    
+
     /**
      * 单位链接
      */
     private String unitLink;
-    
+
     /**
      * 链接
      */
     private String link;
-    
+
     /**
      * 构造函数，从JSON对象创建MPTag
      *
@@ -102,7 +102,7 @@ public class MPTag {
         this.unitLink = tag.getStr("unitLink");
         this.link = tag.getStr("link");
     }
-    
+
     /**
      * 默认构造函数
      */

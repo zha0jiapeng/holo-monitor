@@ -462,7 +462,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         // 统计每个目标层级（确保所有目标层级都被统计，即使没有传感器）
         for (Hierarchy targetHierarchy : targetHierarchies) {
             List<Long> sensorsUnderTarget = targetToSensorMap.getOrDefault(targetHierarchy.getId(), new ArrayList<>());
-            
+
             // 计算该目标层级下的最高报警级别
             int maxAlarmLevel = 0;
             for (Long sensorId : sensorsUnderTarget) {
@@ -537,18 +537,18 @@ public class StatisticsServiceImpl implements IStatisticsService {
         // 统计每个目标层级（确保所有目标层级都被统计，即使没有传感器）
         for (Hierarchy targetHierarchy : targetHierarchies) {
             List<Long> sensorsUnderTarget = targetToSensorMap.getOrDefault(targetHierarchy.getId(), new ArrayList<>());
-            
+
             // 获取传感器详细信息
             List<Hierarchy> allSensors = new ArrayList<>();
             List<Hierarchy> alarmSensors = new ArrayList<>();
             List<Hierarchy> offlineSensors = new ArrayList<>();
-            
+
             if (!sensorsUnderTarget.isEmpty()) {
                 // 批量查询传感器详细信息
                 allSensors = hierarchyService.lambdaQuery()
                         .in(Hierarchy::getId, sensorsUnderTarget)
                         .list();
-                
+
                 // 分类统计报警和离线传感器
                 for (Hierarchy sensor : allSensors) {
                     if (alarmSensorIds.contains(sensor.getId())) {
@@ -602,7 +602,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         List<String> devices = List.of("device_group", "device", "device_point");
         Hierarchy hierarchy = hierarchyService.getById(hierarchyId);
         HierarchyType hierarchyType = hierarchyTypeService.getById(hierarchy.getTypeId());
-        
+
         if (devices.contains(hierarchyType.getTypeKey())) {
             // 设备类型：通过属性绑定查找传感器
             return getSensorsByPropertyBinding(hierarchyId, hierarchyType, sensorTypeId);
@@ -647,7 +647,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         // 查找sensors字典属性
         HierarchyTypePropertyDict sensorsDict = hierarchyTypePropertyDictService.lambdaQuery()
                 .eq(HierarchyTypePropertyDict::getDictKey, "sensors").one();
-        
+
         if (sensorsDict == null) {
             log.warn("未找到sensors字典属性");
             return new ArrayList<>();
@@ -656,9 +656,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
         List<HierarchyTypeProperty> list = hierarchyTypePropertyService.lambdaQuery()
                 .eq(HierarchyTypeProperty::getPropertyDictId, sensorsDict.getId())
                 .in(HierarchyTypeProperty::getTypeId, typeIds).list();
-        
+
         List<Long> typePropertyIds = list.stream().map(HierarchyTypeProperty::getId).collect(Collectors.toList());
-        
+
         if (typePropertyIds.isEmpty()) {
             log.warn("未找到sensors类型属性");
             return new ArrayList<>();
@@ -1079,7 +1079,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
     private List<Hierarchy> findTargetHierarchiesUnderType7(Long type7HierarchyId, Long targetTypeId) {
         // 获取type7层级下的所有子孙层级ID
         Set<Long> allDescendants = getAllDescendantIds(type7HierarchyId);
-        
+
         if (allDescendants.isEmpty()) {
             return new ArrayList<>();
         }
@@ -1090,9 +1090,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 .eq(Hierarchy::getTypeId, targetTypeId)
                 .list();
 
-        log.info("在type=7层级{}下找到{}个targetTypeId={}的层级", 
+        log.info("在type=7层级{}下找到{}个targetTypeId={}的层级",
                 type7HierarchyId, targetHierarchies.size(), targetTypeId);
-        
+
         return targetHierarchies;
     }
 
@@ -1105,7 +1105,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
      */
     private Map<Long, Long> findSensorBelongingToTargetType(List<Long> sensorIds, Long targetTypeId) {
         Map<Long, Long> sensorToTargetMap = new HashMap<>();
-        
+
         if (sensorIds.isEmpty()) {
             return sensorToTargetMap;
         }
@@ -1533,26 +1533,22 @@ public class StatisticsServiceImpl implements IStatisticsService {
             if (events != null && events.getInt("code") == 200) {
                 MPEventList eventList = eventParserService.parseEvents(events);
                 if (eventList != null) {
-                    log.info("成功解析events，共{}个分组，{}个设备名称，{}个测点名称",
-                            eventList.getGroups().size(),
-                            eventList.getNamesEq().size(),
-                            eventList.getNamesTp().size());
 
-                    // 8. 构建返回结果，避免循环引用
-                    // 统计总事件数
-                    // int totalEvents = eventList.getGroups().values().stream()
-                    // .mapToInt(group -> group.getEvents().size())
-                    // .sum();
-                    // result.put("totalEvents", totalEvents);
-
-                    // 统计各状态事件数量
-                    // Map<Integer, Long> stateStatistics = new HashMap<>();
-                    // eventList.getGroups().values().forEach(group -> {
-                    // group.getEvents().forEach(event -> {
-                    // stateStatistics.merge(event.getState(), 1L, Long::sum);
-                    // });
-                    // });
-                    // result.put("stateStatistics", stateStatistics);
+//                    // 8. 构建返回结果，避免循环引用
+//                    // 统计总事件数
+//                     int totalEvents = eventList.getGroups().values().stream()
+//                     .mapToInt(group -> group.getEvents().size())
+//                     .sum();
+//                     result.put("totalEvents", totalEvents);
+//
+//                    // 统计各状态事件数量
+//                     Map<Integer, Long> stateStatistics = new HashMap<>();
+//                     eventList.getGroups().values().forEach(group -> {
+//                     group.getEvents().forEach(event -> {
+//                     stateStatistics.merge(event.getState(), 1L, Long::sum);
+//                     });
+//                     });
+//                     result.put("stateStatistics", stateStatistics);
 
                     // 不再分组，将所有事件合并到一个列表中，添加分组key作为事件属性
                     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -1561,7 +1557,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                     eventList.getGroups().forEach((key, group) -> {
                         String tagTitle = group.getTag() != null ? group.getTag().getTitle() : null;
                         // 只保留这两个key
-                        if (!key.equals("sys:st") && !key.equals("sys:mont/pd/dia/st/mag")) {
+                        if (!key.equals("sys:st") && !key.equals("sys:mont/pd/dia/st/sum")) {
                             return;
                         }
 
@@ -1571,6 +1567,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
                             eventInfo.put("groupKey", key); // 添加分组key作为事件属性
                             eventInfo.put("tagTitle", tagTitle); // 添加标签标题
                             eventInfo.put("state", event.getState());
+                            if(event.getState()==null || event.getState()==0){
+                                return;
+                            }
 
                             // 处理开始时间
                             String startTime = null;
@@ -1603,7 +1602,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                             // return;
                             // }
                             eventInfo.put("end", endTime);
-                            eventInfo.put("satelliteValue", event.getSatelliteValue());
+                            //eventInfo.put("satelliteValue", event.getSatelliteValue());
 
                             // 添加设备和测点名称
                             String equipmentName = eventList.getNamesEq().get(event.getEquipmentId());
