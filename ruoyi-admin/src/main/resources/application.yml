@@ -63,7 +63,7 @@ spring:
     basename: i18n/messages
   profiles:
     # active: @profiles.active@
-     active: prod
+     active: dev
   # 文件上传
   servlet:
     multipart:
