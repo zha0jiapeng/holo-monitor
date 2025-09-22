@@ -141,4 +141,12 @@ public interface IHierarchyService extends IService<Hierarchy> {
      * @return unit类型层级的树结构（包含传感器分组）
      */
     List<HierarchyTreeVo> getUnitHierarchyTree(Long parentId, Long hierarchyId);
+
+    /**
+     * 根据传感器层级code查找其所属的变电站（typeId=7）详情和属性列表
+     *
+     * @param sensorCode 传感器层级编码
+     * @return 变电站详情和属性列表，如果未找到返回null
+     */
+    HierarchyVo getSubstationBySensorCode(String sensorCode);
 }

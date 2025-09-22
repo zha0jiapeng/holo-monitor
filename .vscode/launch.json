@@ -3,6 +3,27 @@
     "configurations": [
         {
             "type": "java",
+            "name": "DatabaseDiagnostic",
+            "request": "launch",
+            "mainClass": "org.dromara.hm.DatabaseDiagnostic",
+            "projectName": "ruoyi-hm"
+        },
+        {
+            "type": "java",
+            "name": "TestpointIdMappingUtil",
+            "request": "launch",
+            "mainClass": "org.dromara.hm.TestpointIdMappingUtil",
+            "projectName": "ruoyi-hm"
+        },
+        {
+            "type": "java",
+            "name": "TestpointIdMappingTest",
+            "request": "launch",
+            "mainClass": "org.dromara.hm.TestpointIdMappingTest",
+            "projectName": "ruoyi-hm"
+        },
+        {
+            "type": "java",
             "name": "启动 DromaraApplication (主应用)",
             "request": "launch",
             "mainClass": "org.dromara.DromaraApplication",

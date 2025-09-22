@@ -392,7 +392,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     }
 
     @Override
-    @Transactional()
+    @Transactional(rollbackFor = Exception.class)
     public Boolean updateByBo(HierarchyBo bo) {
         Hierarchy update = MapstructUtils.convert(bo, Hierarchy.class);
         if (update != null) {
@@ -400,11 +400,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         }
         List<HierarchyProperty> properties = bo.getProperties();
         for (HierarchyProperty property : properties) {
-            hierarchyPropertyMapper.update(new LambdaUpdateWrapper<HierarchyProperty>()
-                .set(HierarchyProperty::getPropertyValue,property.getPropertyValue())
-                .eq(HierarchyProperty::getTypePropertyId,property.getTypePropertyId())
-                .eq(HierarchyProperty::getHierarchyId,bo.getId())
-            );
+            hierarchyPropertyMapper.updateById(property);
         }
 
         return baseMapper.updateById(update) > 0;
@@ -1233,6 +1229,72 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         treeVo.setCode(hierarchyVo.getCode());
 
         return treeVo;
+    }
+
+    /**
+     * 根据传感器层级code查找其所属的变电站（typeId=7）详情和属性列表
+     *
+     * @param sensorCode 传感器层级编码
+     * @return 变电站详情和属性列表，如果未找到返回null
+     */
+    @Override
+    public HierarchyVo getSubstationBySensorCode(String sensorCode) {
+        if (StringUtils.isBlank(sensorCode)) {
+            throw new ServiceException("传感器编码不能为空");
+        }
+
+        // 1. 根据code查找传感器层级
+        Hierarchy sensorHierarchy = baseMapper.selectOne(
+            Wrappers.<Hierarchy>lambdaQuery()
+                .eq(Hierarchy::getCode, sensorCode)
+                .last("LIMIT 1")
+        );
+
+        if (sensorHierarchy == null) {
+            log.warn("未找到编码为 {} 的传感器层级", sensorCode);
+            return null;
+        }
+
+        // 2. 向上查找typeId=7的变电站
+        Long substationId = findSubstationUpward(sensorHierarchy.getId());
+        if (substationId == null) {
+            log.warn("传感器 {} 未找到所属的变电站（typeId=7）", sensorCode);
+            return null;
+        }
+
+        // 3. 获取变电站详情和属性列表
+        return queryById(substationId, true);
+    }
+
+    /**
+     * 从指定层级向上查找typeId=7的变电站
+     *
+     * @param hierarchyId 起始层级ID
+     * @return 变电站ID，如果未找到返回null
+     */
+    private Long findSubstationUpward(Long hierarchyId) {
+        Hierarchy current = baseMapper.selectById(hierarchyId);
+        int maxDepth = 20; // 防止无限循环
+        int depth = 0;
+
+        while (current != null && depth < maxDepth) {
+            // 检查当前层级的类型是否为7（变电站）
+            if (Long.valueOf(7).equals(current.getTypeId())) {
+                log.debug("从hierarchyId={}向上找到变电站: {}", hierarchyId, current.getId());
+                return current.getId();
+            }
+
+            // 向上查找父级
+            if (current.getParentId() != null) {
+                current = baseMapper.selectById(current.getParentId());
+                depth++;
+            } else {
+                break;
+            }
+        }
+
+        log.debug("从hierarchyId={}向上未找到变电站（typeId=7）", hierarchyId);
+        return null;
     }
 
 }

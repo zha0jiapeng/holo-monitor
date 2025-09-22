@@ -236,4 +236,20 @@ public class HierarchyController extends BaseController {
         @RequestParam(value = "hierarchyId", required = false) Long hierarchyId) {
         return R.ok(hierarchyService.getUnitHierarchyTree(parentId, hierarchyId));
     }
+
+    /**
+     * 根据传感器编码查找所属变电站详情和属性列表
+     *
+     * @param sensorCode 传感器层级编码
+     */
+    @SaCheckPermission("hm:hierarchy:query")
+    @GetMapping("/substation/{sensorCode}")
+    public R<HierarchyVo> getSubstationBySensorCode(
+        @NotNull(message = "传感器编码不能为空") @PathVariable("sensorCode") String sensorCode) {
+        HierarchyVo substationVo = hierarchyService.getSubstationBySensorCode(sensorCode);
+        if (substationVo == null) {
+            return R.fail("未找到该传感器所属的变电站");
+        }
+        return R.ok(substationVo);
+    }
 }
