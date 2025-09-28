@@ -29,10 +29,10 @@ import org.springframework.context.annotation.Primary;
  */
 @EnableConfigurationProperties(TenantProperties.class)
 @AutoConfiguration(after = {RedisConfig.class})
-@ConditionalOnProperty(value = "tenant.enable", havingValue = "true")
 public class TenantConfig {
 
     @ConditionalOnClass(TenantLineInnerInterceptor.class)
+    @ConditionalOnProperty(value = "tenant.enable", havingValue = "true")
     @AutoConfiguration
     static class MybatisPlusConfiguration {
 
@@ -47,6 +47,7 @@ public class TenantConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(value = "tenant.enable", havingValue = "true")
     public RedissonAutoConfigurationCustomizer tenantRedissonCustomizer(RedissonProperties redissonProperties) {
         return config -> {
             TenantKeyPrefixHandler nameMapper = new TenantKeyPrefixHandler(redissonProperties.getKeyPrefix());
@@ -70,6 +71,7 @@ public class TenantConfig {
      */
     @Primary
     @Bean
+    @ConditionalOnProperty(value = "tenant.enable", havingValue = "true")
     public CacheManager tenantCacheManager() {
         return new TenantSpringCacheManager();
     }
@@ -79,6 +81,7 @@ public class TenantConfig {
      */
     @Primary
     @Bean
+    @ConditionalOnProperty(value = "tenant.enable", havingValue = "true")
     public SaTokenDao tenantSaTokenDao() {
         return new TenantSaTokenDao();
     }

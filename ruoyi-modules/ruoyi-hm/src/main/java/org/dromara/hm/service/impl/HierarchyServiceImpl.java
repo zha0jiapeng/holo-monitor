@@ -87,22 +87,22 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         LambdaQueryWrapper<Hierarchy> lqw = buildQueryWrapper(bo);
         Page<HierarchyVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
         List<HierarchyVo> records = result.getRecords();
-        
+
         // 处理needAllChild逻辑 - 优化版本，避免N+1查询
         if (bo.getNeedAllChild() != null && bo.getNeedAllChild()) {
             long startTime = System.currentTimeMillis();
             records = getAllChildrenOptimized(records);
             log.info("getAllChildren耗时: {}ms, 层级数量: {}", System.currentTimeMillis() - startTime, records.size());
         }
-        
+
         // 处理needTree逻辑 - 构建树结构
         if (bo.getNeedTree() != null && bo.getNeedTree()) {
             records = buildHierarchyTree(records);
         }
-        
+
         // 设置typeKey
         setTypeKeysForHierarchyList(records);
-        
+
         // 处理needProperty逻辑 - 批量查询优化
         // 当needAllChild=true时可能有大量子层级，使用批量查询避免N+1问题
         if(bo.getNeedProperty()) {
@@ -110,7 +110,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             batchLoadPropertiesOptimized(records, bo.getNeedHiddenProperty());
             log.info("batchLoadProperties耗时: {}ms", System.currentTimeMillis() - startTime);
         }
-        
+
         // 更新结果集
         result.setRecords(records);
         return TableDataInfo.build(result);
@@ -796,61 +796,278 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
     @Override
     public List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId,boolean showAllFlag) {
-        List<HierarchyVo> list = new ArrayList<>();
-        HierarchyVo hierarchy = queryById(hierarchyId,true);
-        if(hierarchy.isHaveSensorFlag()){
-            String sensorStrs = "";
-            for (HierarchyPropertyVo property : hierarchy.getProperties()) {
-                if(property.getTypeProperty().getDict().getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())){
-                    sensorStrs = property.getPropertyValue();
-                    break;
-                }
-            }
-            String[] split = sensorStrs.split("\\,");
-            for (String sensorIdStr : split) {
-                HierarchyVo hierarchyVo = queryById(Long.valueOf(sensorIdStr), false);
-                if(hierarchyVo!=null) {
-                    HierarchyTypePropertyDict sensorLocation = hierarchyTypePropertyDictMapper.selectOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_location"));
-                    if(sensorLocation==null) continue;
-                    HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(new LambdaQueryWrapper<HierarchyTypeProperty>().eq(HierarchyTypeProperty::getPropertyDictId, sensorLocation.getId()));
-                    if(hierarchyTypeProperty==null) continue;
-                    HierarchyPropertyVo hierarchyProperties = hierarchyPropertyMapper.selectVoOne(
-                        new LambdaQueryWrapper<HierarchyProperty>()
-                            .eq(HierarchyProperty::getHierarchyId, Long.valueOf(sensorIdStr))
-                            .eq(HierarchyProperty::getTypePropertyId, hierarchyTypeProperty.getId())
-                    );
-                    if(hierarchyProperties==null) continue;
-                    hierarchyVo.setProperties(List.of(hierarchyProperties));
+        long startTime = System.currentTimeMillis();
+        
+        // 获取当前层级
+        HierarchyVo currentHierarchy = queryById(hierarchyId,true);
+        List<HierarchyVo> allHierarchies = new ArrayList<>();
+        allHierarchies.add(currentHierarchy);
 
-                    List<HierarchyTypePropertyDict> hierarchyTypePropertyDicts = hierarchyTypePropertyDictMapper.selectList(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getSystemFlag, 1));
-                    List<String> tags = hierarchyTypePropertyDicts.stream().map(item -> item.getDictKey()).toList();
-                    //List<String> tags = List.of("sys:cs", "mont/pd/mag", "mont/pd/au", "sys:st");
-                    JSONObject entries = SD400MPUtils.testpointFind(hierarchyVo.getCode());
-                    if (entries.getInt("code") == 200) {
-                        String id = entries.getJSONObject("data").getStr("id");
-                        JSONObject data = SD400MPUtils.data(Long.valueOf(id), tags, null);
-                        if (data.getInt("code") == 200) {
-                            Object online = data.getByPath("data.groups[0].online");
-                            if (online == null) continue;
-                            JSONArray onlines = (JSONArray) online;
-                            boolean addFlag = true;
-                            for (Object o : onlines) {
-                                JSONObject item = (JSONObject) o;
-                                if(!showAllFlag && "sys:st".equals(item.getStr("key"))){
-                                    String val = item.getStr("val");
-                                    if(!val.equals("0")){
-                                        addFlag = false;
-                                    }
+        // 获取所有子层级
+        List<HierarchyVo> childHierarchies = getAllChildrenOptimized(Arrays.asList(currentHierarchy));
+        // 移除第一个元素（当前层级），避免重复处理
+        if (!childHierarchies.isEmpty()) {
+            childHierarchies.remove(0);
+            allHierarchies.addAll(childHierarchies);
+        }
+
+        // 批量加载所有层级的属性
+        batchLoadProperties(allHierarchies, false);
+        log.info("层级和属性加载耗时: {}ms", System.currentTimeMillis() - startTime);
+
+        // 批量获取所有层级绑定的传感器 - 重点优化
+        List<HierarchyVo> sensorList = getSensorsFromHierarchiesBatch(allHierarchies, showAllFlag);
+        
+        log.info("getSensorListByDeviceId总耗时: {}ms, 返回传感器数量: {}", 
+                System.currentTimeMillis() - startTime, sensorList.size());
+        
+        return sensorList;
+    }
+
+    /**
+     * 批量获取所有层级绑定的传感器列表 - 性能优化版本
+     * @param allHierarchies 所有层级列表
+     * @param showAllFlag 是否显示所有传感器
+     * @return 传感器列表
+     */
+    private List<HierarchyVo> getSensorsFromHierarchiesBatch(List<HierarchyVo> allHierarchies, boolean showAllFlag) {
+        long startTime = System.currentTimeMillis();
+        List<HierarchyVo> sensorList = new ArrayList<>();
+        
+        // 1. 收集所有传感器ID
+        Set<Long> allSensorIds = new HashSet<>();
+        Map<Long, HierarchyVo> hierarchyMap = new HashMap<>();
+        
+        for (HierarchyVo hierarchy : allHierarchies) {
+            if (hierarchy.isHaveSensorFlag() && hierarchy.getProperties() != null) {
+                for (HierarchyPropertyVo property : hierarchy.getProperties()) {
+                    if (property.getTypeProperty() != null && 
+                        property.getTypeProperty().getDict() != null &&
+                        property.getTypeProperty().getDict().getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())) {
+                        String sensorStrs = property.getPropertyValue();
+                        if (StringUtils.isNotBlank(sensorStrs)) {
+                            String[] split = sensorStrs.split("\\,");
+                            for (String sensorIdStr : split) {
+                                if (StringUtils.isNotEmpty(sensorIdStr.trim())) {
+                                    Long sensorId = Long.valueOf(sensorIdStr.trim());
+                                    allSensorIds.add(sensorId);
+                                    hierarchyMap.put(sensorId, hierarchy);
                                 }
                             }
-                            if(addFlag) hierarchyVo.setDataSet(onlines);
                         }
+                        break;
                     }
-                    list.add(hierarchyVo);
                 }
             }
         }
-        return list;
+        
+        if (allSensorIds.isEmpty()) {
+            return sensorList;
+        }
+        
+        log.info("收集传感器ID耗时: {}ms, 传感器总数: {}", 
+                System.currentTimeMillis() - startTime, allSensorIds.size());
+        
+        // 2. 批量查询传感器基本信息
+        long batchStart = System.currentTimeMillis();
+        List<HierarchyVo> allSensors = queryByIds(new ArrayList<>(allSensorIds), false);
+        Map<Long, HierarchyVo> sensorMap = allSensors.stream()
+                .collect(Collectors.toMap(HierarchyVo::getId, vo -> vo));
+        
+        log.info("批量查询传感器耗时: {}ms", System.currentTimeMillis() - batchStart);
+        
+        // 3. 批量查询字典和属性信息（缓存重复查询）
+        batchStart = System.currentTimeMillis();
+        
+        // 缓存 sensor_location 字典 - 可考虑使用Spring Cache优化
+        HierarchyTypePropertyDict sensorLocation = hierarchyTypePropertyDictMapper.selectOne(
+                new LambdaQueryWrapper<HierarchyTypePropertyDict>()
+                        .eq(HierarchyTypePropertyDict::getDictKey, "sensor_location"));
+        
+        if (sensorLocation == null) {
+            return sensorList;
+        }
+        
+        // 缓存对应的类型属性
+        HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(
+                new LambdaQueryWrapper<HierarchyTypeProperty>()
+                        .eq(HierarchyTypeProperty::getPropertyDictId, sensorLocation.getId()));
+        
+        if (hierarchyTypeProperty == null) {
+            return sensorList;
+        }
+        
+        // 批量查询所有传感器的位置属性
+        List<HierarchyPropertyVo> allSensorProperties = hierarchyPropertyMapper.selectVoList(
+                new LambdaQueryWrapper<HierarchyProperty>()
+                        .in(HierarchyProperty::getHierarchyId, allSensorIds)
+                        .eq(HierarchyProperty::getTypePropertyId, hierarchyTypeProperty.getId())
+        );
+        
+        Map<Long, HierarchyPropertyVo> sensorPropertiesMap = allSensorProperties.stream()
+                .collect(Collectors.toMap(HierarchyPropertyVo::getHierarchyId, vo -> vo));
+        
+        // 缓存系统标志字典（只查询一次）
+        List<HierarchyTypePropertyDict> systemDicts = hierarchyTypePropertyDictMapper.selectList(
+                new LambdaQueryWrapper<HierarchyTypePropertyDict>()
+                        .eq(HierarchyTypePropertyDict::getSystemFlag, 1));
+        List<String> tags = systemDicts.stream().map(HierarchyTypePropertyDict::getDictKey).toList();
+        
+        log.info("批量查询字典和属性耗时: {}ms", System.currentTimeMillis() - batchStart);
+        
+        // 4. 并发处理每个传感器的数据 - 进一步优化
+        batchStart = System.currentTimeMillis();
+        List<HierarchyVo> validSensors = allSensorIds.stream()
+                .map(sensorId -> {
+                    HierarchyVo sensorVo = sensorMap.get(sensorId);
+                    HierarchyPropertyVo sensorProperty = sensorPropertiesMap.get(sensorId);
+                    if (sensorVo != null && sensorProperty != null) {
+                        sensorVo.setProperties(List.of(sensorProperty));
+                        return sensorVo;
+                    }
+                    return null;
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        
+        log.info("准备有效传感器耗时: {}ms, 有效传感器数量: {}", 
+                System.currentTimeMillis() - batchStart, validSensors.size());
+        
+        // 并发调用外部API获取数据（如果传感器数量较多）
+        batchStart = System.currentTimeMillis();
+        if (validSensors.size() > 10) {
+            // 使用并行流处理大量传感器
+            List<HierarchyVo> results = validSensors.parallelStream()
+                    .map(sensorVo -> processSensorData(sensorVo, tags, showAllFlag))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+            sensorList.addAll(results);
+        } else {
+            // 少量传感器使用串行处理
+            for (HierarchyVo sensorVo : validSensors) {
+                HierarchyVo result = processSensorData(sensorVo, tags, showAllFlag);
+                if (result != null) {
+                    sensorList.add(result);
+                }
+            }
+        }
+        
+        log.info("处理传感器数据耗时: {}ms, 最终传感器数量: {}", 
+                System.currentTimeMillis() - batchStart, sensorList.size());
+        
+        return sensorList;
+    }
+
+    /**
+     * 处理单个传感器数据
+     * @param sensorVo 传感器对象
+     * @param tags 系统标签
+     * @param showAllFlag 是否显示所有传感器
+     * @return 处理后的传感器对象，如果不符合条件返回null
+     */
+    private HierarchyVo processSensorData(HierarchyVo sensorVo, List<String> tags, boolean showAllFlag) {
+        try {
+            JSONObject entries = SD400MPUtils.testpointFind(sensorVo.getCode());
+            if (entries.getInt("code") == 200) {
+                String id = entries.getJSONObject("data").getStr("id");
+                JSONObject data = SD400MPUtils.data(Long.valueOf(id), tags, null);
+                if (data.getInt("code") == 200) {
+                    Object online = data.getByPath("data.groups[0].online");
+                    if (online != null) {
+                        JSONArray onlines = (JSONArray) online;
+                        boolean addFlag = true;
+                        for (Object o : onlines) {
+                            JSONObject item = (JSONObject) o;
+                            if (!showAllFlag && "sys:st".equals(item.getStr("key"))) {
+                                String val = item.getStr("val");
+                                if (!"0".equals(val)) {
+                                    addFlag = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if (addFlag) {
+                            sensorVo.setDataSet(onlines);
+                            return sensorVo;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("传感器{}数据获取失败: {}", sensorVo.getCode(), e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * 从指定层级获取绑定的传感器列表
+     * @deprecated 使用 getSensorsFromHierarchiesBatch 批量优化版本
+     * @param hierarchy 层级对象
+     * @param showAllFlag 是否显示所有传感器
+     * @return 传感器列表
+     */
+    @Deprecated
+    private List<HierarchyVo> getSensorsFromHierarchy(HierarchyVo hierarchy, boolean showAllFlag) {
+        List<HierarchyVo> sensorList = new ArrayList<>();
+
+        String sensorStrs = "";
+        for (HierarchyPropertyVo property : hierarchy.getProperties()) {
+            if(property.getTypeProperty().getDict().getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())){
+                sensorStrs = property.getPropertyValue();
+                break;
+            }
+        }
+
+        if (StringUtils.isBlank(sensorStrs)) {
+            return sensorList;
+        }
+
+        String[] split = sensorStrs.split("\\,");
+        for (String sensorIdStr : split) {
+            if(StringUtils.isEmpty(sensorIdStr)) continue;
+            HierarchyVo hierarchyVo = queryById(Long.valueOf(sensorIdStr), false);
+            if(hierarchyVo!=null) {
+                HierarchyTypePropertyDict sensorLocation = hierarchyTypePropertyDictMapper.selectOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_location"));
+                if(sensorLocation==null) continue;
+                HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(new LambdaQueryWrapper<HierarchyTypeProperty>().eq(HierarchyTypeProperty::getPropertyDictId, sensorLocation.getId()));
+                if(hierarchyTypeProperty==null) continue;
+                HierarchyPropertyVo hierarchyProperties = hierarchyPropertyMapper.selectVoOne(
+                    new LambdaQueryWrapper<HierarchyProperty>()
+                        .eq(HierarchyProperty::getHierarchyId, Long.valueOf(sensorIdStr))
+                        .eq(HierarchyProperty::getTypePropertyId, hierarchyTypeProperty.getId())
+                );
+                if(hierarchyProperties==null) continue;
+                hierarchyVo.setProperties(List.of(hierarchyProperties));
+
+                List<HierarchyTypePropertyDict> hierarchyTypePropertyDicts = hierarchyTypePropertyDictMapper.selectList(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getSystemFlag, 1));
+                List<String> tags = hierarchyTypePropertyDicts.stream().map(item -> item.getDictKey()).toList();
+                //List<String> tags = List.of("sys:cs", "mont/pd/mag", "mont/pd/au", "sys:st");
+                JSONObject entries = SD400MPUtils.testpointFind(hierarchyVo.getCode());
+                if (entries.getInt("code") == 200) {
+                    String id = entries.getJSONObject("data").getStr("id");
+                    JSONObject data = SD400MPUtils.data(Long.valueOf(id), tags, null);
+                    if (data.getInt("code") == 200) {
+                        Object online = data.getByPath("data.groups[0].online");
+                        if (online == null) continue;
+                        JSONArray onlines = (JSONArray) online;
+                        boolean addFlag = true;
+                        for (Object o : onlines) {
+                            JSONObject item = (JSONObject) o;
+                            if(!showAllFlag && "sys:st".equals(item.getStr("key"))){
+                                String val = item.getStr("val");
+                                if(!val.equals("0")){
+                                    addFlag = false;
+                                }
+                            }
+                        }
+                        if(addFlag) hierarchyVo.setDataSet(onlines);
+                    }
+                }
+                sensorList.add(hierarchyVo);
+            }
+        }
+
+        return sensorList;
     }
 
     @Override
@@ -1203,33 +1420,33 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         if (parentRecords == null || parentRecords.isEmpty()) {
             return parentRecords;
         }
-        
+
         List<HierarchyVo> allRecords = new ArrayList<>(parentRecords);
         Set<Long> parentIds = parentRecords.stream()
             .map(HierarchyVo::getId)
             .collect(Collectors.toSet());
-        
+
         // 一次性查询所有可能的子层级
         List<HierarchyVo> allPossibleChildren = baseMapper.selectVoList(
             Wrappers.<Hierarchy>lambdaQuery()
                 .in(Hierarchy::getParentId, parentIds)
                 .orderByAsc(Hierarchy::getId)
         );
-        
+
         // 如果没有子层级，直接返回
         if (allPossibleChildren.isEmpty()) {
             return allRecords;
         }
-        
+
         // 递归查询，直到没有更多子层级
         while (!allPossibleChildren.isEmpty()) {
             allRecords.addAll(allPossibleChildren);
-            
+
             // 获取下一层的父级ID
             Set<Long> nextLevelParentIds = allPossibleChildren.stream()
                 .map(HierarchyVo::getId)
                 .collect(Collectors.toSet());
-            
+
             // 查询下一层
             allPossibleChildren = baseMapper.selectVoList(
                 Wrappers.<Hierarchy>lambdaQuery()
@@ -1237,7 +1454,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                     .orderByAsc(Hierarchy::getId)
             );
         }
-        
+
         return allRecords;
     }
 
@@ -1250,35 +1467,35 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         if (hierarchyList == null || hierarchyList.isEmpty()) {
             return;
         }
-        
+
         // 收集所有层级ID，包括子节点
         Set<Long> hierarchyIds = new HashSet<>();
         collectAllHierarchyIds(hierarchyList, hierarchyIds);
-        
+
         if (hierarchyIds.isEmpty()) {
             return;
         }
-        
+
         // 批量查询所有属性
         LambdaQueryWrapper<HierarchyProperty> propertyWrapper = Wrappers.<HierarchyProperty>lambdaQuery()
             .in(HierarchyProperty::getHierarchyId, hierarchyIds);
-        
+
         // 如果不需要查询隐藏属性，则只查询 scope=1 的属性
         if (needHiddenProperty == null || !needHiddenProperty) {
             propertyWrapper.eq(HierarchyProperty::getScope, 1);
         }
-        
+
         List<HierarchyPropertyVo> allProperties = hierarchyPropertyMapper.selectVoList(propertyWrapper);
-        
+
         if (allProperties.isEmpty()) {
             return;
         }
-        
+
         // 批量查询所有类型属性信息
         Set<Long> typePropertyIds = allProperties.stream()
             .map(HierarchyPropertyVo::getTypePropertyId)
             .collect(Collectors.toSet());
-        
+
         Map<Long, HierarchyTypePropertyVo> typePropertyMap = new HashMap<>();
         if (!typePropertyIds.isEmpty()) {
             List<HierarchyTypePropertyVo> typeProperties = hierarchyTypePropertyMapper.selectVoList(
@@ -1287,12 +1504,12 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             typePropertyMap = typeProperties.stream()
                 .collect(Collectors.toMap(HierarchyTypePropertyVo::getId, vo -> vo));
         }
-        
+
         // 批量查询所有字典信息
         Set<Long> dictIds = typePropertyMap.values().stream()
             .map(HierarchyTypePropertyVo::getPropertyDictId)
             .collect(Collectors.toSet());
-        
+
         Map<Long, HierarchyTypePropertyDictVo> dictMap = new HashMap<>();
         if (!dictIds.isEmpty()) {
             List<HierarchyTypePropertyDictVo> dicts = hierarchyTypePropertyDictMapper.selectVoList(
@@ -1301,7 +1518,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             dictMap = dicts.stream()
                 .collect(Collectors.toMap(HierarchyTypePropertyDictVo::getId, vo -> vo));
         }
-        
+
         // 批量查询层级名称（用于层级类型属性）
         Set<Long> hierarchyValueIds = new HashSet<>();
         for (HierarchyPropertyVo prop : allProperties) {
@@ -1317,7 +1534,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 }
             }
         }
-        
+
         Map<Long, String> hierarchyNameMap = new HashMap<>();
         if (!hierarchyValueIds.isEmpty()) {
             List<Hierarchy> hierarchies = baseMapper.selectList(
@@ -1326,19 +1543,19 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             hierarchyNameMap = hierarchies.stream()
                 .collect(Collectors.toMap(Hierarchy::getId, Hierarchy::getName));
         }
-        
+
         // 按层级ID分组属性
         Map<Long, List<HierarchyPropertyVo>> propertiesMap = allProperties.stream()
             .collect(Collectors.groupingBy(HierarchyPropertyVo::getHierarchyId));
-        
+
         // 为每个层级分配属性（优化版本）
         assignPropertiesToHierarchiesOptimized(hierarchyList, propertiesMap, typePropertyMap, dictMap, hierarchyNameMap);
     }
-    
+
     /**
      * 递归为层级分配属性（优化版本，所有数据已预加载）
      */
-    private void assignPropertiesToHierarchiesOptimized(List<HierarchyVo> hierarchyList, 
+    private void assignPropertiesToHierarchiesOptimized(List<HierarchyVo> hierarchyList,
             Map<Long, List<HierarchyPropertyVo>> propertiesMap,
             Map<Long, HierarchyTypePropertyVo> typePropertyMap,
             Map<Long, HierarchyTypePropertyDictVo> dictMap,
@@ -1353,7 +1570,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             }
         }
     }
-    
+
     /**
      * 优化版本：初始化属性，使用预加载的数据
      */
@@ -1367,7 +1584,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 HierarchyTypePropertyDictVo dict = dictMap.get(typeProp.getPropertyDictId());
                 typeProp.setDict(dict);
                 prop.setTypeProperty(typeProp);
-                
+
                 if (dict != null) {
                     if (dict.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
                         try {
@@ -1398,34 +1615,34 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         if (hierarchyList == null || hierarchyList.isEmpty()) {
             return;
         }
-        
+
         // 收集所有层级ID，包括子节点
         Set<Long> hierarchyIds = new HashSet<>();
         collectAllHierarchyIds(hierarchyList, hierarchyIds);
-        
+
         if (hierarchyIds.isEmpty()) {
             return;
         }
-        
+
         // 批量查询所有属性
         LambdaQueryWrapper<HierarchyProperty> propertyWrapper = Wrappers.<HierarchyProperty>lambdaQuery()
             .in(HierarchyProperty::getHierarchyId, hierarchyIds);
-        
+
         // 如果不需要查询隐藏属性，则只查询 scope=1 的属性
         if (needHiddenProperty == null || !needHiddenProperty) {
             propertyWrapper.eq(HierarchyProperty::getScope, 1);
         }
-        
+
         List<HierarchyPropertyVo> allProperties = hierarchyPropertyMapper.selectVoList(propertyWrapper);
-        
+
         // 按层级ID分组属性
         Map<Long, List<HierarchyPropertyVo>> propertiesMap = allProperties.stream()
             .collect(Collectors.groupingBy(HierarchyPropertyVo::getHierarchyId));
-        
+
         // 为每个层级分配属性
         assignPropertiesToHierarchies(hierarchyList, propertiesMap);
     }
-    
+
     /**
      * 递归收集所有层级ID（包括子节点）
      */
@@ -1437,7 +1654,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             }
         }
     }
-    
+
     /**
      * 递归为层级分配属性（包括子节点）
      */

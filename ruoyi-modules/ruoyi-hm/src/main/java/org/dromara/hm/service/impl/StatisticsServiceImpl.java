@@ -1728,7 +1728,6 @@ public class StatisticsServiceImpl implements IStatisticsService {
     @Override
     public List<HierarchyVo> sensorList(Long hierarchyId, boolean showAllFlag) {
         List<HierarchyVo> sensorListByDeviceId = hierarchyService.getSensorListByDeviceId(hierarchyId, showAllFlag);
-
         return sensorListByDeviceId;
     }
 
