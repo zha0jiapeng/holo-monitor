@@ -4,7 +4,6 @@ import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -52,28 +51,32 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
     @Override
     public HierarchyVo queryById(Long id, boolean needProperty) {
+        return queryById(id, needProperty, false);
+    }
+
+    @Override
+    public HierarchyVo queryById(Long id, boolean needProperty, boolean needHiddenProperty) {
         HierarchyVo hierarchyVo = baseMapper.selectVoById(id);
         if(hierarchyVo==null) return null;
         if(needProperty) {
-            List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
-                Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, id)
-            );
-            initProperty(properties,hierarchyVo);
+            // 对单个对象也使用批量查询方法，保持逻辑一致性
+            List<HierarchyVo> tempList = Arrays.asList(hierarchyVo);
+            batchLoadProperties(tempList, needHiddenProperty);
         }
         return hierarchyVo;
     }
 
     @Override
     public List<HierarchyVo> queryByIds(List<Long> ids, boolean needProperty) {
+        return queryByIds(ids, needProperty, false);
+    }
+
+    @Override
+    public List<HierarchyVo> queryByIds(List<Long> ids, boolean needProperty, boolean needHiddenProperty) {
         List<HierarchyVo> hierarchyVo = baseMapper.selectVoByIds(ids);
         if(needProperty) {
-            for (HierarchyVo vo : hierarchyVo) {
-                List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
-                    Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, vo.getId())
-                );
-                initProperty(properties,vo);
-            }
-
+            // 使用批量查询优化
+            batchLoadProperties(hierarchyVo, needHiddenProperty);
         }
         return hierarchyVo;
     }
@@ -83,14 +86,33 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     public TableDataInfo<HierarchyVo> queryPageList(HierarchyBo bo, PageQuery pageQuery) {
         LambdaQueryWrapper<Hierarchy> lqw = buildQueryWrapper(bo);
         Page<HierarchyVo> result = baseMapper.selectVoPage(pageQuery.build(), lqw);
-        if(bo.getNeedProperty()) {
-            for (HierarchyVo vo : result.getRecords()) {
-                List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
-                    Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, vo.getId()).eq(HierarchyProperty::getScope,1)
-                );
-                initProperty(properties,vo);
-            }
+        List<HierarchyVo> records = result.getRecords();
+        
+        // 处理needAllChild逻辑 - 优化版本，避免N+1查询
+        if (bo.getNeedAllChild() != null && bo.getNeedAllChild()) {
+            long startTime = System.currentTimeMillis();
+            records = getAllChildrenOptimized(records);
+            log.info("getAllChildren耗时: {}ms, 层级数量: {}", System.currentTimeMillis() - startTime, records.size());
         }
+        
+        // 处理needTree逻辑 - 构建树结构
+        if (bo.getNeedTree() != null && bo.getNeedTree()) {
+            records = buildHierarchyTree(records);
+        }
+        
+        // 设置typeKey
+        setTypeKeysForHierarchyList(records);
+        
+        // 处理needProperty逻辑 - 批量查询优化
+        // 当needAllChild=true时可能有大量子层级，使用批量查询避免N+1问题
+        if(bo.getNeedProperty()) {
+            long startTime = System.currentTimeMillis();
+            batchLoadPropertiesOptimized(records, bo.getNeedHiddenProperty());
+            log.info("batchLoadProperties耗时: {}ms", System.currentTimeMillis() - startTime);
+        }
+        
+        // 更新结果集
+        result.setRecords(records);
         return TableDataInfo.build(result);
     }
 
@@ -524,6 +546,105 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         }
     }
 
+    /**
+     * 递归获取所有子层级（扁平结构）
+     * @deprecated 使用 getAllChildrenOptimized 方法替代，性能更好
+     * @param hierarchyId 层级ID
+     * @param result 结果列表
+     */
+    @Deprecated
+    private void getAllChildrenFlat(Long hierarchyId, List<HierarchyVo> result) {
+        List<HierarchyVo> children = getChildrenByParentId(hierarchyId);
+        for (HierarchyVo child : children) {
+            result.add(child);
+            // 递归获取子级的子级
+            getAllChildrenFlat(child.getId(), result);
+        }
+    }
+
+    /**
+     * 构建层级树结构
+     *
+     * @param hierarchyList 层级列表
+     * @return 树结构的层级列表
+     */
+    private List<HierarchyVo> buildHierarchyTree(List<HierarchyVo> hierarchyList) {
+        if (hierarchyList == null || hierarchyList.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 创建ID到层级对象的映射
+        Map<Long, HierarchyVo> idToHierarchyMap = new HashMap<>();
+        for (HierarchyVo hierarchy : hierarchyList) {
+            idToHierarchyMap.put(hierarchy.getId(), hierarchy);
+        }
+
+        List<HierarchyVo> rootNodes = new ArrayList<>();
+
+        // 构建树结构
+        for (HierarchyVo hierarchy : hierarchyList) {
+            Long parentId = hierarchy.getParentId();
+
+            if (parentId == null) {
+                // 根节点
+                rootNodes.add(hierarchy);
+            } else {
+                // 查找父节点
+                HierarchyVo parent = idToHierarchyMap.get(parentId);
+                if (parent != null) {
+                    // 初始化父节点的children列表
+                    if (parent.getChildren() == null) {
+                        parent.setChildren(new ArrayList<>());
+                    }
+                    parent.getChildren().add(hierarchy);
+                } else {
+                    // 如果找不到父节点，当作根节点处理
+                    rootNodes.add(hierarchy);
+                }
+            }
+        }
+
+        return rootNodes;
+    }
+
+    /**
+     * 为层级列表设置typeKey字段
+     *
+     * @param hierarchyList 层级列表
+     */
+    private void setTypeKeysForHierarchyList(List<HierarchyVo> hierarchyList) {
+        if (hierarchyList == null || hierarchyList.isEmpty()) {
+            return;
+        }
+
+        // 收集所有唯一的typeId
+        Set<Long> typeIds = hierarchyList.stream()
+            .map(HierarchyVo::getTypeId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+
+        if (typeIds.isEmpty()) {
+            return;
+        }
+
+        // 批量查询HierarchyType
+        List<HierarchyType> hierarchyTypes = hierarchyTypeMapper.selectList(
+            Wrappers.<HierarchyType>lambdaQuery().in(HierarchyType::getId, typeIds)
+        );
+
+        // 创建typeId到typeKey的映射，过滤掉typeKey为null的记录
+        Map<Long, String> typeIdToKeyMap = hierarchyTypes.stream()
+            .filter(type -> type.getTypeKey() != null)
+            .collect(Collectors.toMap(HierarchyType::getId, HierarchyType::getTypeKey));
+
+        // 为每个HierarchyVo设置typeKey
+        for (HierarchyVo hierarchy : hierarchyList) {
+            if (hierarchy.getTypeId() != null) {
+                hierarchy.setTypeKey(typeIdToKeyMap.get(hierarchy.getTypeId()));
+            }
+        }
+    }
+
     @Override
     public List<HierarchyVo> getBottomLevelWithConfiguration() {
 
@@ -615,14 +736,15 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
     @Override
     public List<HierarchyVo> selectByIds(List<Long> matchedIds,boolean needProperty) {
+        return selectByIds(matchedIds, needProperty, false);
+    }
+
+    @Override
+    public List<HierarchyVo> selectByIds(List<Long> matchedIds, boolean needProperty, boolean needHiddenProperty) {
         List<HierarchyVo> hierarchies = baseMapper.selectVoByIds(matchedIds);
         if(needProperty) {
-            for (HierarchyVo hierarchy : hierarchies) {
-                List<HierarchyPropertyVo> properties = hierarchyPropertyMapper.selectVoList(
-                    Wrappers.<HierarchyProperty>lambdaQuery().eq(HierarchyProperty::getHierarchyId, hierarchy.getId())
-                );
-                initProperty(properties, hierarchy);
-            }
+            // 使用批量查询优化
+            batchLoadProperties(hierarchies, needHiddenProperty);
         }
         return hierarchies;
     }
@@ -1071,6 +1193,265 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         return null;
     }
 
+
+    /**
+     * 优化版本：一次性查询所有子层级，避免递归数据库查询
+     * @param parentRecords 父级层级列表
+     * @return 包含所有子层级的扁平列表
+     */
+    private List<HierarchyVo> getAllChildrenOptimized(List<HierarchyVo> parentRecords) {
+        if (parentRecords == null || parentRecords.isEmpty()) {
+            return parentRecords;
+        }
+        
+        List<HierarchyVo> allRecords = new ArrayList<>(parentRecords);
+        Set<Long> parentIds = parentRecords.stream()
+            .map(HierarchyVo::getId)
+            .collect(Collectors.toSet());
+        
+        // 一次性查询所有可能的子层级
+        List<HierarchyVo> allPossibleChildren = baseMapper.selectVoList(
+            Wrappers.<Hierarchy>lambdaQuery()
+                .in(Hierarchy::getParentId, parentIds)
+                .orderByAsc(Hierarchy::getId)
+        );
+        
+        // 如果没有子层级，直接返回
+        if (allPossibleChildren.isEmpty()) {
+            return allRecords;
+        }
+        
+        // 递归查询，直到没有更多子层级
+        while (!allPossibleChildren.isEmpty()) {
+            allRecords.addAll(allPossibleChildren);
+            
+            // 获取下一层的父级ID
+            Set<Long> nextLevelParentIds = allPossibleChildren.stream()
+                .map(HierarchyVo::getId)
+                .collect(Collectors.toSet());
+            
+            // 查询下一层
+            allPossibleChildren = baseMapper.selectVoList(
+                Wrappers.<Hierarchy>lambdaQuery()
+                    .in(Hierarchy::getParentId, nextLevelParentIds)
+                    .orderByAsc(Hierarchy::getId)
+            );
+        }
+        
+        return allRecords;
+    }
+
+    /**
+     * 优化版本：批量加载层级属性，避免N+1查询问题
+     * @param hierarchyList 层级列表
+     * @param needHiddenProperty 是否需要隐藏属性
+     */
+    private void batchLoadPropertiesOptimized(List<HierarchyVo> hierarchyList, Boolean needHiddenProperty) {
+        if (hierarchyList == null || hierarchyList.isEmpty()) {
+            return;
+        }
+        
+        // 收集所有层级ID，包括子节点
+        Set<Long> hierarchyIds = new HashSet<>();
+        collectAllHierarchyIds(hierarchyList, hierarchyIds);
+        
+        if (hierarchyIds.isEmpty()) {
+            return;
+        }
+        
+        // 批量查询所有属性
+        LambdaQueryWrapper<HierarchyProperty> propertyWrapper = Wrappers.<HierarchyProperty>lambdaQuery()
+            .in(HierarchyProperty::getHierarchyId, hierarchyIds);
+        
+        // 如果不需要查询隐藏属性，则只查询 scope=1 的属性
+        if (needHiddenProperty == null || !needHiddenProperty) {
+            propertyWrapper.eq(HierarchyProperty::getScope, 1);
+        }
+        
+        List<HierarchyPropertyVo> allProperties = hierarchyPropertyMapper.selectVoList(propertyWrapper);
+        
+        if (allProperties.isEmpty()) {
+            return;
+        }
+        
+        // 批量查询所有类型属性信息
+        Set<Long> typePropertyIds = allProperties.stream()
+            .map(HierarchyPropertyVo::getTypePropertyId)
+            .collect(Collectors.toSet());
+        
+        Map<Long, HierarchyTypePropertyVo> typePropertyMap = new HashMap<>();
+        if (!typePropertyIds.isEmpty()) {
+            List<HierarchyTypePropertyVo> typeProperties = hierarchyTypePropertyMapper.selectVoList(
+                Wrappers.<HierarchyTypeProperty>lambdaQuery().in(HierarchyTypeProperty::getId, typePropertyIds)
+            );
+            typePropertyMap = typeProperties.stream()
+                .collect(Collectors.toMap(HierarchyTypePropertyVo::getId, vo -> vo));
+        }
+        
+        // 批量查询所有字典信息
+        Set<Long> dictIds = typePropertyMap.values().stream()
+            .map(HierarchyTypePropertyVo::getPropertyDictId)
+            .collect(Collectors.toSet());
+        
+        Map<Long, HierarchyTypePropertyDictVo> dictMap = new HashMap<>();
+        if (!dictIds.isEmpty()) {
+            List<HierarchyTypePropertyDictVo> dicts = hierarchyTypePropertyDictMapper.selectVoList(
+                Wrappers.<HierarchyTypePropertyDict>lambdaQuery().in(HierarchyTypePropertyDict::getId, dictIds)
+            );
+            dictMap = dicts.stream()
+                .collect(Collectors.toMap(HierarchyTypePropertyDictVo::getId, vo -> vo));
+        }
+        
+        // 批量查询层级名称（用于层级类型属性）
+        Set<Long> hierarchyValueIds = new HashSet<>();
+        for (HierarchyPropertyVo prop : allProperties) {
+            HierarchyTypePropertyVo typeProp = typePropertyMap.get(prop.getTypePropertyId());
+            if (typeProp != null) {
+                HierarchyTypePropertyDictVo dict = dictMap.get(typeProp.getPropertyDictId());
+                if (dict != null && dict.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
+                    try {
+                        hierarchyValueIds.add(Long.valueOf(prop.getPropertyValue()));
+                    } catch (NumberFormatException ignored) {
+                        // 忽略无效的数字格式
+                    }
+                }
+            }
+        }
+        
+        Map<Long, String> hierarchyNameMap = new HashMap<>();
+        if (!hierarchyValueIds.isEmpty()) {
+            List<Hierarchy> hierarchies = baseMapper.selectList(
+                Wrappers.<Hierarchy>lambdaQuery().in(Hierarchy::getId, hierarchyValueIds)
+            );
+            hierarchyNameMap = hierarchies.stream()
+                .collect(Collectors.toMap(Hierarchy::getId, Hierarchy::getName));
+        }
+        
+        // 按层级ID分组属性
+        Map<Long, List<HierarchyPropertyVo>> propertiesMap = allProperties.stream()
+            .collect(Collectors.groupingBy(HierarchyPropertyVo::getHierarchyId));
+        
+        // 为每个层级分配属性（优化版本）
+        assignPropertiesToHierarchiesOptimized(hierarchyList, propertiesMap, typePropertyMap, dictMap, hierarchyNameMap);
+    }
+    
+    /**
+     * 递归为层级分配属性（优化版本，所有数据已预加载）
+     */
+    private void assignPropertiesToHierarchiesOptimized(List<HierarchyVo> hierarchyList, 
+            Map<Long, List<HierarchyPropertyVo>> propertiesMap,
+            Map<Long, HierarchyTypePropertyVo> typePropertyMap,
+            Map<Long, HierarchyTypePropertyDictVo> dictMap,
+            Map<Long, String> hierarchyNameMap) {
+        for (HierarchyVo hierarchy : hierarchyList) {
+            List<HierarchyPropertyVo> properties = propertiesMap.get(hierarchy.getId());
+            if (properties != null) {
+                initPropertyOptimized(properties, hierarchy, typePropertyMap, dictMap, hierarchyNameMap);
+            }
+            if (hierarchy.getChildren() != null && !hierarchy.getChildren().isEmpty()) {
+                assignPropertiesToHierarchiesOptimized(hierarchy.getChildren(), propertiesMap, typePropertyMap, dictMap, hierarchyNameMap);
+            }
+        }
+    }
+    
+    /**
+     * 优化版本：初始化属性，使用预加载的数据
+     */
+    private void initPropertyOptimized(List<HierarchyPropertyVo> properties, HierarchyVo hierarchyVo,
+            Map<Long, HierarchyTypePropertyVo> typePropertyMap,
+            Map<Long, HierarchyTypePropertyDictVo> dictMap,
+            Map<Long, String> hierarchyNameMap) {
+        for (HierarchyPropertyVo prop : properties) {
+            HierarchyTypePropertyVo typeProp = typePropertyMap.get(prop.getTypePropertyId());
+            if (typeProp != null) {
+                HierarchyTypePropertyDictVo dict = dictMap.get(typeProp.getPropertyDictId());
+                typeProp.setDict(dict);
+                prop.setTypeProperty(typeProp);
+                
+                if (dict != null) {
+                    if (dict.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
+                        try {
+                            Long hierarchyId = Long.valueOf(prop.getPropertyValue());
+                            String hierarchyName = hierarchyNameMap.get(hierarchyId);
+                            if (hierarchyName != null) {
+                                prop.setHierarchyName(hierarchyName);
+                            }
+                        } catch (NumberFormatException ignored) {
+                            // 忽略无效的数字格式
+                        }
+                    }
+                    if (dict.getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())) {
+                        hierarchyVo.setHaveSensorFlag(true);
+                    }
+                }
+            }
+        }
+        hierarchyVo.setProperties(properties);
+    }
+
+    /**
+     * 批量加载层级属性，避免N+1查询问题
+     * @param hierarchyList 层级列表
+     * @param needHiddenProperty 是否需要隐藏属性
+     */
+    private void batchLoadProperties(List<HierarchyVo> hierarchyList, Boolean needHiddenProperty) {
+        if (hierarchyList == null || hierarchyList.isEmpty()) {
+            return;
+        }
+        
+        // 收集所有层级ID，包括子节点
+        Set<Long> hierarchyIds = new HashSet<>();
+        collectAllHierarchyIds(hierarchyList, hierarchyIds);
+        
+        if (hierarchyIds.isEmpty()) {
+            return;
+        }
+        
+        // 批量查询所有属性
+        LambdaQueryWrapper<HierarchyProperty> propertyWrapper = Wrappers.<HierarchyProperty>lambdaQuery()
+            .in(HierarchyProperty::getHierarchyId, hierarchyIds);
+        
+        // 如果不需要查询隐藏属性，则只查询 scope=1 的属性
+        if (needHiddenProperty == null || !needHiddenProperty) {
+            propertyWrapper.eq(HierarchyProperty::getScope, 1);
+        }
+        
+        List<HierarchyPropertyVo> allProperties = hierarchyPropertyMapper.selectVoList(propertyWrapper);
+        
+        // 按层级ID分组属性
+        Map<Long, List<HierarchyPropertyVo>> propertiesMap = allProperties.stream()
+            .collect(Collectors.groupingBy(HierarchyPropertyVo::getHierarchyId));
+        
+        // 为每个层级分配属性
+        assignPropertiesToHierarchies(hierarchyList, propertiesMap);
+    }
+    
+    /**
+     * 递归收集所有层级ID（包括子节点）
+     */
+    private void collectAllHierarchyIds(List<HierarchyVo> hierarchyList, Set<Long> hierarchyIds) {
+        for (HierarchyVo hierarchy : hierarchyList) {
+            hierarchyIds.add(hierarchy.getId());
+            if (hierarchy.getChildren() != null && !hierarchy.getChildren().isEmpty()) {
+                collectAllHierarchyIds(hierarchy.getChildren(), hierarchyIds);
+            }
+        }
+    }
+    
+    /**
+     * 递归为层级分配属性（包括子节点）
+     */
+    private void assignPropertiesToHierarchies(List<HierarchyVo> hierarchyList, Map<Long, List<HierarchyPropertyVo>> propertiesMap) {
+        for (HierarchyVo hierarchy : hierarchyList) {
+            List<HierarchyPropertyVo> properties = propertiesMap.get(hierarchy.getId());
+            if (properties != null) {
+                initProperty(properties, hierarchy);
+            }
+            if (hierarchy.getChildren() != null && !hierarchy.getChildren().isEmpty()) {
+                assignPropertiesToHierarchies(hierarchy.getChildren(), propertiesMap);
+            }
+        }
+    }
 
     private void initProperty(List<HierarchyPropertyVo> properties,HierarchyVo hierarchyVo) {
         for (HierarchyPropertyVo prop : properties) {

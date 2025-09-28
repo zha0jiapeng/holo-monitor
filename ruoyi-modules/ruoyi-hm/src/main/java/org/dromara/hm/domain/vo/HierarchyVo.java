@@ -44,6 +44,8 @@ public class HierarchyVo implements Serializable {
     @ExcelProperty(value = "层级类型id")
     private Long typeId;
 
+    private String typeKey;
+
     /**
      * 父级ID
      */
@@ -71,5 +73,10 @@ public class HierarchyVo implements Serializable {
     private Integer alarmType = 0;
 
     private boolean haveSensorFlag;
+
+    /**
+     * 子节点列表（用于树结构）
+     */
+    private List<HierarchyVo> children;
 
 }

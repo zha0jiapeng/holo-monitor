@@ -48,7 +48,7 @@ public class AddressUtils {
         if (NetUtils.isInnerIP(ip)) {
             return LOCAL_ADDRESS;
         }
-        return RegionUtils.getCityInfo(ip);
+        return UNKNOWN_ADDRESS;
     }
 
     /**

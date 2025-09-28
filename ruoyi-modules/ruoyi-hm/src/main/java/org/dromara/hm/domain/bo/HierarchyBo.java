@@ -1,7 +1,6 @@
 package org.dromara.hm.domain.bo;
 
 import com.baomidou.mybatisplus.annotation.TableField;
-import org.apache.poi.ss.formula.functions.T;
 import org.dromara.common.core.validate.AddGroup;
 import org.dromara.common.core.validate.EditGroup;
 import org.dromara.hm.domain.Hierarchy;
@@ -64,5 +63,14 @@ public class HierarchyBo {
 
     @TableField(exist = false)
     private Boolean needProperty = false;
+
+    @TableField(exist = false)
+    private Boolean needHiddenProperty = false;
+
+    @TableField(exist = false)
+    private Boolean needAllChild = false;
+
+    @TableField(exist = false)
+    private Boolean needTree= false;
 
 }

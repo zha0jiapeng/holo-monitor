@@ -2,18 +2,14 @@ package org.dromara.hm.service;
 
 import cn.hutool.json.JSONObject;
 import com.baomidou.mybatisplus.extension.service.IService;
-import jakarta.validation.constraints.NotNull;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
 import org.dromara.hm.domain.Hierarchy;
-import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.bo.HierarchyBo;
 import org.dromara.hm.domain.template.HierarchyExcelTemplate;
 import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.domain.vo.HierarchyTreeVo;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +30,11 @@ public interface IHierarchyService extends IService<Hierarchy> {
      */
     HierarchyVo queryById(Long id, boolean needProperty);
 
+    HierarchyVo queryById(Long id, boolean needProperty, boolean needHiddenProperty);
+
     List<HierarchyVo> queryByIds(List<Long> ids,boolean needProperty);
+
+    List<HierarchyVo> queryByIds(List<Long> ids, boolean needProperty, boolean needHiddenProperty);
 
     /**
      * 查询列表
@@ -111,6 +111,8 @@ public interface IHierarchyService extends IService<Hierarchy> {
     List<Map<String,String>> selectTargetTypeHierarchyList(List<Long> longs, Long targetTypeId);
 
     List<HierarchyVo> selectByIds(List<Long> matchedIds,boolean needProperty);
+
+    List<HierarchyVo> selectByIds(List<Long> matchedIds, boolean needProperty, boolean needHiddenProperty);
 
     List<HierarchyVo> selectByIds(List<Long> matchedIds,List<String> diceNames);
 
