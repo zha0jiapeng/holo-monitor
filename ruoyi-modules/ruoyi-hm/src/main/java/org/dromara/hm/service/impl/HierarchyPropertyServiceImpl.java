@@ -27,6 +27,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import org.dromara.common.core.utils.StringUtils;
 
 /**
  * 层级属性Service业务层处理
@@ -104,7 +106,7 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Boolean updateByDictKey(HierarchyPropertyBo bo) {
+    public Boolean bindSensers(HierarchyPropertyBo bo) {
         HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.lambdaQuery().eq(HierarchyTypePropertyDict::getDictKey, bo.getDictKey()).one();
         if(dict==null) return false;
         Hierarchy hierarchy = hierarchyService.getById(bo.getHierarchyId());
@@ -120,27 +122,89 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
         }
         property.setPropertyValue(bo.getPropertyValue());
         if("sensors".equals(bo.getDictKey())){
-            String[] split = bo.getPropertyValue().split("\\,");
-            if(split.length!=0) {
-                long sensorHierarchyId = Long.parseLong(split[0]);
-                Hierarchy sensorHierarchy = hierarchyService.getById(sensorHierarchyId);
-                if (sensorHierarchy == null) return false;
-                HierarchyTypePropertyDict dictt = hierarchyTypePropertyDictService.lambdaQuery().eq(HierarchyTypePropertyDict::getDictKey, "sensor_device").one();
-                if (dictt == null) return false;
-                HierarchyTypeProperty ht = hierarchyTypePropertyService
-                    .lambdaQuery().eq(HierarchyTypeProperty::getTypeId, sensorHierarchy.getTypeId())
-                    .eq(HierarchyTypeProperty::getPropertyDictId, dictt.getId()).one();
-                if (ht == null) return false;
+            // 1. 解析新的传感器ID列表
+            Set<Long> newSensorIds = new HashSet<>();
+            if (StringUtils.isNotBlank(bo.getPropertyValue())) {
+                String[] split = bo.getPropertyValue().split(",");
                 for (String idStr : split) {
-                    HierarchyProperty hierarchyProperty = new HierarchyProperty();
-                    hierarchyProperty.setHierarchyId(Long.parseLong(idStr));
-                    hierarchyProperty.setPropertyValue(bo.getHierarchyId().toString());
-                    hierarchyProperty.setTypePropertyId(ht.getId());
-                    hierarchyProperty.setScope(1);
-                    save(hierarchyProperty);
+                    if (StringUtils.isNotBlank(idStr)) {
+                        newSensorIds.add(Long.parseLong(idStr.trim()));
+                    }
                 }
             }
 
+            // 2. 获取 sensor_device 属性字典和类型属性定义
+            HierarchyTypePropertyDict sensorDeviceDict = hierarchyTypePropertyDictService.lambdaQuery()
+                .eq(HierarchyTypePropertyDict::getDictKey, "sensor_device").one();
+            if (sensorDeviceDict == null) return false;
+
+            // 3. 查询当前已绑定到此 hierarchyId 的所有传感器
+            List<HierarchyProperty> existingBindings = lambdaQuery()
+                .eq(HierarchyProperty::getPropertyValue, bo.getHierarchyId().toString())
+                .exists("SELECT 1 FROM hm_hierarchy_type_property htp " +
+                    "WHERE htp.id = hm_hierarchy_property.type_property_id " +
+                    "AND htp.property_dict_id = {0}", sensorDeviceDict.getId())
+                .list();
+
+            Set<Long> oldSensorIds = existingBindings.stream()
+                .map(HierarchyProperty::getHierarchyId)
+                .collect(Collectors.toSet());
+
+            // 4. 计算差异
+            Set<Long> toAdd = new HashSet<>(newSensorIds);
+            toAdd.removeAll(oldSensorIds); // 需要新增的传感器
+
+            Set<Long> toRemove = new HashSet<>(oldSensorIds);
+            toRemove.removeAll(newSensorIds); // 需要删除的传感器
+
+            // 5. 处理新增的传感器绑定
+            if (!toAdd.isEmpty()) {
+                // 获取第一个传感器来确定类型（假设所有传感器类型相同）
+                Long firstSensorId = toAdd.iterator().next();
+                Hierarchy sensorHierarchy = hierarchyService.getById(firstSensorId);
+                if (sensorHierarchy == null) return false;
+
+                HierarchyTypeProperty sensorDeviceTypeProperty = hierarchyTypePropertyService
+                    .lambdaQuery()
+                    .eq(HierarchyTypeProperty::getTypeId, sensorHierarchy.getTypeId())
+                    .eq(HierarchyTypeProperty::getPropertyDictId, sensorDeviceDict.getId())
+                    .one();
+                if (sensorDeviceTypeProperty == null) return false;
+
+                // 为每个新增的传感器创建绑定关系
+                for (Long sensorId : toAdd) {
+                    // 先查询是否已存在该传感器的 sensor_device 属性
+                    HierarchyProperty existingProperty = lambdaQuery()
+                        .eq(HierarchyProperty::getHierarchyId, sensorId)
+                        .eq(HierarchyProperty::getTypePropertyId, sensorDeviceTypeProperty.getId())
+                        .one();
+
+                    if (existingProperty != null) {
+                        // 如果存在，更新属性值
+                        existingProperty.setPropertyValue(bo.getHierarchyId().toString());
+                        existingProperty.setScope(1);
+                        updateById(existingProperty);
+                    } else {
+                        // 如果不存在，新增
+                        HierarchyProperty newProperty = new HierarchyProperty();
+                        newProperty.setHierarchyId(sensorId);
+                        newProperty.setPropertyValue(bo.getHierarchyId().toString());
+                        newProperty.setTypePropertyId(sensorDeviceTypeProperty.getId());
+                        newProperty.setScope(1);
+                        save(newProperty);
+                    }
+                }
+            }
+
+            // 6. 处理需要删除的传感器绑定
+            if (!toRemove.isEmpty()) {
+                // 删除这些传感器的 sensor_device 绑定关系
+                for (HierarchyProperty binding : existingBindings) {
+                    if (toRemove.contains(binding.getHierarchyId())) {
+                        removeById(binding.getId());
+                    }
+                }
+            }
         }
 
         return baseMapper.insertOrUpdate(property);
@@ -156,99 +220,6 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
         }
         HierarchyProperty property = baseMapper.selectById(bo.getId());
         if(property==null) return false;
-        HierarchyTypePropertyVo hierarchyTypeProperty = hierarchyTypePropertyService.queryById(property.getTypePropertyId());
-        if(hierarchyTypeProperty.getDict().getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())){
-            String propertyValue = property.getPropertyValue();
-            String[] oldProperty = propertyValue.split("\\,"); // 库里现有的属性
-            String[] newProperty = bo.getPropertyValue().split("\\,"); // 传来的新属性
-
-            // 转换为Set便于比较
-            Set<String> existingIds = new HashSet<>(Arrays.asList(oldProperty));
-            Set<String> newIds = new HashSet<>(Arrays.asList(newProperty));
-
-            // 找出要删除的关联（在现有中但不在新的中）
-            Set<String> toDelete = new HashSet<>(existingIds);
-            toDelete.removeAll(newIds);
-
-            // 找出要新增的关联（在新的中但不在现有中）
-            Set<String> toAdd = new HashSet<>(newIds);
-            toAdd.removeAll(existingIds);
-
-            // 获取sensor_device字典配置
-            HierarchyTypePropertyDict sensorDevice = hierarchyTypePropertyDictService.getOne(
-                new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_device"));
-
-            // 处理删除的关联
-            for (String hierarchyIdStr : toDelete) {
-                if (hierarchyIdStr.trim().isEmpty()) continue;
-
-                try {
-                    Long hierarchyId = Long.valueOf(hierarchyIdStr.trim());
-                    HierarchyVo hierarchyVo = hierarchyService.queryById(hierarchyId, true);
-                    if (hierarchyVo == null) continue;
-
-                    Long typeId = hierarchyVo.getTypeId();
-                    HierarchyTypeProperty typeProperty = hierarchyTypePropertyService.getOne(
-                        new LambdaQueryWrapper<HierarchyTypeProperty>()
-                            .eq(HierarchyTypeProperty::getTypeId, typeId)
-                            .eq(HierarchyTypeProperty::getPropertyDictId, sensorDevice.getId())
-                    );
-
-                    if (typeProperty != null) {
-                        // 删除对应的sensor_device关联
-                        baseMapper.delete(new LambdaQueryWrapper<HierarchyProperty>()
-                            .eq(HierarchyProperty::getHierarchyId, hierarchyId)
-                            .eq(HierarchyProperty::getTypePropertyId, typeProperty.getId())
-                            //.eq(HierarchyProperty::getPropertyValue, property.getHierarchyId() + "")
-                        );
-                        log.info("删除sensor_device关联: hierarchyId={}, 关联到={}", hierarchyId, property.getHierarchyId());
-                    }
-                } catch (NumberFormatException e) {
-                    log.warn("删除关联时层级ID格式错误: {}", hierarchyIdStr, e);
-                }
-            }
-
-            // 处理新增的关联
-            for (String hierarchyIdStr : toAdd) {
-                if (hierarchyIdStr.trim().isEmpty()) continue;
-
-                try {
-                    Long hierarchyId = Long.valueOf(hierarchyIdStr.trim());
-                    HierarchyVo hierarchyVo = hierarchyService.queryById(hierarchyId, false);
-                    if (hierarchyVo == null) continue;
-
-                    // 检查是否已存在相同的关联
-                    Long existingCount = baseMapper.selectCount(new LambdaQueryWrapper<HierarchyProperty>()
-                        .eq(HierarchyProperty::getHierarchyId, hierarchyVo.getId())
-                        .eq(HierarchyProperty::getPropertyValue, property.getHierarchyId() + "")
-                    );
-                    if (existingCount > 0) {
-                        continue; // 已存在，跳过
-                    }
-
-                    Long typeId = hierarchyVo.getTypeId();
-                    HierarchyTypeProperty typeProperty = hierarchyTypePropertyService.getOne(
-                        new LambdaQueryWrapper<HierarchyTypeProperty>()
-                            .eq(HierarchyTypeProperty::getTypeId, typeId)
-                            .eq(HierarchyTypeProperty::getPropertyDictId, sensorDevice.getId())
-                    );
-
-                    if (typeProperty != null) {
-                        // 新增sensor_device关联
-                        HierarchyProperty hierarchyProperty = new HierarchyProperty();
-                        hierarchyProperty.setScope(0);
-                        hierarchyProperty.setTypePropertyId(typeProperty.getId());
-                        hierarchyProperty.setHierarchyId(hierarchyId);
-                        hierarchyProperty.setPropertyValue(property.getHierarchyId() + "");
-                        baseMapper.insert(hierarchyProperty);
-                        log.info("新增sensor_device关联: hierarchyId={}, 关联到={}", hierarchyId, property.getHierarchyId());
-                    }
-                } catch (NumberFormatException e) {
-                    log.warn("新增关联时层级ID格式错误: {}", hierarchyIdStr, e);
-                }
-            }
-        }
-
         return baseMapper.updateById(update) > 0;
     }
 

@@ -1179,8 +1179,6 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             Wrappers.<HierarchyProperty>lambdaQuery()
                 .in(HierarchyProperty::getHierarchyId, sensorIds)
                 .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
-                .isNotNull(HierarchyProperty::getPropertyValue)
-                .ne(HierarchyProperty::getPropertyValue, "")
         );
 
         Set<Long> boundSensorIds = boundProperties.stream()
@@ -1194,22 +1192,10 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
         // 8. 查询当前层级已绑定的传感器（用于回显）
         List<HierarchyVo> boundSensors = new ArrayList<>();
-        if (hierarchyId != null) {
-            // 查询当前层级绑定的传感器ID
-            List<HierarchyProperty> currentBoundProperties = hierarchyPropertyMapper.selectList(
-                Wrappers.<HierarchyProperty>lambdaQuery()
-                    .eq(HierarchyProperty::getPropertyValue, hierarchyId)
-                    .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
-                    .isNotNull(HierarchyProperty::getPropertyValue)
-                    .ne(HierarchyProperty::getPropertyValue, "")
-            );
-            List<Long> list = currentBoundProperties.stream().map(HierarchyProperty::getHierarchyId).toList();
-
-            if (!currentBoundProperties.isEmpty()) {
-                boundSensors = queryByIds(list,false);
-                List<String> dictKeys = Arrays.asList("sensor_location");
-                addPropertiesByDictKeys(boundSensors, dictKeys);
-            }
+        if (!boundSensorIds.isEmpty()) {
+            boundSensors = queryByIds(new ArrayList<>(boundSensorIds),false);
+            List<String> dictKeys = Arrays.asList("sensor_location");
+            addPropertiesByDictKeys(boundSensors, dictKeys);
         }
         Map<String, List<HierarchyVo>> result = new HashMap<>();
         result.put("unbound", unboundSensors);

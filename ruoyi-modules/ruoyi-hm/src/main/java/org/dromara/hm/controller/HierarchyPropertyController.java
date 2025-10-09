@@ -132,15 +132,15 @@ public class HierarchyPropertyController extends BaseController {
     @SaCheckPermission("hm:hierarchyProperty:edit")
     @Log(title = "层级属性", businessType = BusinessType.UPDATE)
     @RepeatSubmit
-    @PutMapping("/byDictKey")
-    public R<Void> byDictKey(@RequestBody HierarchyPropertyBo bo) {
+    @PutMapping("/bindSensers")
+    public R<Void> bindSensers(@RequestBody HierarchyPropertyBo bo) {
         if(bo.getHierarchyId() == null){
             return R.fail("层级id不能为空");
         }
         if(StringUtils.isEmpty(bo.getDictKey())){
             return R.fail("字典不能为空");
         }
-        return toAjax(hierarchyPropertyService.updateByDictKey(bo));
+        return toAjax(hierarchyPropertyService.bindSensers(bo));
     }
 
     /**

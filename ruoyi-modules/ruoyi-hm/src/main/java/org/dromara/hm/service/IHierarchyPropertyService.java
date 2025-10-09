@@ -10,6 +10,7 @@ import org.dromara.hm.domain.vo.HierarchyPropertyVo;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 层级属性Service接口
@@ -89,5 +90,5 @@ public interface IHierarchyPropertyService extends IService<HierarchyProperty> {
      */
     HierarchyPropertyVo getPropertyByTypeIdAndName(Long typeId, String propertyDictId);
 
-    Boolean updateByDictKey(HierarchyPropertyBo bo);
+    Boolean bindSensers(HierarchyPropertyBo bo);
 }
