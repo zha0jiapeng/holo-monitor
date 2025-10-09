@@ -28,4 +28,12 @@
     Map<String, Object> alarmList(Long hierarchyId);
 
      List<HierarchyVo> sensorList(Long hierarchyId, boolean showAllFlag);
- }
+
+    /**
+     * 根据三级系统分组获取传感器列表
+     * @param hierarchyId 层级ID
+     * @param showAllFlag 是否显示所有
+     * @return 按三级系统分组的传感器列表 Map<三级系统名称, List<传感器>>
+     */
+    Map<String, List<HierarchyVo>> sensorListGroupByThreeSystem(Long hierarchyId, boolean showAllFlag);
+}

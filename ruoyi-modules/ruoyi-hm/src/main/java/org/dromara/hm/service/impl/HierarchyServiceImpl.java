@@ -797,7 +797,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     @Override
     public List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId,boolean showAllFlag) {
         long startTime = System.currentTimeMillis();
-        
+
         // 获取当前层级
         HierarchyVo currentHierarchy = queryById(hierarchyId,true);
         List<HierarchyVo> allHierarchies = new ArrayList<>();
@@ -813,15 +813,10 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
         // 批量加载所有层级的属性
         batchLoadProperties(allHierarchies, false);
-        log.info("层级和属性加载耗时: {}ms", System.currentTimeMillis() - startTime);
 
         // 批量获取所有层级绑定的传感器 - 重点优化
-        List<HierarchyVo> sensorList = getSensorsFromHierarchiesBatch(allHierarchies, showAllFlag);
-        
-        log.info("getSensorListByDeviceId总耗时: {}ms, 返回传感器数量: {}", 
-                System.currentTimeMillis() - startTime, sensorList.size());
-        
-        return sensorList;
+
+        return getSensorsFromHierarchiesBatch(allHierarchies, showAllFlag);
     }
 
     /**
@@ -831,17 +826,16 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
      * @return 传感器列表
      */
     private List<HierarchyVo> getSensorsFromHierarchiesBatch(List<HierarchyVo> allHierarchies, boolean showAllFlag) {
-        long startTime = System.currentTimeMillis();
         List<HierarchyVo> sensorList = new ArrayList<>();
-        
+
         // 1. 收集所有传感器ID
         Set<Long> allSensorIds = new HashSet<>();
         Map<Long, HierarchyVo> hierarchyMap = new HashMap<>();
-        
+
         for (HierarchyVo hierarchy : allHierarchies) {
             if (hierarchy.isHaveSensorFlag() && hierarchy.getProperties() != null) {
                 for (HierarchyPropertyVo property : hierarchy.getProperties()) {
-                    if (property.getTypeProperty() != null && 
+                    if (property.getTypeProperty() != null &&
                         property.getTypeProperty().getDict() != null &&
                         property.getTypeProperty().getDict().getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())) {
                         String sensorStrs = property.getPropertyValue();
@@ -860,63 +854,49 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 }
             }
         }
-        
+
         if (allSensorIds.isEmpty()) {
             return sensorList;
         }
-        
-        log.info("收集传感器ID耗时: {}ms, 传感器总数: {}", 
-                System.currentTimeMillis() - startTime, allSensorIds.size());
-        
-        // 2. 批量查询传感器基本信息
-        long batchStart = System.currentTimeMillis();
+
         List<HierarchyVo> allSensors = queryByIds(new ArrayList<>(allSensorIds), false);
         Map<Long, HierarchyVo> sensorMap = allSensors.stream()
                 .collect(Collectors.toMap(HierarchyVo::getId, vo -> vo));
-        
-        log.info("批量查询传感器耗时: {}ms", System.currentTimeMillis() - batchStart);
-        
-        // 3. 批量查询字典和属性信息（缓存重复查询）
-        batchStart = System.currentTimeMillis();
-        
+
         // 缓存 sensor_location 字典 - 可考虑使用Spring Cache优化
         HierarchyTypePropertyDict sensorLocation = hierarchyTypePropertyDictMapper.selectOne(
                 new LambdaQueryWrapper<HierarchyTypePropertyDict>()
                         .eq(HierarchyTypePropertyDict::getDictKey, "sensor_location"));
-        
+
         if (sensorLocation == null) {
             return sensorList;
         }
-        
+
         // 缓存对应的类型属性
         HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(
                 new LambdaQueryWrapper<HierarchyTypeProperty>()
                         .eq(HierarchyTypeProperty::getPropertyDictId, sensorLocation.getId()));
-        
+
         if (hierarchyTypeProperty == null) {
             return sensorList;
         }
-        
+
         // 批量查询所有传感器的位置属性
         List<HierarchyPropertyVo> allSensorProperties = hierarchyPropertyMapper.selectVoList(
                 new LambdaQueryWrapper<HierarchyProperty>()
                         .in(HierarchyProperty::getHierarchyId, allSensorIds)
                         .eq(HierarchyProperty::getTypePropertyId, hierarchyTypeProperty.getId())
         );
-        
+
         Map<Long, HierarchyPropertyVo> sensorPropertiesMap = allSensorProperties.stream()
                 .collect(Collectors.toMap(HierarchyPropertyVo::getHierarchyId, vo -> vo));
-        
+
         // 缓存系统标志字典（只查询一次）
         List<HierarchyTypePropertyDict> systemDicts = hierarchyTypePropertyDictMapper.selectList(
                 new LambdaQueryWrapper<HierarchyTypePropertyDict>()
                         .eq(HierarchyTypePropertyDict::getSystemFlag, 1));
         List<String> tags = systemDicts.stream().map(HierarchyTypePropertyDict::getDictKey).toList();
-        
-        log.info("批量查询字典和属性耗时: {}ms", System.currentTimeMillis() - batchStart);
-        
-        // 4. 并发处理每个传感器的数据 - 进一步优化
-        batchStart = System.currentTimeMillis();
+
         List<HierarchyVo> validSensors = allSensorIds.stream()
                 .map(sensorId -> {
                     HierarchyVo sensorVo = sensorMap.get(sensorId);
@@ -929,12 +909,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 })
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
-        
-        log.info("准备有效传感器耗时: {}ms, 有效传感器数量: {}", 
-                System.currentTimeMillis() - batchStart, validSensors.size());
-        
-        // 并发调用外部API获取数据（如果传感器数量较多）
-        batchStart = System.currentTimeMillis();
+
         if (validSensors.size() > 10) {
             // 使用并行流处理大量传感器
             List<HierarchyVo> results = validSensors.parallelStream()
@@ -951,10 +926,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 }
             }
         }
-        
-        log.info("处理传感器数据耗时: {}ms, 最终传感器数量: {}", 
-                System.currentTimeMillis() - batchStart, sensorList.size());
-        
+
         return sensorList;
     }
 
@@ -1251,7 +1223,8 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
      * @param hierarchyVos 层级VO列表
      * @param dictKeys 字典key列表
      */
-    private void addPropertiesByDictKeys(List<HierarchyVo> hierarchyVos, List<String> dictKeys) {
+    @Override
+    public void addPropertiesByDictKeys(List<HierarchyVo> hierarchyVos, List<String> dictKeys) {
         if (hierarchyVos == null || hierarchyVos.isEmpty() || dictKeys == null || dictKeys.isEmpty()) {
             return;
         }

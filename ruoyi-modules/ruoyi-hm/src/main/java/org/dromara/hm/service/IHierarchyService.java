@@ -151,4 +151,11 @@ public interface IHierarchyService extends IService<Hierarchy> {
      * @return 变电站详情和属性列表，如果未找到返回null
      */
     HierarchyVo getSubstationBySensorCode(String sensorCode);
+
+    /**
+     * 为层级列表添加指定字典key的属性信息
+     * @param hierarchyVos 层级VO列表
+     * @param dictKeys 字典key列表
+     */
+    void addPropertiesByDictKeys(List<HierarchyVo> hierarchyVos, List<String> dictKeys);
 }

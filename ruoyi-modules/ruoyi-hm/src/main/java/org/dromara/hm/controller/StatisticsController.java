@@ -7,8 +7,7 @@
  import org.dromara.common.web.annotation.BrotliCompress;
  import org.dromara.common.web.core.BaseController;
  import org.dromara.hm.domain.vo.HierarchyVo;
- import org.dromara.hm.service.IStatisticsService;
- import org.dromara.hm.service.IHierarchyService;
+import org.dromara.hm.service.IStatisticsService;
  import org.springframework.validation.annotation.Validated;
  import org.springframework.web.bind.annotation.*;
 
@@ -54,10 +53,16 @@
         return R.ok(result);
      }
 
-     @GetMapping("/sensorList")
-     public R<List<HierarchyVo>> sensorList(Long hierarchyId,boolean showAllFlag) {
-         List<HierarchyVo> list =  statisticsService.sensorList(hierarchyId,showAllFlag);
-         return R.ok(list);
-     }
+    @GetMapping("/sensorList")
+    public R<List<HierarchyVo>> sensorList(Long hierarchyId,boolean showAllFlag) {
+        List<HierarchyVo> list =  statisticsService.sensorList(hierarchyId,showAllFlag);
+        return R.ok(list);
+    }
 
- }
+    @GetMapping("/sensorListGroupByThreeSystem")
+    public R<Map<String, List<HierarchyVo>>> sensorListGroupByThreeSystem(Long hierarchyId, boolean showAllFlag) {
+        Map<String, List<HierarchyVo>> result = statisticsService.sensorListGroupByThreeSystem(hierarchyId, showAllFlag);
+        return R.ok(result);
+    }
+
+}

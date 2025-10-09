@@ -42,13 +42,14 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     private final IHierarchyTypePropertyService hierarchyTypePropertyService;
 
+
     private final EventParserService eventParserService;
 
     // ==================== 公共方法区域 ====================
 
     /**
      * 获取级联子类型ID列表
-     * 
+     *
      * @param parentTypeId 父类型ID
      * @return 包含父类型在内的所有级联子类型ID列表
      */
@@ -83,7 +84,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 根据字典key获取HierarchyTypePropertyDict
-     * 
+     *
      * @param dictKey 字典key
      * @return HierarchyTypePropertyDict对象，未找到返回null
      */
@@ -95,7 +96,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 根据字典ID和类型ID获取HierarchyTypeProperty
-     * 
+     *
      * @param dictId 字典ID
      * @param typeId 类型ID
      * @return HierarchyTypeProperty对象，未找到返回null
@@ -109,7 +110,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 解析逗号分隔的传感器ID字符串
-     * 
+     *
      * @param propertyValue 属性值（逗号分隔的ID字符串）
      * @return 传感器ID列表
      */
@@ -130,7 +131,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 获取传感器通过设备类型绑定
-     * 
+     *
      * @param hierarchyId 层级ID
      * @param typeIds 类型ID列表
      * @return 传感器ID列表
@@ -188,7 +189,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 获取指定字典key和类型的层级ID列表（属性值大于0）
-     * 
+     *
      * @param dictKey 字典key
      * @param typeId 类型ID
      * @return 层级ID列表
@@ -219,7 +220,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 判断设备类型key是否为设备相关类型
-     * 
+     *
      * @param typeKey 类型key
      * @return 是否为设备类型
      */
@@ -230,7 +231,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 根据类型key列表获取类型ID列表
-     * 
+     *
      * @param typeKeys 类型key列表
      * @return 类型ID列表
      */
@@ -245,7 +246,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 根据typeKey获取HierarchyType
-     * 
+     *
      * @param typeKey 类型key
      * @return HierarchyType对象，未找到返回null
      */
@@ -256,7 +257,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 构建统计结果项
-     * 
+     *
      * @param name 名称
      * @param count 数量
      * @return 统计结果项
@@ -270,7 +271,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 按count降序排列结果列表
-     * 
+     *
      * @param result 结果列表
      */
     private void sortResultByCountDesc(List<Map<String, Object>> result) {
@@ -281,7 +282,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
     public List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId, Long statisticsTypeId) {
         Hierarchy h = hierarchyService.getById(hierarchyId);
         HierarchyType type = hierarchyTypeService.getById(h.getTypeId());
-        
+
         if (isDeviceType(type.getTypeKey())) {
             // 设备类型：通过传感器绑定统计
             return getTargetTypeListByDeviceBinding(hierarchyId, targetTypeId, type);
@@ -297,10 +298,10 @@ public class StatisticsServiceImpl implements IStatisticsService {
     private List<Map<String, Object>> getTargetTypeListByDeviceBinding(Long hierarchyId, Long targetTypeId, HierarchyType type) {
         // 获取级联子类型ID
         List<Long> typeIds = getCascadeChildTypeIds(type.getId());
-        
+
         // 获取传感器ID列表
         List<Long> sensorIds = getSensorIdsByDeviceBinding(hierarchyId, typeIds);
-        
+
             // 目标层级类型具体层级
             List<Hierarchy> targetHierarchys = hierarchyService.lambdaQuery()
                 .eq(Hierarchy::getTypeId, targetTypeId).list();
@@ -1257,20 +1258,27 @@ public class StatisticsServiceImpl implements IStatisticsService {
      * @return 找到的目标层级ID，如果没找到返回null
      */
     private Long findTargetTypeUpward(Hierarchy sensor, Long targetTypeId, Map<Long, Hierarchy> hierarchyMap) {
-        Hierarchy current = sensor;
-        int maxDepth = 20; // 防止无限循环
-        int depth = 0;
+        // 如果没有提供层级映射，重新构建
+        if (hierarchyMap == null) {
+            List<Hierarchy> allHierarchies = hierarchyService.list();
+            hierarchyMap = allHierarchies.stream()
+                .collect(Collectors.toMap(Hierarchy::getId, h -> h));
+        }
 
-        while (current != null && depth < maxDepth) {
-            // 检查当前层级是否为目标类型
+        Hierarchy current = sensor;
+        Set<Long> visited = new HashSet<>(); // 防止循环引用
+
+        while (current != null && !visited.contains(current.getId())) {
+            visited.add(current.getId());
+
+            // 检查当前层级是否是目标类型
             if (targetTypeId.equals(current.getTypeId())) {
                 return current.getId();
             }
 
-            // 向上查找父级
+            // 向上查找父层级
             if (current.getParentId() != null) {
                 current = hierarchyMap.get(current.getParentId());
-                depth++;
             } else {
                 break;
             }
@@ -1381,7 +1389,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
     /**
      * 获取报警状态层级ID列表（sys:st属性值大于0）
      *
-     * @param typeId 类型ID 
+     * @param typeId 类型ID
      * @return 报警状态的层级ID列表
      */
     private List<Long> getReportStHierarchyIds(Long typeId) {
@@ -1400,7 +1408,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 获取指定字典key、类型和属性值的层级ID列表
-     * 
+     *
      * @param dictKey 字典key
      * @param typeId 类型ID
      * @param expectedValue 期望的属性值
@@ -1730,6 +1738,76 @@ public class StatisticsServiceImpl implements IStatisticsService {
         List<HierarchyVo> sensorListByDeviceId = hierarchyService.getSensorListByDeviceId(hierarchyId, showAllFlag);
         return sensorListByDeviceId;
     }
+
+    @Override
+    public Map<String, List<HierarchyVo>> sensorListGroupByThreeSystem(Long hierarchyId, boolean showAllFlag) {
+        // 获取所有传感器列表
+        List<HierarchyVo> sensorList = hierarchyService.getSensorListByDeviceId(hierarchyId, showAllFlag);
+
+        if (sensorList == null || sensorList.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        // 获取三级系统类型ID
+        HierarchyType threeSystemType = getThreeSystemType();
+        if (threeSystemType == null) {
+            Map<String, List<HierarchyVo>> result = new HashMap<>();
+            result.put("未分类", sensorList);
+            return result;
+        }
+
+        // 查找每个传感器所属的三级系统
+        Map<String, List<HierarchyVo>> groupedSensors = new HashMap<>();
+
+        for (HierarchyVo sensor : sensorList) {
+            String threeSystemName = findThreeSystemForSensor(sensor.getId(), threeSystemType.getId());
+            groupedSensors.computeIfAbsent(threeSystemName, k -> new ArrayList<>()).add(sensor);
+        }
+
+        return groupedSensors;
+    }
+
+    /**
+     * 获取三级系统类型
+     * @return 三级系统类型，如果未找到返回null
+     */
+    private HierarchyType getThreeSystemType() {
+
+        return hierarchyTypeService.lambdaQuery()
+        .eq(HierarchyType::getTypeKey, "three_system")
+        .one();
+    }
+
+    /**
+     * 查找传感器所属的三级系统
+     * @param sensorId 传感器ID
+     * @param threeSystemTypeId 三级系统类型ID
+     * @return 三级系统名称
+     */
+    private String findThreeSystemForSensor(Long sensorId, Long threeSystemTypeId) {
+        try {
+            // 查询传感器层级
+            Hierarchy sensor = hierarchyService.getById(sensorId);
+            if (sensor == null) {
+                return "未分类";
+            }
+
+            // 向上查找三级系统
+            Long threeSystemId = findTargetTypeUpward(sensor, threeSystemTypeId, null);
+            if (threeSystemId != null) {
+                Hierarchy threeSystem = hierarchyService.getById(threeSystemId);
+                if (threeSystem != null) {
+                    return threeSystem.getName();
+                }
+            }
+
+            return "未分类";
+        } catch (Exception e) {
+            log.error("查找传感器{}所属三级系统失败", sensorId, e);
+            return "未分类";
+        }
+    }
+
 
     /**
      * 创建空结果
