@@ -24,11 +24,15 @@ import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
 import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.domain.vo.HierarchyTreeVo;
 import org.dromara.hm.enums.DataTypeEnum;
+import org.dromara.hm.enums.UnitEnum;
 import org.dromara.hm.mapper.*;
 import org.dromara.hm.service.IHierarchyService;
 import org.dromara.hm.utils.HierarchyCodeUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -90,9 +94,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
         // 处理needAllChild逻辑 - 优化版本，避免N+1查询
         if (bo.getNeedAllChild() != null && bo.getNeedAllChild()) {
-            long startTime = System.currentTimeMillis();
             records = getAllChildrenOptimized(records);
-            log.info("getAllChildren耗时: {}ms, 层级数量: {}", System.currentTimeMillis() - startTime, records.size());
         }
 
         // 处理needTree逻辑 - 构建树结构
@@ -106,9 +108,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         // 处理needProperty逻辑 - 批量查询优化
         // 当needAllChild=true时可能有大量子层级，使用批量查询避免N+1问题
         if(bo.getNeedProperty()) {
-            long startTime = System.currentTimeMillis();
             batchLoadPropertiesOptimized(records, bo.getNeedHiddenProperty());
-            log.info("batchLoadProperties耗时: {}ms", System.currentTimeMillis() - startTime);
         }
 
         // 更新结果集
@@ -796,7 +796,6 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
     @Override
     public List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId,boolean showAllFlag) {
-        long startTime = System.currentTimeMillis();
 
         // 获取当前层级
         HierarchyVo currentHierarchy = queryById(hierarchyId,true);
@@ -948,6 +947,10 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                     if (online != null) {
                         JSONArray onlines = (JSONArray) online;
                         boolean addFlag = true;
+                        boolean magFlag = false;
+                        String value = "";
+                        String valueKey = "";
+                        String au = "";
                         for (Object o : onlines) {
                             JSONObject item = (JSONObject) o;
                             if (!showAllFlag && "sys:st".equals(item.getStr("key"))) {
@@ -957,9 +960,36 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                                     break;
                                 }
                             }
+                            if("mont/pd/mag".equals(item.getStr("key")) ){
+                                String val = item.getStr("val");
+                                value = new BigDecimal(val).setScale(1, RoundingMode.HALF_UP).toString();
+                                magFlag = true;
+                            }
+                            if("custom:SF6Press@20".equals(item.getStr("key")) ){
+                                String val = item.getStr("val");
+                                value = new BigDecimal(val).setScale(1, RoundingMode.HALF_UP).toString();
+                                valueKey = item.getStr("key");
+                            }
+                            if("mont/pd/au".equals(item.getStr("key")) ){
+                                au = UnitEnum.getByCode(Integer.parseInt(item.getStr("val"))).getSymbol();
+                            }
                         }
                         if (addFlag) {
                             sensorVo.setDataSet(onlines);
+                            if(magFlag) {
+                                sensorVo.setShowValue(value + au);
+                            }else{
+                                JSONObject tagJson = SD400MPUtils.tagJson();
+                                JSONArray jsonArray = tagJson.getJSONObject("data").getJSONArray("items");
+                                for (Object o : jsonArray) {
+                                    JSONObject jsonObject = (JSONObject) o;
+                                    if(jsonObject.getStr("key").equals(valueKey)){
+                                        au = jsonObject.get("units").toString();
+                                        break;
+                                    }
+                                }
+                                sensorVo.setShowValue(value + au);
+                            }
                             return sensorVo;
                         }
                     }
@@ -969,77 +999,6 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             log.warn("传感器{}数据获取失败: {}", sensorVo.getCode(), e.getMessage());
         }
         return null;
-    }
-
-    /**
-     * 从指定层级获取绑定的传感器列表
-     * @deprecated 使用 getSensorsFromHierarchiesBatch 批量优化版本
-     * @param hierarchy 层级对象
-     * @param showAllFlag 是否显示所有传感器
-     * @return 传感器列表
-     */
-    @Deprecated
-    private List<HierarchyVo> getSensorsFromHierarchy(HierarchyVo hierarchy, boolean showAllFlag) {
-        List<HierarchyVo> sensorList = new ArrayList<>();
-
-        String sensorStrs = "";
-        for (HierarchyPropertyVo property : hierarchy.getProperties()) {
-            if(property.getTypeProperty().getDict().getDataType().equals(DataTypeEnum.ASSOCIATION.getCode())){
-                sensorStrs = property.getPropertyValue();
-                break;
-            }
-        }
-
-        if (StringUtils.isBlank(sensorStrs)) {
-            return sensorList;
-        }
-
-        String[] split = sensorStrs.split("\\,");
-        for (String sensorIdStr : split) {
-            if(StringUtils.isEmpty(sensorIdStr)) continue;
-            HierarchyVo hierarchyVo = queryById(Long.valueOf(sensorIdStr), false);
-            if(hierarchyVo!=null) {
-                HierarchyTypePropertyDict sensorLocation = hierarchyTypePropertyDictMapper.selectOne(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getDictKey, "sensor_location"));
-                if(sensorLocation==null) continue;
-                HierarchyTypeProperty hierarchyTypeProperty = hierarchyTypePropertyMapper.selectOne(new LambdaQueryWrapper<HierarchyTypeProperty>().eq(HierarchyTypeProperty::getPropertyDictId, sensorLocation.getId()));
-                if(hierarchyTypeProperty==null) continue;
-                HierarchyPropertyVo hierarchyProperties = hierarchyPropertyMapper.selectVoOne(
-                    new LambdaQueryWrapper<HierarchyProperty>()
-                        .eq(HierarchyProperty::getHierarchyId, Long.valueOf(sensorIdStr))
-                        .eq(HierarchyProperty::getTypePropertyId, hierarchyTypeProperty.getId())
-                );
-                if(hierarchyProperties==null) continue;
-                hierarchyVo.setProperties(List.of(hierarchyProperties));
-
-                List<HierarchyTypePropertyDict> hierarchyTypePropertyDicts = hierarchyTypePropertyDictMapper.selectList(new LambdaQueryWrapper<HierarchyTypePropertyDict>().eq(HierarchyTypePropertyDict::getSystemFlag, 1));
-                List<String> tags = hierarchyTypePropertyDicts.stream().map(item -> item.getDictKey()).toList();
-                //List<String> tags = List.of("sys:cs", "mont/pd/mag", "mont/pd/au", "sys:st");
-                JSONObject entries = SD400MPUtils.testpointFind(hierarchyVo.getCode());
-                if (entries.getInt("code") == 200) {
-                    String id = entries.getJSONObject("data").getStr("id");
-                    JSONObject data = SD400MPUtils.data(Long.valueOf(id), tags, null);
-                    if (data.getInt("code") == 200) {
-                        Object online = data.getByPath("data.groups[0].online");
-                        if (online == null) continue;
-                        JSONArray onlines = (JSONArray) online;
-                        boolean addFlag = true;
-                        for (Object o : onlines) {
-                            JSONObject item = (JSONObject) o;
-                            if(!showAllFlag && "sys:st".equals(item.getStr("key"))){
-                                String val = item.getStr("val");
-                                if(!val.equals("0")){
-                                    addFlag = false;
-                                }
-                            }
-                        }
-                        if(addFlag) hierarchyVo.setDataSet(onlines);
-                    }
-                }
-                sensorList.add(hierarchyVo);
-            }
-        }
-
-        return sensorList;
     }
 
     @Override

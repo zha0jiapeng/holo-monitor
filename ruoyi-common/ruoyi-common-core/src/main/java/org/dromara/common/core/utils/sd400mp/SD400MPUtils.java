@@ -291,6 +291,18 @@ public class SD400MPUtils {
                 .execute().body();
         return JSONUtil.parseObj(body);
     }
+
+    public static JSONObject tagJson() {
+        Map<String, Object> map = new HashMap<>(2);
+        map.put("token", getToken());
+        Map<String, Object> dataMap = new HashMap<>(2);
+        dataMap.put("culture", "zh");
+        map.put("data", dataMap);
+        String body = HttpUtil.createPost(URI + "/api/tagsJson")
+            .body(JSONUtil.toJsonStr(map))
+            .execute().body();
+        return JSONUtil.parseObj(body);
+    }
     /**
      * 获取事件列表（使用MPIDMultipleJson格式）
      *

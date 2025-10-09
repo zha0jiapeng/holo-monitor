@@ -70,6 +70,8 @@ public class HierarchyVo implements Serializable {
 
     private JSONArray dataSet;
 
+    private String showValue;
+
     private Integer alarmType = 0;
 
     private boolean haveSensorFlag;
