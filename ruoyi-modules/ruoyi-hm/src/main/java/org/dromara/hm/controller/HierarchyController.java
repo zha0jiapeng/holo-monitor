@@ -106,8 +106,10 @@ public class HierarchyController extends BaseController {
     @SaCheckPermission("hm:hierarchy:query")
     @GetMapping("/{id}")
     public R<HierarchyVo> getInfo(@NotNull(message = "主键不能为空")
-                                 @PathVariable("id") Long id,boolean needProperty) {
-        return R.ok(hierarchyService.queryById(id,needProperty));
+                                 @PathVariable("id") Long id,boolean needProperty,boolean needHiddenProperty
+
+    ) {
+        return R.ok(hierarchyService.queryById(id,needProperty,needHiddenProperty));
     }
 
     /**

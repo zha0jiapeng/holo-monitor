@@ -119,6 +119,30 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
             property.setTypePropertyId(hierarchyTypeProperty.getId());
         }
         property.setPropertyValue(bo.getPropertyValue());
+        if("sensors".equals(bo.getDictKey())){
+            String[] split = bo.getPropertyValue().split("\\,");
+            if(split.length!=0) {
+                long sensorHierarchyId = Long.parseLong(split[0]);
+                Hierarchy sensorHierarchy = hierarchyService.getById(sensorHierarchyId);
+                if (sensorHierarchy == null) return false;
+                HierarchyTypePropertyDict dictt = hierarchyTypePropertyDictService.lambdaQuery().eq(HierarchyTypePropertyDict::getDictKey, "sensor_device").one();
+                if (dictt == null) return false;
+                HierarchyTypeProperty ht = hierarchyTypePropertyService
+                    .lambdaQuery().eq(HierarchyTypeProperty::getTypeId, sensorHierarchy.getTypeId())
+                    .eq(HierarchyTypeProperty::getPropertyDictId, dictt.getId()).one();
+                if (ht == null) return false;
+                for (String idStr : split) {
+                    HierarchyProperty hierarchyProperty = new HierarchyProperty();
+                    hierarchyProperty.setHierarchyId(Long.parseLong(idStr));
+                    hierarchyProperty.setPropertyValue(bo.getHierarchyId().toString());
+                    hierarchyProperty.setTypePropertyId(ht.getId());
+                    hierarchyProperty.setScope(1);
+                    save(hierarchyProperty);
+                }
+            }
+
+        }
+
         return baseMapper.insertOrUpdate(property);
     }
 
