@@ -1140,19 +1140,50 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
         );
 
-        Set<Long> boundSensorIds = boundProperties.stream()
-            .map(HierarchyProperty::getHierarchyId)
-            .collect(Collectors.toSet());
+        // 7. 获取hierarchyId及其所有子孙层级的ID集合
+        Set<String> targetHierarchyIdStrings = new HashSet<>();
+        if (hierarchyId != null) {
+            // 添加hierarchyId本身
+            targetHierarchyIdStrings.add(hierarchyId.toString());
+            
+            // 获取hierarchyId的所有子孙层级
+            List<HierarchyVo> descendants = new ArrayList<>();
+            getAllDescendants(hierarchyId, descendants);
+            
+            // 将所有子孙层级ID转换为字符串并添加到集合中
+            for (HierarchyVo descendant : descendants) {
+                targetHierarchyIdStrings.add(descendant.getId().toString());
+            }
+        }
+        
+        // 8. 根据hierarchyId及其子孙层级区分绑定的传感器
+        Set<Long> boundToTargetDeviceSensorIds = new HashSet<>();
+        Set<Long> boundToOtherDeviceSensorIds = new HashSet<>();
+        
+        for (HierarchyProperty property : boundProperties) {
+            String propertyValue = property.getPropertyValue();
+            if (hierarchyId != null && targetHierarchyIdStrings.contains(propertyValue)) {
+                // 绑定到hierarchyId或其子孙层级的传感器
+                boundToTargetDeviceSensorIds.add(property.getHierarchyId());
+            } else {
+                // 绑定到其他设备的传感器
+                boundToOtherDeviceSensorIds.add(property.getHierarchyId());
+            }
+        }
 
-        // 7. 筛选出未绑定的传感器
+        // 9. 筛选出未绑定的传感器（排除所有已绑定的传感器）
+        Set<Long> allBoundSensorIds = new HashSet<>();
+        allBoundSensorIds.addAll(boundToTargetDeviceSensorIds);
+        allBoundSensorIds.addAll(boundToOtherDeviceSensorIds);
+        
         List<HierarchyVo> unboundSensors = allSensors.stream()
-            .filter(sensor -> !boundSensorIds.contains(sensor.getId()))
+            .filter(sensor -> !allBoundSensorIds.contains(sensor.getId()))
             .collect(Collectors.toList());
 
-        // 8. 查询当前层级已绑定的传感器（用于回显）
+        // 10. 查询绑定到hierarchyId及其子孙层级的传感器（用于回显）
         List<HierarchyVo> boundSensors = new ArrayList<>();
-        if (!boundSensorIds.isEmpty()) {
-            boundSensors = queryByIds(new ArrayList<>(boundSensorIds),false);
+        if (!boundToTargetDeviceSensorIds.isEmpty()) {
+            boundSensors = queryByIds(new ArrayList<>(boundToTargetDeviceSensorIds), false);
             List<String> dictKeys = Arrays.asList("sensor_location");
             addPropertiesByDictKeys(boundSensors, dictKeys);
         }

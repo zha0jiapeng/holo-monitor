@@ -111,4 +111,19 @@
 
     </dependencies>
 
+    <build>
+        <resources>
+            <!-- 确保资源文件被正确打包 -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>**/*.xml</include>
+                    <include>**/*.properties</include>
+                    <include>**/*.yml</include>
+                </includes>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+    </build>
+
 </project>

@@ -361,10 +361,10 @@
     </dependencyManagement>
 
     <modules>
-        <module>ruoyi-admin</module>
         <module>ruoyi-common</module>
-        <!--<module>ruoyi-extend</module>-->
         <module>ruoyi-modules</module>
+        <!--<module>ruoyi-extend</module>-->
+        <module>ruoyi-admin</module>
     </modules>
     <packaging>pom</packaging>
 

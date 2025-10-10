@@ -102,4 +102,18 @@
 
     </dependencies>
 
+    <build>
+        <resources>
+            <!-- 确保 mapper XML 文件被正确打包 -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>**/*.xml</include>
+                    <include>**/*.md</include>
+                </includes>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+    </build>
+
 </project>

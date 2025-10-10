@@ -21,8 +21,8 @@ import org.dromara.common.mybatis.handler.PlusPostInitTableInfoHandler;
 import org.dromara.common.mybatis.interceptor.PlusDataPermissionInterceptor;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.InitializingBean;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.SmartInitializingSingleton;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
@@ -38,10 +38,7 @@ import java.util.Collection;
 @EnableTransactionManagement(proxyTargetClass = true)
 @MapperScan("${mybatis-plus.mapperPackage}")
 @PropertySource(value = "classpath:common-mybatis.yml", factory = YmlPropertySourceFactory.class)
-public class MybatisPlusConfig implements InitializingBean {
-
-    @Autowired
-    private SqlSessionFactory sqlSessionFactory;
+public class MybatisPlusConfig {
 
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
@@ -147,24 +144,30 @@ public class MybatisPlusConfig implements InitializingBean {
      */
 
     /**
-     * 在Bean初始化后，预热所有Mapper，确保所有Mapper语句都被加载
+     * Mapper预热Bean - 在所有单例Bean初始化完成后执行
      * 这可以解决偶现的"Invalid bound statement (not found)"问题
+     * 使用SmartInitializingSingleton避免循环依赖
      */
-    @Override
-    public void afterPropertiesSet() {
-        try {
-            Configuration configuration = sqlSessionFactory.getConfiguration();
-            // 获取所有已加载的Mapper语句
-            Collection<String> mappedStatementNames = configuration.getMappedStatementNames();
-            log.info("MyBatis Mapper预热完成，共加载 {} 个Mapper语句", mappedStatementNames.size());
-            
-            // 验证关键Mapper是否存在（可选，用于启动时快速发现问题）
-            if (!configuration.hasStatement("org.dromara.system.mapper.SysRoleMapper.selectRolesByUserId")) {
-                log.warn("警告：关键Mapper语句 'org.dromara.system.mapper.SysRoleMapper.selectRolesByUserId' 未找到！");
+    @Bean
+    public SmartInitializingSingleton mapperWarmer(ApplicationContext applicationContext) {
+        return () -> {
+            try {
+                SqlSessionFactory sqlSessionFactory = applicationContext.getBean(SqlSessionFactory.class);
+                Configuration configuration = sqlSessionFactory.getConfiguration();
+                // 获取所有已加载的Mapper语句
+                Collection<String> mappedStatementNames = configuration.getMappedStatementNames();
+                log.info("MyBatis Mapper预热完成，共加载 {} 个Mapper语句", mappedStatementNames.size());
+                
+                // 验证关键Mapper是否存在（可选，用于启动时快速发现问题）
+                if (!configuration.hasStatement("org.dromara.system.mapper.SysRoleMapper.selectRolesByUserId")) {
+                    log.warn("警告：关键Mapper语句 'org.dromara.system.mapper.SysRoleMapper.selectRolesByUserId' 未找到！");
+                } else {
+                    log.info("关键Mapper验证通过：SysRoleMapper.selectRolesByUserId 已成功加载");
+                }
+            } catch (Exception e) {
+                log.error("MyBatis Mapper预热失败", e);
             }
-        } catch (Exception e) {
-            log.error("MyBatis Mapper预热失败", e);
-        }
+        };
     }
 
 }
