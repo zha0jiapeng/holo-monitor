@@ -4,9 +4,15 @@
 mybatis-plus:
   # 启动时是否检查 MyBatis XML 文件的存在，默认不检查
   checkConfigLocation: true
+  # 是否在启动时加载所有的Mapper XML文件 (解决偶现的Mapper未找到问题)
+  check-config-location: true
   configuration:
     # 自动驼峰命名规则（camel case）映射
     mapUnderscoreToCamelCase: true
+    # 延迟加载的全局开关，关闭可以避免偶现问题
+    lazyLoadingEnabled: false
+    # 开启时，任一方法的调用都会加载该对象的所有延迟加载属性
+    aggressiveLazyLoading: false
     # MyBatis 自动映射策略
     # NONE：不启用 PARTIAL：只对非嵌套 resultMap 自动映射 FULL：对所有 resultMap 自动映射
     autoMappingBehavior: FULL

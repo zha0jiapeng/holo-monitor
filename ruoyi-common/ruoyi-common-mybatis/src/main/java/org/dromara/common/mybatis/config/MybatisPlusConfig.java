@@ -9,6 +9,9 @@ import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.OptimisticLockerInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.TenantLineInnerInterceptor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.ibatis.session.Configuration;
+import org.apache.ibatis.session.SqlSessionFactory;
 import org.dromara.common.core.factory.YmlPropertySourceFactory;
 import org.dromara.common.core.utils.SpringUtils;
 import org.dromara.common.mybatis.aspect.DataPermissionAspect;
@@ -18,19 +21,27 @@ import org.dromara.common.mybatis.handler.PlusPostInitTableInfoHandler;
 import org.dromara.common.mybatis.interceptor.PlusDataPermissionInterceptor;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+
+import java.util.Collection;
 
 /**
  * mybatis-plus配置类(下方注释有插件介绍)
  *
  * @author Lion Li
  */
+@Slf4j
 @EnableTransactionManagement(proxyTargetClass = true)
 @MapperScan("${mybatis-plus.mapperPackage}")
 @PropertySource(value = "classpath:common-mybatis.yml", factory = YmlPropertySourceFactory.class)
-public class MybatisPlusConfig {
+public class MybatisPlusConfig implements InitializingBean {
+
+    @Autowired
+    private SqlSessionFactory sqlSessionFactory;
 
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
@@ -134,5 +145,26 @@ public class MybatisPlusConfig {
      * DynamicTableNameInnerInterceptor 动态表名插件
      * https://baomidou.com/pages/2a45ff/
      */
+
+    /**
+     * 在Bean初始化后，预热所有Mapper，确保所有Mapper语句都被加载
+     * 这可以解决偶现的"Invalid bound statement (not found)"问题
+     */
+    @Override
+    public void afterPropertiesSet() {
+        try {
+            Configuration configuration = sqlSessionFactory.getConfiguration();
+            // 获取所有已加载的Mapper语句
+            Collection<String> mappedStatementNames = configuration.getMappedStatementNames();
+            log.info("MyBatis Mapper预热完成，共加载 {} 个Mapper语句", mappedStatementNames.size());
+            
+            // 验证关键Mapper是否存在（可选，用于启动时快速发现问题）
+            if (!configuration.hasStatement("org.dromara.system.mapper.SysRoleMapper.selectRolesByUserId")) {
+                log.warn("警告：关键Mapper语句 'org.dromara.system.mapper.SysRoleMapper.selectRolesByUserId' 未找到！");
+            }
+        } catch (Exception e) {
+            log.error("MyBatis Mapper预热失败", e);
+        }
+    }
 
 }
