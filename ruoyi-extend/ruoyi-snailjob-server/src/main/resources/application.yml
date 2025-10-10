@@ -7,7 +7,7 @@ spring:
   application:
     name: ruoyi-snailjob-server
   profiles:
-    active: @profiles.active@
+    active: prod
   web:
     resources:
       static-locations: classpath:admin/
