@@ -188,6 +188,83 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     /**
+     * 获取传感器到device_point的映射关系
+     * 
+     * @param hierarchyId 起始层级ID
+     * @param typeIds 类型ID列表（device和device_point）
+     * @return Map<传感器ID, device_point的Hierarchy对象>
+     */
+    private Map<Long, Hierarchy> getSensorToDevicePointMapping(Long hierarchyId, List<Long> typeIds) {
+        // 查找sensors字典属性
+        HierarchyTypePropertyDict sensorsDict = getPropertyDictByKey("sensors");
+        if (sensorsDict == null) {
+            log.warn("未找到sensors字典属性");
+            return new HashMap<>();
+        }
+
+        List<HierarchyTypeProperty> list = hierarchyTypePropertyService.lambdaQuery()
+                .eq(HierarchyTypeProperty::getPropertyDictId, sensorsDict.getId())
+                .in(HierarchyTypeProperty::getTypeId, typeIds).list();
+
+        List<Long> typePropertyIds = list.stream()
+                .map(HierarchyTypeProperty::getId)
+                .collect(Collectors.toList());
+
+        if (typePropertyIds.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        // 获取hierarchyId范围内符合typeIds的设备层级
+        Set<Long> hierarchyDescendants = getAllDescendantIds(hierarchyId);
+        List<Hierarchy> deviceHierarchies = hierarchyService.lambdaQuery()
+                .in(Hierarchy::getId, hierarchyDescendants)
+                .in(Hierarchy::getTypeId, typeIds)
+                .list();
+
+        if (deviceHierarchies.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        // 创建device_point的typeId集合（只统计device_point）
+        HierarchyType devicePointType = getHierarchyTypeByKey("device_point");
+        if (devicePointType == null) {
+            log.warn("未找到device_point类型");
+            return new HashMap<>();
+        }
+
+        List<Long> deviceHierarchyIds = deviceHierarchies.stream()
+                .map(Hierarchy::getId)
+                .collect(Collectors.toList());
+
+        // 查找这些设备的传感器绑定属性
+        List<HierarchyProperty> properties = hierarchyPropertyService.lambdaQuery()
+                .ne(HierarchyProperty::getPropertyValue, "")
+                .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
+                .in(HierarchyProperty::getHierarchyId, deviceHierarchyIds)
+                .list();
+
+        // 建立传感器到device_point的映射（只映射device_point类型的设备）
+        Map<Long, Hierarchy> sensorToDevicePointMap = new HashMap<>();
+        for (HierarchyProperty property : properties) {
+            Hierarchy deviceHierarchy = deviceHierarchies.stream()
+                    .filter(h -> h.getId().equals(property.getHierarchyId()))
+                    .findFirst()
+                    .orElse(null);
+            
+            // 只处理device_point类型
+            if (deviceHierarchy != null && deviceHierarchy.getTypeId().equals(devicePointType.getId())) {
+                List<Long> sensorIds = parseSensorIds(property.getPropertyValue());
+                for (Long sensorId : sensorIds) {
+                    sensorToDevicePointMap.put(sensorId, deviceHierarchy);
+                }
+            }
+        }
+
+        log.info("建立了 {} 个传感器到device_point的映射关系", sensorToDevicePointMap.size());
+        return sensorToDevicePointMap;
+    }
+
+    /**
      * 获取指定字典key和类型的层级ID列表（属性值大于0）
      *
      * @param dictKey 字典key
@@ -543,8 +620,10 @@ public class StatisticsServiceImpl implements IStatisticsService {
         }
 
         if (statisticalType == 1) {
-            // 统计维度：按设备报警统计
-            return alarmByReverseDeviceLevel(targetHierarchies, sensorToTargetMap, sensorHierarchyType, targetTypeId);
+            // 统计维度：按device_point报警统计
+            // 获取传感器到device_point的映射
+            Map<Long, Hierarchy> sensorToDevicePointMap = getSensorToDevicePointMapping(hierarchyId, typeIds);
+            return alarmByReverseDeviceLevel(targetHierarchies, sensorToTargetMap, sensorToDevicePointMap, sensorHierarchyType, targetTypeId);
         } else {
             // 被监测设备统计：按传感器统计
             return alarmByReverseSensorLevel(targetHierarchies, sensorToTargetMap, sensorHierarchyType, targetTypeId);
@@ -552,21 +631,45 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     /**
-     * 反向统计：按设备报警统计
+     * 反向统计：按device_point报警统计
      */
     private Map<String, Object> alarmByReverseDeviceLevel(List<Hierarchy> targetHierarchies, Map<Long, Long> sensorToTargetMap,
-            HierarchyType sensorHierarchyType, Long targetTypeId) {
-        log.info("执行反向设备报警统计");
+            Map<Long, Hierarchy> sensorToDevicePointMap, HierarchyType sensorHierarchyType, Long targetTypeId) {
+        log.info("执行反向device_point报警统计");
 
         // 获取所有传感器的报警级别
         Map<Long, Integer> sensorAlarmLevels = getSensorAlarmLevels(sensorHierarchyType.getId());
 
-        // 按目标层级分组统计传感器
-        Map<Long, List<Long>> targetToSensorMap = new HashMap<>();
-        for (Map.Entry<Long, Long> entry : sensorToTargetMap.entrySet()) {
+        // 建立device_point到传感器的映射
+        Map<Long, List<Long>> devicePointToSensorMap = new HashMap<>();
+        for (Map.Entry<Long, Hierarchy> entry : sensorToDevicePointMap.entrySet()) {
             Long sensorId = entry.getKey();
+            Hierarchy devicePoint = entry.getValue();
+            devicePointToSensorMap.computeIfAbsent(devicePoint.getId(), k -> new ArrayList<>()).add(sensorId);
+        }
+
+        // 建立device_point到目标层级的映射（通过传感器）
+        Map<Long, Long> devicePointToTargetMap = new HashMap<>();
+        for (Map.Entry<Long, List<Long>> entry : devicePointToSensorMap.entrySet()) {
+            Long devicePointId = entry.getKey();
+            List<Long> sensorIds = entry.getValue();
+            
+            // 找到这个device_point的任一传感器所属的目标层级
+            for (Long sensorId : sensorIds) {
+                Long targetId = sensorToTargetMap.get(sensorId);
+                if (targetId != null) {
+                    devicePointToTargetMap.put(devicePointId, targetId);
+                    break;
+                }
+            }
+        }
+
+        // 按目标层级分组device_point
+        Map<Long, List<Long>> targetToDevicePointMap = new HashMap<>();
+        for (Map.Entry<Long, Long> entry : devicePointToTargetMap.entrySet()) {
+            Long devicePointId = entry.getKey();
             Long targetId = entry.getValue();
-            targetToSensorMap.computeIfAbsent(targetId, k -> new ArrayList<>()).add(sensorId);
+            targetToDevicePointMap.computeIfAbsent(targetId, k -> new ArrayList<>()).add(devicePointId);
         }
 
         // 统计每个目标层级的报警情况
@@ -576,40 +679,69 @@ public class StatisticsServiceImpl implements IStatisticsService {
         int totalGeneralCount = 0;
         int totalSeriousCount = 0;
 
-        // 统计每个目标层级（确保所有目标层级都被统计，即使没有传感器）
+        // 统计每个目标层级
         for (Hierarchy targetHierarchy : targetHierarchies) {
-            List<Long> sensorsUnderTarget = targetToSensorMap.getOrDefault(targetHierarchy.getId(), new ArrayList<>());
+            List<Long> devicePointIdsUnderTarget = targetToDevicePointMap.getOrDefault(targetHierarchy.getId(), new ArrayList<>());
 
-            // 计算该目标层级下的最高报警级别
-            int maxAlarmLevel = 0;
-            for (Long sensorId : sensorsUnderTarget) {
-                Integer alarmLevel = sensorAlarmLevels.get(sensorId);
-                if (alarmLevel != null && alarmLevel > maxAlarmLevel) {
-                    maxAlarmLevel = alarmLevel;
+            // 统计该层级下的报警device_point
+            List<Map<String, Object>> alarmDevices = new ArrayList<>();
+            int hierarchyAlarmDeviceCount = 0;
+            int hierarchyGeneralCount = 0;
+            int hierarchySeriousCount = 0;
+
+            for (Long devicePointId : devicePointIdsUnderTarget) {
+                List<Long> sensorIds = devicePointToSensorMap.get(devicePointId);
+                
+                // 计算该device_point的最高报警级别
+                int maxAlarmLevel = 0;
+                for (Long sensorId : sensorIds) {
+                    Integer alarmLevel = sensorAlarmLevels.get(sensorId);
+                    if (alarmLevel != null && alarmLevel > maxAlarmLevel) {
+                        maxAlarmLevel = alarmLevel;
+                    }
                 }
-            }
 
-            // 统计计数（每个目标层级都算一个设备，无论是否有传感器）
-            totalDeviceCount++;
-            if (maxAlarmLevel > 0) {
-                totalAlarmDeviceCount++;
-                if (maxAlarmLevel == 1) {
-                    totalGeneralCount++;
-                } else if (maxAlarmLevel == 2 || maxAlarmLevel == 3) {
-                    totalSeriousCount++;
+                // 统计计数
+                if (maxAlarmLevel > 0) {
+                    hierarchyAlarmDeviceCount++;
+                    if (maxAlarmLevel == 1) {
+                        hierarchyGeneralCount++;
+                    } else if (maxAlarmLevel == 2 || maxAlarmLevel == 3) {
+                        hierarchySeriousCount++;
+                    }
+
+                    // 获取device_point信息
+                    Hierarchy devicePoint = sensorToDevicePointMap.values().stream()
+                            .filter(dp -> dp.getId().equals(devicePointId))
+                            .findFirst()
+                            .orElse(null);
+
+                    if (devicePoint != null) {
+                        Map<String, Object> alarmDevice = new HashMap<>();
+                        alarmDevice.put("id", devicePoint.getId());
+                        alarmDevice.put("name", devicePoint.getName());
+                        alarmDevice.put("typeId", devicePoint.getTypeId());
+                        alarmDevice.put("report_st", maxAlarmLevel);
+                        alarmDevices.add(alarmDevice);
+                    }
                 }
             }
 
             // 创建统计记录
             Map<String, Object> hierarchyStat = new HashMap<>();
             hierarchyStat.put("targetHierarchyName", targetHierarchy.getName());
-            hierarchyStat.put("totalDeviceCount", 1); // 每个目标层级作为一个"设备"
-            hierarchyStat.put("alarmDeviceCount", maxAlarmLevel > 0 ? 1 : 0);
-            hierarchyStat.put("generalCount", maxAlarmLevel == 1 ? 1 : 0);
-            hierarchyStat.put("seriousCount", (maxAlarmLevel == 2 || maxAlarmLevel == 3) ? 1 : 0);
-            hierarchyStat.put("alarmDevices", maxAlarmLevel > 0 ? createAlarmDeviceList(targetHierarchy, maxAlarmLevel) : new ArrayList<>());
+            hierarchyStat.put("totalDeviceCount", devicePointIdsUnderTarget.size());
+            hierarchyStat.put("alarmDeviceCount", hierarchyAlarmDeviceCount);
+            hierarchyStat.put("generalCount", hierarchyGeneralCount);
+            hierarchyStat.put("seriousCount", hierarchySeriousCount);
+            hierarchyStat.put("alarmDevices", alarmDevices);
 
             statistics.add(hierarchyStat);
+            
+            totalDeviceCount += devicePointIdsUnderTarget.size();
+            totalAlarmDeviceCount += hierarchyAlarmDeviceCount;
+            totalGeneralCount += hierarchyGeneralCount;
+            totalSeriousCount += hierarchySeriousCount;
         }
 
         // 构造返回结果
@@ -622,6 +754,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
         result.put("totalGeneralCount", totalGeneralCount);
         result.put("totalSeriousCount", totalSeriousCount);
         result.put("statistics", statistics);
+
+        log.info("反向device_point统计完成：共{}个device_point，{}个报警device_point（一般{}个，严重{}个）",
+                totalDeviceCount, totalAlarmDeviceCount, totalGeneralCount, totalSeriousCount);
 
         return result;
     }
@@ -834,57 +969,43 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     /**
-     * 创建报警设备列表
-     */
-    private List<Map<String, Object>> createAlarmDeviceList(Hierarchy targetHierarchy, int alarmLevel) {
-        List<Map<String, Object>> alarmDevices = new ArrayList<>();
-        Map<String, Object> alarmDevice = new HashMap<>();
-        alarmDevice.put("id", targetHierarchy.getId());
-        alarmDevice.put("name", targetHierarchy.getName());
-        alarmDevice.put("typeId", targetHierarchy.getTypeId());
-        alarmDevice.put("report_st", alarmLevel);
-        alarmDevices.add(alarmDevice);
-        return alarmDevices;
-    }
-
-    /**
      * 统计维度：按目标层级统计设备报警情况
-     * 每个目标层级下统计设备，设备的report_st等于该设备及其递归子集关联的所有传感器中的最高报警等级
+     * 每个目标层级下统计device_point，device_point的report_st等于该设备及其递归子集关联的所有传感器中的最高报警等级
      */
     private Map<String, Object> alarmByDeviceLevel(List<Hierarchy> targetHierarchies, HierarchyType sensorHierarchyType,
             Long targetTypeId) {
-        log.info("执行按目标层级设备报警统计 - 目标层级数: {}", targetHierarchies.size());
+        log.info("执行按目标层级设备点报警统计 - 目标层级数: {}", targetHierarchies.size());
 
-        // 获取设备类型（typeKey = "device"）
-        HierarchyType deviceHierarchyType = getHierarchyTypeByKey("device");
-        if (deviceHierarchyType == null) {
-            log.warn("未找到device类型");
+        // 获取设备点类型（typeKey = "device_point"）
+        HierarchyType devicePointHierarchyType = getHierarchyTypeByKey("device_point");
+        if (devicePointHierarchyType == null) {
+            log.warn("未找到device_point类型");
             return createEmptyResult(targetTypeId, 1);
         }
 
         // 获取所有传感器的报警状态（report_st值）
         Map<Long, Integer> sensorAlarmLevels = getSensorAlarmLevels(sensorHierarchyType.getId());
 
-        // 统计每个目标层级下的设备报警情况
+        // 统计每个目标层级下的设备点报警情况
         List<Map<String, Object>> statistics = new ArrayList<>();
         int totalDeviceCount = 0;
         int totalAlarmDeviceCount = 0;
-        int totalGeneralCount = 0; // 全局一般报警设备数量
-        int totalSeriousCount = 0; // 全局严重报警设备数量
+        int totalGeneralCount = 0; // 全局一般报警设备点数量
+        int totalSeriousCount = 0; // 全局严重报警设备点数量
 
         for (Hierarchy targetHierarchy : targetHierarchies) {
-            // 查找该目标层级下的所有device类型的层级
+            // 查找该目标层级下的所有device_point类型的层级
             List<Hierarchy> devicesUnderTarget = findDevicesUnderTarget(targetHierarchy.getId(),
-                    deviceHierarchyType.getId());
+                    devicePointHierarchyType.getId());
 
-            // 统计该层级下的报警设备
+            // 统计该层级下的报警设备点
             List<Map<String, Object>> alarmDevices = new ArrayList<>();
             int hierarchyAlarmDeviceCount = 0;
-            int hierarchyGeneralCount = 0; // 该层级一般报警设备数量
-            int hierarchySeriousCount = 0; // 该层级严重报警设备数量
+            int hierarchyGeneralCount = 0; // 该层级一般报警设备点数量
+            int hierarchySeriousCount = 0; // 该层级严重报警设备点数量
 
             for (Hierarchy device : devicesUnderTarget) {
-                // 计算该设备及其递归子集中关联的所有传感器的最高报警级别
+                // 计算该设备点及其递归子集中关联的所有传感器的最高报警级别
                 int maxAlarmLevel = getDeviceMaxAlarmLevel(device.getId(), sensorAlarmLevels);
 
                 if (maxAlarmLevel > 0) {
@@ -930,7 +1051,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         result.put("totalSeriousCount", totalSeriousCount);
         result.put("statistics", statistics);
 
-        log.info("按目标层级设备统计完成：共{}个层级，{}个设备，{}个报警设备（一般{}个，严重{}个）",
+        log.info("按目标层级设备点统计完成：共{}个层级，{}个设备点，{}个报警设备点（一般{}个，严重{}个）",
                 targetHierarchies.size(), totalDeviceCount, totalAlarmDeviceCount, totalGeneralCount,
                 totalSeriousCount);
 
