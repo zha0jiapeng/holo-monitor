@@ -450,7 +450,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         if (matchedIds.isEmpty()) {
             return new ArrayList<>();
         }
-        return hierarchyService.selectByIds(matchedIds, false);
+        return hierarchyService.selectByIds(matchedIds, true);
     }
 
     @Override
@@ -474,19 +474,19 @@ public class StatisticsServiceImpl implements IStatisticsService {
             return alarmByReverseStatistics(hierarchyId, targetTypeId, statisticalType, sensorHierarchyType, hierarchyType);
         } else {
             // 非设备类型：使用原有逻辑
-        List<Hierarchy> targetHierarchies = getTargetHierarchies(hierarchyId, targetTypeId);
-        if (targetHierarchies.isEmpty()) {
-            return createEmptyResult(targetTypeId, statisticalType);
-        }
+            List<Hierarchy> targetHierarchies = getTargetHierarchies(hierarchyId, targetTypeId);
+            if (targetHierarchies.isEmpty()) {
+                return createEmptyResult(targetTypeId, statisticalType);
+            }
 
-        log.info("找到 {} 个目标层级进行统计", targetHierarchies.size());
+            log.info("找到 {} 个目标层级进行统计", targetHierarchies.size());
 
-        if (statisticalType == 1) {
-                // 统计维度：按设备关联的传感器统计
-            return alarmByDeviceLevel(targetHierarchies, sensorHierarchyType, targetTypeId);
-        } else {
-            // 被监测设备统计：按目标层级下属传感器统计
-            return alarmByMonitoredDevice(targetHierarchies, sensorHierarchyType, targetTypeId);
+            if (statisticalType == 1) {
+                    // 统计维度：按设备关联的传感器统计
+                return alarmByDeviceLevel(targetHierarchies, sensorHierarchyType, targetTypeId);
+            } else {
+                // 被监测设备统计：按目标层级下属传感器统计
+                return alarmByMonitoredDevice(targetHierarchies, sensorHierarchyType, targetTypeId);
             }
         }
     }

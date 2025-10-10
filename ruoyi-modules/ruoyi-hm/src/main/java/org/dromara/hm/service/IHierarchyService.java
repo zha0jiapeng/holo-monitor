@@ -116,6 +116,15 @@ public interface IHierarchyService extends IService<Hierarchy> {
 
     List<HierarchyVo> selectByIds(List<Long> matchedIds,List<String> diceNames);
 
+    /**
+     * 根据ID列表查询层级，并加载指定的属性（可变参数版本）
+     *
+     * @param matchedIds 层级ID列表
+     * @param dictKeys 字典key可变参数
+     * @return 层级VO列表
+     */
+    List<HierarchyVo> selectByIds(List<Long> matchedIds, String... dictKeys);
+
     List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId,boolean showAllFlag);
 
     /**

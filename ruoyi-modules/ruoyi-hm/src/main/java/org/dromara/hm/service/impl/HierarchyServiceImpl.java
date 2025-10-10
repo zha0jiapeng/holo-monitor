@@ -750,6 +750,14 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     }
 
     @Override
+    public List<HierarchyVo> selectByIds(List<Long> matchedIds, String... dictKeys) {
+        if (dictKeys == null || dictKeys.length == 0) {
+            return baseMapper.selectVoByIds(matchedIds);
+        }
+        return selectByIds(matchedIds, Arrays.asList(dictKeys));
+    }
+
+    @Override
     public List<HierarchyVo> selectByIds(List<Long> matchedIds, List<String> diceNames) {
         List<HierarchyVo> hierarchies = baseMapper.selectVoByIds(matchedIds);
         if(diceNames!=null) {
