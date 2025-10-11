@@ -16,8 +16,6 @@ import org.dromara.hm.domain.HierarchyTypePropertyDict;
 import org.dromara.hm.domain.bo.HierarchyPropertyBo;
 import org.dromara.hm.domain.vo.HierarchyPropertyVo;
 import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
-import org.dromara.hm.domain.vo.HierarchyVo;
-import org.dromara.hm.enums.DataTypeEnum;
 import org.dromara.hm.mapper.HierarchyPropertyMapper;
 import org.dromara.hm.service.IHierarchyPropertyService;
 import org.dromara.hm.service.IHierarchyService;
@@ -271,6 +269,66 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
         wrapper.eq(HierarchyProperty::getHierarchyId, typeId)
                .eq(HierarchyProperty::getTypePropertyId, propertyDictId);
         return baseMapper.selectVoOne(wrapper);
+    }
+
+    @Override
+    public List<HierarchyPropertyVo> getPropertiesByHierarchyIdAndDictKeys(Long hierarchyId, List<String> dictKeys) {
+        if (hierarchyId == null || dictKeys == null || dictKeys.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 1. 根据字典键查询字典ID列表
+        List<HierarchyTypePropertyDict> dicts = hierarchyTypePropertyDictService.lambdaQuery()
+                .in(HierarchyTypePropertyDict::getDictKey, dictKeys)
+                .list();
+
+        if (dicts.isEmpty()) {
+            log.warn("未找到字典键对应的字典: {}", dictKeys);
+            return new ArrayList<>();
+        }
+
+        List<Long> dictIds = dicts.stream()
+                .map(HierarchyTypePropertyDict::getId)
+                .collect(Collectors.toList());
+
+        // 2. 获取层级信息，获取其类型ID
+        Hierarchy hierarchy = hierarchyService.getById(hierarchyId);
+        if (hierarchy == null) {
+            log.warn("未找到层级: {}", hierarchyId);
+            return new ArrayList<>();
+        }
+
+        // 3. 根据类型ID和字典ID查询类型属性定义
+        List<HierarchyTypeProperty> typeProperties = hierarchyTypePropertyService.lambdaQuery()
+                .eq(HierarchyTypeProperty::getTypeId, hierarchy.getTypeId())
+                .in(HierarchyTypeProperty::getPropertyDictId, dictIds)
+                .list();
+
+        if (typeProperties.isEmpty()) {
+            log.warn("未找到类型属性定义: typeId={}, dictKeys={}", hierarchy.getTypeId(), dictKeys);
+            return new ArrayList<>();
+        }
+
+        List<Long> typePropertyIds = typeProperties.stream()
+                .map(HierarchyTypeProperty::getId)
+                .collect(Collectors.toList());
+
+        // 4. 根据层级ID和类型属性ID查询属性列表
+        LambdaQueryWrapper<HierarchyProperty> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(HierarchyProperty::getHierarchyId, hierarchyId)
+               .in(HierarchyProperty::getTypePropertyId, typePropertyIds)
+               .orderByAsc(HierarchyProperty::getId);
+
+        List<HierarchyPropertyVo> result = baseMapper.selectVoList(wrapper);
+        
+        // 5. 填充类型属性信息
+        for (HierarchyPropertyVo vo : result) {
+            HierarchyTypePropertyVo typePropertyVo = hierarchyTypePropertyService.queryById(vo.getTypePropertyId());
+            vo.setTypeProperty(typePropertyVo);
+        }
+
+        log.info("根据hierarchyId={} 和 dictKeys={} 查询到 {} 条属性", hierarchyId, dictKeys, result.size());
+        return result;
     }
 
 }

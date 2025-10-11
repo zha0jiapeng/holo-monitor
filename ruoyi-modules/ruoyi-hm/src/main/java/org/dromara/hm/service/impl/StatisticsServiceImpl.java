@@ -9,6 +9,7 @@ import org.dromara.common.core.utils.sd400mp.MPIDMultipleJson;
 import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
 import org.dromara.hm.domain.*;
 import org.dromara.hm.domain.sd400mp.MPEventList;
+import org.dromara.hm.domain.vo.HierarchyPropertyVo;
 import org.dromara.hm.domain.vo.HierarchyTypeVo;
 import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.enums.DataTypeEnum;
@@ -189,7 +190,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 获取传感器到device_point的映射关系
-     * 
+     *
      * @param hierarchyId 起始层级ID
      * @param typeIds 类型ID列表（device和device_point）
      * @return Map<传感器ID, device_point的Hierarchy对象>
@@ -250,7 +251,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                     .filter(h -> h.getId().equals(property.getHierarchyId()))
                     .findFirst()
                     .orElse(null);
-            
+
             // 只处理device_point类型
             if (deviceHierarchy != null && deviceHierarchy.getTypeId().equals(devicePointType.getId())) {
                 List<Long> sensorIds = parseSensorIds(property.getPropertyValue());
@@ -653,7 +654,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         for (Map.Entry<Long, List<Long>> entry : devicePointToSensorMap.entrySet()) {
             Long devicePointId = entry.getKey();
             List<Long> sensorIds = entry.getValue();
-            
+
             // 找到这个device_point的任一传感器所属的目标层级
             for (Long sensorId : sensorIds) {
                 Long targetId = sensorToTargetMap.get(sensorId);
@@ -691,7 +692,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
             for (Long devicePointId : devicePointIdsUnderTarget) {
                 List<Long> sensorIds = devicePointToSensorMap.get(devicePointId);
-                
+
                 // 计算该device_point的最高报警级别
                 int maxAlarmLevel = 0;
                 for (Long sensorId : sensorIds) {
@@ -737,7 +738,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
             hierarchyStat.put("alarmDevices", alarmDevices);
 
             statistics.add(hierarchyStat);
-            
+
             totalDeviceCount += devicePointIdsUnderTarget.size();
             totalAlarmDeviceCount += hierarchyAlarmDeviceCount;
             totalGeneralCount += hierarchyGeneralCount;
@@ -1694,8 +1695,22 @@ public class StatisticsServiceImpl implements IStatisticsService {
             }
 
             // 3. 获取hierarchyId下所有传感器
-            List<Hierarchy> sensors = getSensorsForHierarchy(hierarchyId, sensorHierarchyType.getId());
-            log.info("找到 {} 个传感器", sensors.size());
+            Long sensorTypeId = sensorHierarchyType.getId();
+            List<String> devices = List.of("device_group", "device", "device_point");
+            Hierarchy hierarchy = hierarchyService.getById(hierarchyId);
+            HierarchyType hierarchyType = hierarchyTypeService.getById(hierarchy.getTypeId());
+
+            List<HierarchyPropertyVo> properties = hierarchyPropertyService.getPropertiesByHierarchyIdAndDictKeys(hierarchyId, List.of("branch", "power_plant"));
+
+            List<Hierarchy> sensors;
+
+            if (devices.contains(hierarchyType.getTypeKey())) {
+                // 设备类型：通过属性绑定查找传感器
+                sensors = getSensorsByPropertyBinding(hierarchyId, hierarchyType, sensorTypeId);
+            } else {
+                // 其他类型：递归查找传感器
+                sensors = findAllSensorsUnderTarget(hierarchyId, sensorTypeId);
+            }
 
             if (sensors.isEmpty()) {
                 result.put("totalEvents", 0);
@@ -1706,9 +1721,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
             // 4. 通过SD400MPUtils.testpointFind将code转换为id
             List<Long> testpointIds = new ArrayList<>();
-            log.info("开始转换传感器code为测点ID，传感器详情：");
             for (Hierarchy sensor : sensors) {
-                log.info("传感器: id={}, name={}, code={}", sensor.getId(), sensor.getName(), sensor.getCode());
                 if (sensor.getCode() != null && !sensor.getCode().trim().isEmpty()) {
                     try {
                         JSONObject response = SD400MPUtils.testpointFind(sensor.getCode());
@@ -1716,12 +1729,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                             JSONObject data = response.getJSONObject("data");
                             if (data != null && data.getStr("id") != null) {
                                 testpointIds.add(Long.valueOf(data.getStr("id")));
-                                log.info("成功转换 - 传感器 {} (code: {}) → 测点ID: {}",
-                                        sensor.getName(), sensor.getCode(), data.getStr("id"));
                             }
-                        } else {
-                            log.warn("转换失败 - 传感器 {} (code: {}) 未找到对应的测点ID，响应: {}",
-                                    sensor.getName(), sensor.getCode(), response);
                         }
                     } catch (Exception e) {
                         log.error("转换异常 - 传感器 {} (code: {}) 时发生异常", sensor.getName(), sensor.getCode(), e);
@@ -1782,6 +1790,48 @@ public class StatisticsServiceImpl implements IStatisticsService {
                             eventInfo.put("state", event.getState());
                             if(event.getState()==null || event.getState()==0){
                                 return;
+                            }
+
+                            // 批量处理属性：将dictKey对应的层级名称放入eventInfo
+                            Set<String> targetDictKeys = Set.of("branch", "power_plant");
+                            
+                            // 收集需要查询的层级ID
+                            Map<String, Long> dictKeyToHierarchyIdMap = properties.stream()
+                                .filter(property -> property.getTypeProperty() != null 
+                                    && property.getTypeProperty().getDict() != null 
+                                    && targetDictKeys.contains(property.getTypeProperty().getDict().getDictKey())
+                                    && property.getPropertyValue() != null)
+                                .collect(Collectors.toMap(
+                                    property -> property.getTypeProperty().getDict().getDictKey(),
+                                    property -> {
+                                        try {
+                                            return Long.parseLong(property.getPropertyValue());
+                                        } catch (NumberFormatException e) {
+                                            log.warn("无效的属性值: {}", property.getPropertyValue());
+                                            return null;
+                                        }
+                                    },
+                                    (v1, v2) -> v1 // 如果有重复key，保留第一个
+                                ));
+                            
+                            // 批量查询层级信息
+                            if (!dictKeyToHierarchyIdMap.isEmpty()) {
+                                List<Long> hierarchyIds = dictKeyToHierarchyIdMap.values().stream()
+                                    .filter(Objects::nonNull)
+                                    .collect(Collectors.toList());
+                                
+                                if (!hierarchyIds.isEmpty()) {
+                                    List<Hierarchy> hierarchies = hierarchyService.listByIds(hierarchyIds);
+                                    Map<Long, String> hierarchyNameMap = hierarchies.stream()
+                                        .collect(Collectors.toMap(Hierarchy::getId, Hierarchy::getName));
+                                    
+                                    // 将层级名称放入eventInfo
+                                    dictKeyToHierarchyIdMap.forEach((dictKey, hId) -> {
+                                        if (hId != null && hierarchyNameMap.containsKey(hId)) {
+                                            eventInfo.put(dictKey, hierarchyNameMap.get(hId));
+                                        }
+                                    });
+                                }
                             }
 
                             // 处理开始时间
@@ -1856,8 +1906,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     @Override
     public List<HierarchyVo> sensorList(Long hierarchyId, boolean showAllFlag) {
-        List<HierarchyVo> sensorListByDeviceId = hierarchyService.getSensorListByDeviceId(hierarchyId, showAllFlag);
-        return sensorListByDeviceId;
+        return hierarchyService.getSensorListByDeviceId(hierarchyId, showAllFlag);
     }
 
     @Override

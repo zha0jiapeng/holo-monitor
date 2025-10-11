@@ -3,14 +3,12 @@ package org.dromara.hm.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.mybatis.core.page.TableDataInfo;
-import org.dromara.hm.domain.Hierarchy;
 import org.dromara.hm.domain.HierarchyProperty;
 import org.dromara.hm.domain.bo.HierarchyPropertyBo;
 import org.dromara.hm.domain.vo.HierarchyPropertyVo;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 层级属性Service接口
@@ -89,6 +87,15 @@ public interface IHierarchyPropertyService extends IService<HierarchyProperty> {
      * @return 属性对象
      */
     HierarchyPropertyVo getPropertyByTypeIdAndName(Long typeId, String propertyDictId);
+
+    /**
+     * 根据层级ID和字典键列表查询属性列表
+     *
+     * @param hierarchyId 层级ID
+     * @param dictKeys 字典键列表
+     * @return 属性列表
+     */
+    List<HierarchyPropertyVo> getPropertiesByHierarchyIdAndDictKeys(Long hierarchyId, List<String> dictKeys);
 
     Boolean bindSensers(HierarchyPropertyBo bo);
 }
