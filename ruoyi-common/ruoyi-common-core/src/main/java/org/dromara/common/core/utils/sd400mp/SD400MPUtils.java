@@ -236,7 +236,6 @@ public class SD400MPUtils {
         dataMap.put("include", tags);
         dataMap.put("timestamp", timestamp);
         map.put("data", dataMap);
-        System.out.println(JSONUtil.toJsonStr(map));
         String body = HttpUtil.createPost(URI + "/api/data")
             .body(JSONUtil.toJsonStr(map))
             .execute().body();

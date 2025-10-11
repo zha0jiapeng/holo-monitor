@@ -227,25 +227,91 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     private void createHiddenPropertiesFromParent(Long currentHierarchyId, Long parentHierarchyId, List<HierarchyProperty> extraProperties) {
         Hierarchy parentHierarchy = baseMapper.selectById(parentHierarchyId);
         if (parentHierarchy == null) return;
+        
         List<HierarchyTypeProperty> parentTypeProperties = hierarchyTypePropertyMapper.selectList(
             Wrappers.<HierarchyTypeProperty>lambdaQuery().eq(HierarchyTypeProperty::getTypeId, parentHierarchy.getTypeId())
         );
+        
+        // 收集需要递归处理的关联层级ID
+        Set<Long> relatedHierarchyIds = new HashSet<>();
+        
         for (HierarchyTypeProperty parentTypeProperty : parentTypeProperties) {
-            createHiddenPropertyIfNeeded(currentHierarchyId, parentHierarchyId, parentTypeProperty, extraProperties);
+            Long relatedId = createHiddenPropertyIfNeeded(currentHierarchyId, parentHierarchyId, parentTypeProperty, extraProperties);
+            if (relatedId != null) {
+                relatedHierarchyIds.add(relatedId);
+            }
         }
+        
+        // 递归处理父级
         if (parentHierarchy.getParentId() != null) {
             createHiddenPropertiesFromParent(currentHierarchyId, parentHierarchy.getParentId(), extraProperties);
+        }
+        
+        // 递归处理属性值指向的层级（例如从city继承province）
+        for (Long relatedId : relatedHierarchyIds) {
+            createHiddenPropertiesFromRelatedHierarchy(currentHierarchyId, relatedId, extraProperties);
+        }
+    }
+    
+    /**
+     * 从关联的层级继承隐藏属性
+     * 例如：传感器关联到unit，unit有city属性，需要从city继承province
+     *
+     * @param currentHierarchyId 当前层级ID
+     * @param relatedHierarchyId 关联的层级ID
+     * @param extraProperties 额外属性列表
+     */
+    private void createHiddenPropertiesFromRelatedHierarchy(Long currentHierarchyId, Long relatedHierarchyId, List<HierarchyProperty> extraProperties) {
+        Hierarchy relatedHierarchy = baseMapper.selectById(relatedHierarchyId);
+        if (relatedHierarchy == null) return;
+        
+        // 查询关联层级的所有属性（包括显式和隐藏）
+        List<HierarchyProperty> relatedProperties = hierarchyPropertyMapper.selectList(
+            Wrappers.<HierarchyProperty>lambdaQuery()
+                .eq(HierarchyProperty::getHierarchyId, relatedHierarchyId)
+        );
+        
+        for (HierarchyProperty relatedProperty : relatedProperties) {
+            HierarchyTypeProperty typeProperty = hierarchyTypePropertyMapper.selectById(relatedProperty.getTypePropertyId());
+            if (typeProperty == null) continue;
+            
+            HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(typeProperty.getPropertyDictId());
+            // 只处理层级类型属性（data_type=1001）
+            if (dictVo != null && dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
+                // 检查是否已经存在该属性
+                boolean exists = extraProperties.stream()
+                    .anyMatch(p -> p.getTypePropertyId().equals(relatedProperty.getTypePropertyId()));
+                
+                if (!exists) {
+                    HierarchyProperty hidden = new HierarchyProperty();
+                    hidden.setHierarchyId(currentHierarchyId);
+                    hidden.setTypePropertyId(typeProperty.getId());
+                    hidden.setPropertyValue(relatedProperty.getPropertyValue());
+                    hidden.setScope(0); // 隐藏属性
+                    extraProperties.add(hidden);
+                    
+                    // 递归继承（例如从province继承其他属性）
+                    try {
+                        Long nextRelatedId = Long.valueOf(relatedProperty.getPropertyValue());
+                        createHiddenPropertiesFromRelatedHierarchy(currentHierarchyId, nextRelatedId, extraProperties);
+                    } catch (NumberFormatException e) {
+                        // 忽略无效的层级ID
+                    }
+                }
+            }
         }
     }
 
     /**
      * 如需要则创建隐藏属性
+     * 
+     * @return 返回属性值指向的层级ID，如果不是层级类型属性则返回null
      */
-    private void createHiddenPropertyIfNeeded(Long currentHierarchyId, Long parentHierarchyId,
+    private Long createHiddenPropertyIfNeeded(Long currentHierarchyId, Long parentHierarchyId,
                                               HierarchyTypeProperty parentTypeProperty, List<HierarchyProperty> extraProperties) {
         HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(parentTypeProperty.getPropertyDictId());
         if (dictVo == null || !dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
-            return;
+            return null;
         }
 
         // 查找父级层级的这个属性值
@@ -262,7 +328,15 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             hidden.setPropertyValue(parentProperty.getPropertyValue());
             hidden.setScope(0);
             extraProperties.add(hidden);
+            
+            // 返回属性值指向的层级ID，用于后续递归处理
+            try {
+                return Long.valueOf(parentProperty.getPropertyValue());
+            } catch (NumberFormatException e) {
+                return null;
+            }
         }
+        return null;
     }
 
     /**
@@ -954,52 +1028,68 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                     Object online = data.getByPath("data.groups[0].online");
                     if (online != null) {
                         JSONArray onlines = (JSONArray) online;
-                        boolean addFlag = true;
                         boolean magFlag = false;
                         String value = "";
                         String valueKey = "";
                         String au = "";
+                        Integer alarmType = 0; // 默认为0（无报警）
+
+                        // 第一遍循环：提取所有需要的数据
                         for (Object o : onlines) {
                             JSONObject item = (JSONObject) o;
-                            if (!showAllFlag && "sys:st".equals(item.getStr("key"))) {
-                                String val = item.getStr("val");
-                                if (!"0".equals(val)) {
-                                    addFlag = false;
-                                    break;
+                            String key = item.getStr("key");
+                            String val = item.getStr("val");
+
+                            // 提取 sys:st 的值并赋值给 alarmType
+                            if ("sys:st".equals(key)) {
+                                try {
+                                    alarmType = Integer.parseInt(val);
+                                } catch (NumberFormatException e) {
+                                    log.warn("传感器{}的sys:st值无效: {}", sensorVo.getCode(), val);
+                                    alarmType = 0;
                                 }
                             }
-                            if("mont/pd/mag".equals(item.getStr("key")) ){
-                                String val = item.getStr("val");
+
+                            if("mont/pd/mag".equals(key)){
                                 value = new BigDecimal(val).setScale(1, RoundingMode.HALF_UP).toString();
                                 magFlag = true;
                             }
-                            if("custom:SF6Press@20".equals(item.getStr("key")) ){
-                                String val = item.getStr("val");
+                            if("custom:SF6Press@20".equals(key)){
                                 value = new BigDecimal(val).setScale(1, RoundingMode.HALF_UP).toString();
-                                valueKey = item.getStr("key");
+                                valueKey = key;
                             }
-                            if("mont/pd/au".equals(item.getStr("key")) ){
-                                au = UnitEnum.getByCode(Integer.parseInt(item.getStr("val"))).getSymbol();
+                            if("mont/pd/au".equals(key)){
+                                au = UnitEnum.getByCode(Integer.parseInt(val)).getSymbol();
                             }
                         }
-                        if (addFlag) {
-                            sensorVo.setDataSet(onlines);
-                            if(magFlag) {
-                                sensorVo.setShowValue(value + au);
-                            }else{
-                                JSONObject tagJson = SD400MPUtils.tagJson();
-                                JSONArray jsonArray = tagJson.getJSONObject("data").getJSONArray("items");
-                                for (Object o : jsonArray) {
-                                    JSONObject jsonObject = (JSONObject) o;
-                                    if(jsonObject.getStr("key").equals(valueKey)){
-                                        au = jsonObject.get("units").toString();
-                                        break;
-                                    }
+
+                        // 根据 showAllFlag 进行过滤
+                        // showAllFlag=true: 显示全部传感器
+                        // showAllFlag=false: 只显示报警的传感器(alarmType > 0)
+                        if (!showAllFlag && alarmType == 0) {
+                            return null; // 不是报警状态，跳过
+                        }
+
+                        // 设置 dataSet 和 alarmType
+                        sensorVo.setDataSet(onlines);
+                        sensorVo.setAlarmType(alarmType);
+
+                        // 设置显示值
+                        if(magFlag) {
+                            sensorVo.setShowValue(value + au);
+                        }else{
+                            JSONObject tagJson = SD400MPUtils.tagJson();
+                            JSONArray jsonArray = tagJson.getJSONObject("data").getJSONArray("items");
+                            for (Object o : jsonArray) {
+                                JSONObject jsonObject = (JSONObject) o;
+                                if(jsonObject.getStr("key").equals(valueKey)){
+                                    au = jsonObject.get("units").toString();
+                                    break;
                                 }
-                                sensorVo.setShowValue(value + au);
                             }
-                            return sensorVo;
+                            sensorVo.setShowValue(value + au);
                         }
+                        return sensorVo;
                     }
                 }
             }
