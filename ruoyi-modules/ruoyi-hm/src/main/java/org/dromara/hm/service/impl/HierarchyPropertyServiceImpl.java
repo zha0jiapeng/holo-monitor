@@ -300,7 +300,7 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
 
         // 3. 根据类型ID和字典ID查询类型属性定义
         List<HierarchyTypeProperty> typeProperties = hierarchyTypePropertyService.lambdaQuery()
-                .eq(HierarchyTypeProperty::getTypeId, hierarchy.getTypeId())
+                //.eq(HierarchyTypeProperty::getTypeId, hierarchy.getTypeId())
                 .in(HierarchyTypeProperty::getPropertyDictId, dictIds)
                 .list();
 
@@ -320,7 +320,7 @@ public class HierarchyPropertyServiceImpl extends ServiceImpl<HierarchyPropertyM
                .orderByAsc(HierarchyProperty::getId);
 
         List<HierarchyPropertyVo> result = baseMapper.selectVoList(wrapper);
-        
+
         // 5. 填充类型属性信息
         for (HierarchyPropertyVo vo : result) {
             HierarchyTypePropertyVo typePropertyVo = hierarchyTypePropertyService.queryById(vo.getTypePropertyId());
