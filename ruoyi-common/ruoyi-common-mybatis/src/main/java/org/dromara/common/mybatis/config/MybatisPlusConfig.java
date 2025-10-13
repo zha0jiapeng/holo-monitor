@@ -157,13 +157,6 @@ public class MybatisPlusConfig {
                 // 获取所有已加载的Mapper语句
                 Collection<String> mappedStatementNames = configuration.getMappedStatementNames();
                 log.info("MyBatis Mapper预热完成，共加载 {} 个Mapper语句", mappedStatementNames.size());
-                
-                // 验证关键Mapper是否存在（可选，用于启动时快速发现问题）
-                if (!configuration.hasStatement("org.dromara.system.mapper.SysRoleMapper.selectRolesByUserId")) {
-                    log.warn("警告：关键Mapper语句 'org.dromara.system.mapper.SysRoleMapper.selectRolesByUserId' 未找到！");
-                } else {
-                    log.info("关键Mapper验证通过：SysRoleMapper.selectRolesByUserId 已成功加载");
-                }
             } catch (Exception e) {
                 log.error("MyBatis Mapper预热失败", e);
             }

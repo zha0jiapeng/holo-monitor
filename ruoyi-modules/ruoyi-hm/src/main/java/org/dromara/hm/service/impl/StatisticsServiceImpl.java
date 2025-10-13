@@ -1,5 +1,6 @@
 package org.dromara.hm.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.json.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -10,6 +11,8 @@ import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
 import org.dromara.hm.domain.*;
 import org.dromara.hm.domain.sd400mp.MPEventList;
 import org.dromara.hm.domain.vo.HierarchyPropertyVo;
+import org.dromara.hm.domain.vo.HierarchyTypePropertyDictVo;
+import org.dromara.hm.domain.vo.HierarchyTypePropertyVo;
 import org.dromara.hm.domain.vo.HierarchyTypeVo;
 import org.dromara.hm.domain.vo.HierarchyVo;
 import org.dromara.hm.enums.DataTypeEnum;
@@ -20,6 +23,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -1533,7 +1537,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
      */
     private Map<Long, String> getSortValuesForHierarchies(List<Long> hierarchyIds) {
         Map<Long, String> sortMap = new HashMap<>();
-        
+
         if (hierarchyIds == null || hierarchyIds.isEmpty()) {
             return sortMap;
         }
@@ -1813,6 +1817,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     @Override
     public Map<String, Object> alarmList(Long hierarchyId) {
+        long methodStartTime = System.currentTimeMillis();
         Map<String, Object> result = new HashMap<>();
 
         try {
@@ -1835,12 +1840,11 @@ public class StatisticsServiceImpl implements IStatisticsService {
             }
 
             // 3. 获取hierarchyId下所有传感器
+            long step3Start = System.currentTimeMillis();
             Long sensorTypeId = sensorHierarchyType.getId();
             List<String> devices = List.of("device_group", "device", "device_point");
             Hierarchy hierarchy = hierarchyService.getById(hierarchyId);
             HierarchyType hierarchyType = hierarchyTypeService.getById(hierarchy.getTypeId());
-
-            List<HierarchyPropertyVo> properties = hierarchyPropertyService.getPropertiesByHierarchyIdAndDictKeys(hierarchyId, List.of("branch", "power_plant"));
 
             List<Hierarchy> sensors;
 
@@ -1851,6 +1855,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 // 其他类型：递归查找传感器
                 sensors = findAllSensorsUnderTarget(hierarchyId, sensorTypeId);
             }
+            log.info("步骤3-查找传感器耗时: {}ms, 找到{}个传感器", System.currentTimeMillis() - step3Start, sensors.size());
 
             if (sensors.isEmpty()) {
                 result.put("totalEvents", 0);
@@ -1859,23 +1864,91 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 return result;
             }
 
-            // 4. 通过SD400MPUtils.testpointFind将code转换为id
-            List<Long> testpointIds = new ArrayList<>();
-            for (Hierarchy sensor : sensors) {
-                if (sensor.getCode() != null && !sensor.getCode().trim().isEmpty()) {
+            // 4. 通过SD400MPUtils.testpointFind将code转换为id，并建立testpointId到sensor的映射（并行优化）
+            long step4Start = System.currentTimeMillis();
+            List<Long> testpointIds = Collections.synchronizedList(new ArrayList<>());
+            Map<Long, Hierarchy> testpointIdToSensorMap = new ConcurrentHashMap<>();
+
+            // 使用并行流优化外部接口调用
+            sensors.parallelStream()
+                .filter(sensor -> sensor.getCode() != null && !sensor.getCode().trim().isEmpty())
+                .forEach(sensor -> {
                     try {
                         JSONObject response = SD400MPUtils.testpointFind(sensor.getCode());
                         if (response != null && response.getInt("code") == 200) {
                             JSONObject data = response.getJSONObject("data");
                             if (data != null && data.getStr("id") != null) {
-                                testpointIds.add(Long.valueOf(data.getStr("id")));
+                                Long testpointId = Long.valueOf(data.getStr("id"));
+                                testpointIds.add(testpointId);
+                                testpointIdToSensorMap.put(testpointId, sensor);
                             }
                         }
                     } catch (Exception e) {
                         log.error("转换异常 - 传感器 {} (code: {}) 时发生异常", sensor.getName(), sensor.getCode(), e);
                     }
+                });
+            log.info("步骤4-testpointFind并行调用耗时: {}ms, 转换成功{}个", System.currentTimeMillis() - step4Start, testpointIds.size());
+
+            // 5. 批量查询所有sensor的branch和power_plant属性（一次性批量查询优化）
+            long step5Start = System.currentTimeMillis();
+            List<Long> sensorIds = new ArrayList<>(testpointIdToSensorMap.values().stream()
+                .map(Hierarchy::getId)
+                .collect(Collectors.toSet()));
+            Map<Long, Map<String, String>> sensorPropertiesMap = new HashMap<>(); // sensorId -> {dictKey -> hierarchyName}
+
+            if (!sensorIds.isEmpty()) {
+                // 一次性批量查询所有sensor的属性（使用MyBatis-Plus的in查询）
+                List<HierarchyPropertyVo> allSensorProperties = batchQueryPropertiesByDictKeys(sensorIds, List.of("branch", "power_plant","sensor_type"));
+                log.info("步骤5.1-批量查询{}个sensor的属性耗时: {}ms, 查到{}条属性",
+                    sensorIds.size(), System.currentTimeMillis() - step5Start, allSensorProperties.size());
+
+                // 收集所有需要查询的层级ID
+                long step5_2Start = System.currentTimeMillis();
+                Set<Long> hierarchyIdsToQuery = allSensorProperties.stream()
+                    .filter(property -> property.getPropertyValue() != null)
+                    .map(property -> {
+                        try {
+                            return Long.parseLong(property.getPropertyValue());
+                        } catch (NumberFormatException e) {
+                            log.warn("无效的属性值: {}", property.getPropertyValue());
+                            return null;
+                        }
+                    })
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+
+                // 批量查询层级信息
+                Map<Long, String> hierarchyNameMap = new HashMap<>();
+                if (!hierarchyIdsToQuery.isEmpty()) {
+                    List<Hierarchy> hierarchies = hierarchyService.listByIds(hierarchyIdsToQuery);
+                    hierarchyNameMap = hierarchies.stream()
+                        .collect(Collectors.toMap(Hierarchy::getId, Hierarchy::getName));
                 }
+                log.info("步骤5.2-批量查询层级名称耗时: {}ms, 查到{}个层级",
+                    System.currentTimeMillis() - step5_2Start, hierarchyNameMap.size());
+
+                // 构建sensorId到属性的映射
+                Map<Long, String> finalHierarchyNameMap = hierarchyNameMap;
+                allSensorProperties.forEach(property -> {
+                    Long sensorId = property.getHierarchyId();
+                    String dictKey = property.getTypeProperty().getDict().getDictKey();
+                    String propertyValue = property.getPropertyValue();
+
+                    if (propertyValue != null) {
+                        try {
+                            Long propHierarchyId = Long.parseLong(propertyValue);
+                            String hierarchyName = finalHierarchyNameMap.get(propHierarchyId);
+                            if (hierarchyName != null) {
+                                sensorPropertiesMap.computeIfAbsent(sensorId, k -> new HashMap<>())
+                                    .put(dictKey, hierarchyName);
+                            }
+                        } catch (NumberFormatException e) {
+                            log.warn("无效的属性值: {}", propertyValue);
+                        }
+                    }
+                });
             }
+            log.info("步骤5-批量查询属性总耗时: {}ms", System.currentTimeMillis() - step5Start);
 
             if (testpointIds.isEmpty()) {
                 result.put("totalEvents", 0);
@@ -1884,15 +1957,19 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 return result;
             }
 
-            // 5. 创建MPIDMultipleJson对象
+            // 6. 创建MPIDMultipleJson对象
             MPIDMultipleJson mpidMultipleJson = MPIDMultipleJson.create(testpointIds);
 
-            // 6. 调用SD400MPUtils.events获取事件数据 (idEquipment=1)
+            // 7. 调用SD400MPUtils.events获取事件数据 (idEquipment=1)
+            long step7Start = System.currentTimeMillis();
             JSONObject events = SD400MPUtils.events("1", fromTime, toTime, mpidMultipleJson, true);
+            log.info("步骤7-调用SD400MPUtils.events耗时: {}ms", System.currentTimeMillis() - step7Start);
 
-            // 7. 解析events数据
+            // 8. 解析events数据
             if (events != null && events.getInt("code") == 200) {
+                long step8Start = System.currentTimeMillis();
                 MPEventList eventList = eventParserService.parseEvents(events);
+                log.info("步骤8-解析events数据耗时: {}ms", System.currentTimeMillis() - step8Start);
                 if (eventList != null) {
 
 //                    // 8. 构建返回结果，避免循环引用
@@ -1911,7 +1988,8 @@ public class StatisticsServiceImpl implements IStatisticsService {
 //                     });
 //                     result.put("stateStatistics", stateStatistics);
 
-                    // 不再分组，将所有事件合并到一个列表中，添加分组key作为事件属性
+                    // 9. 不再分组，将所有事件合并到一个列表中，添加分组key作为事件属性
+                    long step9Start = System.currentTimeMillis();
                     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                     List<Map<String, Object>> allEvents = new ArrayList<>();
 
@@ -1932,44 +2010,18 @@ public class StatisticsServiceImpl implements IStatisticsService {
                                 return;
                             }
 
-                            // 批量处理属性：将dictKey对应的层级名称放入eventInfo
-                            Set<String> targetDictKeys = Set.of("branch", "power_plant");
-                            
-                            // 收集需要查询的层级ID
-                            Map<String, Long> dictKeyToHierarchyIdMap = properties.stream()
-                                .filter(property -> property.getTypeProperty() != null 
-                                    && property.getTypeProperty().getDict() != null 
-                                    && targetDictKeys.contains(property.getTypeProperty().getDict().getDictKey())
-                                    && property.getPropertyValue() != null)
-                                .collect(Collectors.toMap(
-                                    property -> property.getTypeProperty().getDict().getDictKey(),
-                                    property -> {
-                                        try {
-                                            return Long.parseLong(property.getPropertyValue());
-                                        } catch (NumberFormatException e) {
-                                            log.warn("无效的属性值: {}", property.getPropertyValue());
-                                            return null;
-                                        }
-                                    },
-                                    (v1, v2) -> v1 // 如果有重复key，保留第一个
-                                ));
-                            
-                            // 批量查询层级信息
-                            if (!dictKeyToHierarchyIdMap.isEmpty()) {
-                                List<Long> hierarchyIds = dictKeyToHierarchyIdMap.values().stream()
-                                    .filter(Objects::nonNull)
-                                    .collect(Collectors.toList());
-                                
-                                if (!hierarchyIds.isEmpty()) {
-                                    List<Hierarchy> hierarchies = hierarchyService.listByIds(hierarchyIds);
-                                    Map<Long, String> hierarchyNameMap = hierarchies.stream()
-                                        .collect(Collectors.toMap(Hierarchy::getId, Hierarchy::getName));
-                                    
-                                    // 将层级名称放入eventInfo
-                                    dictKeyToHierarchyIdMap.forEach((dictKey, hId) -> {
-                                        if (hId != null && hierarchyNameMap.containsKey(hId)) {
-                                            eventInfo.put(dictKey, hierarchyNameMap.get(hId));
-                                        }
+                            // 根据testpointId找到对应的sensor，然后使用该sensor的属性
+                            Long testpointId = event.getTestpointId();
+                            if (testpointId != null && testpointIdToSensorMap.containsKey(testpointId)) {
+                                Hierarchy sensor = testpointIdToSensorMap.get(testpointId);
+                                Long sensorId = sensor.getId();
+
+                                // 从预先查询好的sensorPropertiesMap中获取该sensor的属性
+                                if (sensorPropertiesMap.containsKey(sensorId)) {
+                                    Map<String, String> properties = sensorPropertiesMap.get(sensorId);
+                                    // 将branch和power_plant属性放入eventInfo
+                                    properties.forEach((dictKey, hierarchyName) -> {
+                                        eventInfo.put(dictKey, hierarchyName);
                                     });
                                 }
                             }
@@ -1987,6 +2039,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                                 }
                             }
                             eventInfo.put("start", startTime);
+                            eventInfo.put("mag" , "-3.14dbm");
                             eventInfo.put("startTimestamp", event.getStart() != null ? event.getStart().getTime() : 0); // 用于排序
 
                             // 处理结束时间
@@ -2030,6 +2083,8 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
                     // 移除排序用的时间戳字段，保持数据清洁
                     allEvents.forEach(event -> event.remove("startTimestamp"));
+                    log.info("步骤9-处理和组装事件数据耗时: {}ms, 处理了{}个事件",
+                        System.currentTimeMillis() - step9Start, allEvents.size());
 
                     result.put("events", allEvents);
                     result.put("totalEvents", allEvents.size());
@@ -2041,6 +2096,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
             result.put("error", "系统异常: " + e.getMessage());
         }
 
+        log.info("alarmList接口总耗时: {}ms", System.currentTimeMillis() - methodStartTime);
         return result;
     }
 
@@ -2337,6 +2393,71 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         log.debug("设备 {} 关联了 {} 个传感器(sensors): {}", deviceId, sensorIds.size(), sensorIds);
         return sensorIds;
+    }
+
+    /**
+     * 批量查询层级属性（根据dictKey过滤）
+     *
+     * @param hierarchyIds 层级ID列表
+     * @param dictKeys 字典key列表
+     * @return 属性列表
+     */
+    private List<HierarchyPropertyVo> batchQueryPropertiesByDictKeys(List<Long> hierarchyIds, List<String> dictKeys) {
+        if (hierarchyIds == null || hierarchyIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 批量查询所有属性
+        List<HierarchyProperty> properties = hierarchyPropertyService.lambdaQuery()
+            .in(HierarchyProperty::getHierarchyId, hierarchyIds)
+            .list();
+
+        if (properties.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        // 批量查询类型属性和字典信息
+        Set<Long> typePropertyIds = properties.stream()
+            .map(HierarchyProperty::getTypePropertyId)
+            .collect(Collectors.toSet());
+
+        Map<Long, HierarchyTypeProperty> typePropertyMap = hierarchyTypePropertyService.lambdaQuery()
+            .in(HierarchyTypeProperty::getId, typePropertyIds)
+            .list()
+            .stream()
+            .collect(Collectors.toMap(HierarchyTypeProperty::getId, tp -> tp));
+
+        // 批量查询字典
+        Set<Long> dictIds = typePropertyMap.values().stream()
+            .map(HierarchyTypeProperty::getPropertyDictId)
+            .collect(Collectors.toSet());
+
+        Map<Long, HierarchyTypePropertyDict> dictMap = hierarchyTypePropertyDictService.lambdaQuery()
+            .in(HierarchyTypePropertyDict::getId, dictIds)
+            .list()
+            .stream()
+            .collect(Collectors.toMap(HierarchyTypePropertyDict::getId, dict -> dict));
+
+        // 组装VO并过滤
+        List<HierarchyPropertyVo> result = new ArrayList<>();
+        Set<String> dictKeySet = new HashSet<>(dictKeys);
+
+        for (HierarchyProperty property : properties) {
+            HierarchyTypeProperty typeProperty = typePropertyMap.get(property.getTypePropertyId());
+            if (typeProperty != null) {
+                HierarchyTypePropertyDict dict = dictMap.get(typeProperty.getPropertyDictId());
+                if (dict != null && dictKeySet.contains(dict.getDictKey())) {
+                    HierarchyPropertyVo vo = BeanUtil.toBean(property, HierarchyPropertyVo.class);
+                    HierarchyTypePropertyVo typePropertyVo = BeanUtil.toBean(typeProperty, HierarchyTypePropertyVo.class);
+                    HierarchyTypePropertyDictVo dictVo = BeanUtil.toBean(dict, HierarchyTypePropertyDictVo.class);
+                    typePropertyVo.setDict(dictVo);
+                    vo.setTypeProperty(typePropertyVo);
+                    result.add(vo);
+                }
+            }
+        }
+
+        return result;
     }
 
 }
