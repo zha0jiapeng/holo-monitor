@@ -119,6 +119,7 @@ public class HierarchyController extends BaseController {
     @Log(title = "层级", businessType = BusinessType.INSERT)
     @RepeatSubmit(interval = 2, timeUnit = TimeUnit.SECONDS, message = "{repeat.submit.message}")
     @PostMapping()
+    @SaIgnore
     public R<Void> add(@Validated(AddGroup.class) @RequestBody HierarchyBo bo) {
         return toAjax(hierarchyService.insertByBo(bo));
     }
@@ -254,5 +255,25 @@ public class HierarchyController extends BaseController {
             return R.fail("未找到该传感器所属的变电站");
         }
         return R.ok(substationVo);
+    }
+
+    /**
+     * 补偿修复指定类型的所有层级的缺失隐藏属性
+     * 用于修复历史数据中因bug导致的隐藏属性缺失问题
+     *
+     * @param typeId 层级类型ID
+     */
+    @SaCheckPermission("hm:hierarchy:edit")
+    @Log(title = "层级", businessType = BusinessType.UPDATE)
+    @PostMapping("/compensate/{typeId}")
+    @SaIgnore
+    public R<Map<String, Integer>> compensateMissingHiddenProperties(
+        @NotNull(message = "层级类型ID不能为空") @PathVariable("typeId") Long typeId) {
+        Map<String, Integer> result = hierarchyService.compensateMissingHiddenProperties(typeId);
+        String message = String.format("补偿完成: 共检查%d个层级，修复%d个层级，新增%d个隐藏属性",
+            result.get("totalHierarchies"),
+            result.get("processedHierarchies"),
+            result.get("addedProperties"));
+        return R.ok(message, result);
     }
 }

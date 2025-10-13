@@ -440,8 +440,8 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 .map(Hierarchy::getId)
                 .collect(Collectors.toList());
 
-            // 从hierarchyId开始，只查找statisticsTypeId类型的层级
-            List<Long> statisticsTypeHierarchyIds = findHierarchiesByType(hierarchyId, statisticsTypeId);
+            // 从hierarchyId开始，查找statisticsTypeId类型的层级（通过parentId关系或属性关系）
+            List<Long> statisticsTypeHierarchyIds = findHierarchiesByTypeIncludingPropertyRelation(hierarchyId, statisticsTypeId);
 
         if (statisticsTypeHierarchyIds.isEmpty()) {
             // 如果没有statisticsTypeId类型的层级，直接返回空结果
@@ -1435,6 +1435,64 @@ public class StatisticsServiceImpl implements IStatisticsService {
         return targetHierarchies.stream()
                 .map(Hierarchy::getId)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 查找与hierarchyId关联的指定类型的层级（包括通过属性关系）
+     * 用于解决某些层级不在parentId树中，而是通过隐藏属性关联的情况
+     *
+     * @param hierarchyId 起始层级ID
+     * @param targetTypeId 目标类型ID
+     * @return 目标类型的层级ID列表
+     */
+    private List<Long> findHierarchiesByTypeIncludingPropertyRelation(Long hierarchyId, Long targetTypeId) {
+        Set<Long> resultIds = new HashSet<>();
+
+        // 1. 首先通过parentId关系查找
+        List<Long> descendantIds = findHierarchiesByType(hierarchyId, targetTypeId);
+        resultIds.addAll(descendantIds);
+
+        // 2. 通过属性关系查找：查询所有包含hierarchyId作为属性值的层级
+        // 这些层级虽然不在parentId树中，但通过隐藏属性关联到hierarchyId
+        List<HierarchyProperty> relatedProperties = hierarchyPropertyService.list(
+            Wrappers.<HierarchyProperty>lambdaQuery()
+                .eq(HierarchyProperty::getPropertyValue, hierarchyId.toString())
+        );
+
+        if (!relatedProperties.isEmpty()) {
+            // 获取这些属性关联的层级ID
+            Set<Long> relatedHierarchyIds = relatedProperties.stream()
+                .map(HierarchyProperty::getHierarchyId)
+                .collect(Collectors.toSet());
+
+            // 筛选出目标类型的层级
+            List<Hierarchy> relatedHierarchies = hierarchyService.lambdaQuery()
+                .in(Hierarchy::getId, relatedHierarchyIds)
+                .eq(Hierarchy::getTypeId, targetTypeId)
+                .list();
+
+            resultIds.addAll(relatedHierarchies.stream()
+                .map(Hierarchy::getId)
+                .collect(Collectors.toList()));
+
+            // 递归查找：从这些关联层级继续向下查找
+            for (Hierarchy relatedHierarchy : relatedHierarchies) {
+                // 通过parentId关系继续向下查找
+                Set<Long> childDescendantIds = getAllDescendantIds(relatedHierarchy.getId());
+                if (!childDescendantIds.isEmpty()) {
+                    List<Hierarchy> childTargetHierarchies = hierarchyService.lambdaQuery()
+                        .in(Hierarchy::getId, childDescendantIds)
+                        .eq(Hierarchy::getTypeId, targetTypeId)
+                        .list();
+
+                    resultIds.addAll(childTargetHierarchies.stream()
+                        .map(Hierarchy::getId)
+                        .collect(Collectors.toList()));
+                }
+            }
+        }
+
+        return new ArrayList<>(resultIds);
     }
 
     /**

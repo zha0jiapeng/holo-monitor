@@ -167,4 +167,13 @@ public interface IHierarchyService extends IService<Hierarchy> {
      * @param dictKeys 字典key列表
      */
     void addPropertiesByDictKeys(List<HierarchyVo> hierarchyVos, List<String> dictKeys);
+
+    /**
+     * 补偿修复指定类型的所有层级的缺失隐藏属性
+     * 用于修复历史数据中因bug导致的隐藏属性缺失问题
+     *
+     * @param typeId 层级类型ID
+     * @return 修复的层级数量和新增的隐藏属性数量
+     */
+    Map<String, Integer> compensateMissingHiddenProperties(Long typeId);
 }
