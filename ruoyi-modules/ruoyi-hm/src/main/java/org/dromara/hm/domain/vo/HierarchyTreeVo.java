@@ -46,6 +46,11 @@ public class HierarchyTreeVo implements Serializable {
      */
     private String code;
 
+    /**
+     * 完整编码
+     */
+    private String fullCode;
+
     private String typeKey;
 
     /**

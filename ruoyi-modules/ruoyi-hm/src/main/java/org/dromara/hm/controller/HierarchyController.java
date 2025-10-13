@@ -119,6 +119,7 @@ public class HierarchyController extends BaseController {
     @Log(title = "层级", businessType = BusinessType.INSERT)
     @RepeatSubmit(interval = 2, timeUnit = TimeUnit.SECONDS, message = "{repeat.submit.message}")
     @PostMapping()
+    @SaIgnore
     public R<Void> add(@Validated(AddGroup.class) @RequestBody HierarchyBo bo) {
         return toAjax(hierarchyService.insertByBo(bo));
     }
@@ -267,6 +268,24 @@ public class HierarchyController extends BaseController {
             result.get("totalHierarchies"),
             result.get("processedHierarchies"),
             result.get("addedProperties"));
+        return R.ok(message, result);
+    }
+
+    /**
+     * 补偿机制：批量更新所有层级的 fullCode
+     * 按照层级关系从顶层到底层递归更新
+     */
+    @SaCheckPermission("hm:hierarchy:edit")
+    @Log(title = "层级", businessType = BusinessType.UPDATE)
+    @PostMapping("/repairFullCodes")
+    @SaIgnore
+    public R<Map<String, Integer>> repairAllFullCodes() {
+        Map<String, Integer> result = hierarchyService.repairAllFullCodes();
+        String message = String.format("fullCode补偿完成: 总计%d个层级，更新%d个，跳过%d个，耗时%dms",
+            result.get("totalCount"),
+            result.get("updatedCount"),
+            result.get("skippedCount"),
+            result.get("timeMs"));
         return R.ok(message, result);
     }
 }

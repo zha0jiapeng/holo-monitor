@@ -143,6 +143,157 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 hierarchyTypeMapper, hierarchyTypePropertyMapper, hierarchyTypePropertyDictMapper);
     }
 
+    /**
+     * 生成并更新 fullCode（完整编码）
+     * 规则：
+     * - 传感器类型：层级编码前缀（从属性拼接） + 传感器自己的code
+     * - 其他类型：如果有父级，fullCode = 父级fullCode + 当前code；如果没有父级，fullCode = 当前code
+     *
+     * @param hierarchyId 层级ID
+     */
+    private void generateAndUpdateFullCode(Long hierarchyId) {
+        Hierarchy hierarchy = baseMapper.selectById(hierarchyId);
+        if (hierarchy == null || StringUtils.isBlank(hierarchy.getCode())) {
+            return;
+        }
+
+        // 检查是否是传感器类型（cascade_flag=1 且是最底层）
+        HierarchyType type = hierarchyTypeMapper.selectById(hierarchy.getTypeId());
+        boolean isSensorType = type != null && type.getCascadeFlag() != null && type.getCascadeFlag() 
+            && isBottomLevel(hierarchy.getTypeId());
+
+        String fullCode;
+        
+        if (isSensorType) {
+            // 传感器类型：层级编码前缀 + 传感器自己的code
+            fullCode = generateSensorFullCode(hierarchyId, hierarchy);
+            log.debug("传感器层级 {} 生成 fullCode: {}", hierarchyId, fullCode);
+        } else {
+            // 非传感器类型：普通逻辑
+            fullCode = calculateNormalFullCode(hierarchy);
+        }
+
+        // 更新 fullCode
+        Hierarchy update = new Hierarchy();
+        update.setId(hierarchyId);
+        update.setFullCode(fullCode);
+        baseMapper.updateById(update);
+
+        log.debug("更新层级 {} 的 fullCode: {}", hierarchyId, fullCode);
+    }
+
+    /**
+     * 生成传感器的 fullCode
+     * 规则：从层级属性中拼接编码前缀 + 传感器自己的code
+     */
+    private String generateSensorFullCode(Long hierarchyId, Hierarchy hierarchy) {
+        // 获取编码前缀（通过属性拼接）
+        String codePrefix = generateSensorCodePrefix(hierarchyId);
+        
+        if (StringUtils.isNotBlank(codePrefix)) {
+            // 前缀 + 传感器自己的code
+            return codePrefix + hierarchy.getCode();
+        } else {
+            // 如果无法生成前缀，使用普通逻辑
+            return calculateNormalFullCode(hierarchy);
+        }
+    }
+
+    /**
+     * 生成传感器的编码前缀（从层级属性中拼接）
+     */
+    private String generateSensorCodePrefix(Long hierarchyId) {
+        List<Map<String, Object>> hierarchyCodeInfoList = new ArrayList<>();
+
+        // 查询该层级的所有属性
+        List<HierarchyProperty> properties = hierarchyPropertyMapper.selectList(
+            Wrappers.<HierarchyProperty>lambdaQuery()
+                .eq(HierarchyProperty::getHierarchyId, hierarchyId)
+        );
+
+        // 遍历属性，找出data_type=1001的隐藏属性（层级引用）
+        for (HierarchyProperty property : properties) {
+            HierarchyTypeProperty typeProperty = hierarchyTypePropertyMapper.selectById(property.getTypePropertyId());
+            if (typeProperty != null) {
+                HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(typeProperty.getPropertyDictId());
+                if (dictVo != null && dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
+                    // 这是一个层级类型的隐藏属性
+                    Long relatedHierarchyId = Long.valueOf(property.getPropertyValue());
+                    Hierarchy relatedHierarchy = baseMapper.selectById(relatedHierarchyId);
+
+                    if (relatedHierarchy != null && relatedHierarchy.getCode() != null && !relatedHierarchy.getCode().isEmpty()) {
+                        HierarchyType relatedType = hierarchyTypeMapper.selectById(relatedHierarchy.getTypeId());
+                        if (relatedType != null) {
+                            Map<String, Object> hierarchyInfo = new HashMap<>();
+                            hierarchyInfo.put("code", relatedHierarchy.getCode());
+                            hierarchyInfo.put("codeSort", relatedType.getCodeSort() != null ? relatedType.getCodeSort() : 0);
+                            hierarchyCodeInfoList.add(hierarchyInfo);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (hierarchyCodeInfoList.isEmpty()) {
+            return null;
+        }
+
+        // 按code_sort升序排序
+        hierarchyCodeInfoList.sort(Comparator.comparingInt(info -> (Integer) info.get("codeSort")));
+
+        // 提取排序后的编码并拼接
+        List<String> codeParts = hierarchyCodeInfoList.stream()
+            .map(info -> (String) info.get("code"))
+            .collect(Collectors.toList());
+
+        return String.join("", codeParts);
+    }
+
+    /**
+     * 计算普通层级的 fullCode
+     * 规则：父级fullCode + 当前code
+     */
+    private String calculateNormalFullCode(Hierarchy hierarchy) {
+        if (hierarchy.getParentId() != null) {
+            // 有父级，获取父级的 fullCode 或 code
+            Hierarchy parent = baseMapper.selectById(hierarchy.getParentId());
+            if (parent != null) {
+                // 优先使用父级的 fullCode，如果没有则使用 code
+                String parentPrefix = StringUtils.isNotBlank(parent.getFullCode()) 
+                    ? parent.getFullCode() 
+                    : (StringUtils.isNotBlank(parent.getCode()) ? parent.getCode() : "");
+                return parentPrefix + hierarchy.getCode();
+            } else {
+                // 父级不存在，只使用当前 code
+                return hierarchy.getCode();
+            }
+        } else {
+            // 没有父级，fullCode 就是当前 code
+            return hierarchy.getCode();
+        }
+    }
+
+    /**
+     * 递归更新子层级的 fullCode
+     * 当父层级的 fullCode 变化时，需要更新所有子层级的 fullCode
+     *
+     * @param parentId 父层级ID
+     */
+    private void updateChildrenFullCodeRecursively(Long parentId) {
+        // 查找所有子层级
+        List<Hierarchy> children = baseMapper.selectList(
+            Wrappers.<Hierarchy>lambdaQuery()
+                .eq(Hierarchy::getParentId, parentId)
+        );
+
+        for (Hierarchy child : children) {
+            // 更新子层级的 fullCode
+            generateAndUpdateFullCode(child.getId());
+            // 递归更新子层级的子层级
+            updateChildrenFullCodeRecursively(child.getId());
+        }
+    }
+
 
     /**
      * 查找级联属性并设置父级关系
@@ -374,45 +525,63 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     }
 
     /**
-     * 在新事务中更新层级编码并处理采集配置
+     * 在新事务中更新层级编码并处理采集配置（传感器类型专用）
      * 解决同事务内数据可见性问题
+     * 传感器逻辑：code = 简单序号（001, 002...），full_code = 完整层级编码
      *
      * @param hierarchyId 层级ID
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
     public void updateHierarchyCodeInNewTransaction(Long hierarchyId) {
-        // 首先检查当前层级是否有编码，如果没有则先生成单层编码
         Hierarchy currentHierarchy = baseMapper.selectById(hierarchyId);
-        if (currentHierarchy != null && (currentHierarchy.getCode() == null || currentHierarchy.getCode().isEmpty())) {
-            // 获取层级类型信息
-            HierarchyType type = hierarchyTypeMapper.selectById(currentHierarchy.getTypeId());
-            if (type != null && type.getCodeLength() != null) {
-                // 生成单层编码
-                String singleCode = HierarchyCodeUtils.generateNextCode(currentHierarchy.getTypeId(), currentHierarchy.getParentId(), type.getCodeLength(), baseMapper);
+        if (currentHierarchy == null) {
+            return;
+        }
+
+        HierarchyType type = hierarchyTypeMapper.selectById(currentHierarchy.getTypeId());
+        if (type == null) {
+            return;
+        }
+
+        // 1. 首先生成简单的 code（如果没有）
+        if (currentHierarchy.getCode() == null || currentHierarchy.getCode().isEmpty()) {
+            if (type.getCodeLength() != null) {
+                String singleCode = HierarchyCodeUtils.generateNextCode(
+                    currentHierarchy.getTypeId(), 
+                    currentHierarchy.getParentId(), 
+                    type.getCodeLength(), 
+                    baseMapper
+                );
                 if (singleCode != null) {
-                    Hierarchy updateSingle = new Hierarchy();
-                    updateSingle.setId(hierarchyId);
-                    updateSingle.setCode(singleCode);
-                    baseMapper.updateById(updateSingle);
+                    Hierarchy updateCode = new Hierarchy();
+                    updateCode.setId(hierarchyId);
+                    updateCode.setCode(singleCode);
+                    baseMapper.updateById(updateCode);
+                    log.debug("传感器 {} 生成简单 code: {}", hierarchyId, singleCode);
                 }
             }
         }
 
-        // 然后生成完整编码
+        // 2. 生成 full_code（编码前缀 + 传感器自己的code）
+        Hierarchy reloadHierarchy = baseMapper.selectById(hierarchyId);
+        if (reloadHierarchy != null && StringUtils.isNotBlank(reloadHierarchy.getCode())) {
+            String codePrefix = generateSensorCodePrefix(hierarchyId);
+            if (StringUtils.isNotBlank(codePrefix)) {
+                String fullCodeValue = codePrefix + reloadHierarchy.getCode();
+                Hierarchy updateFullCode = new Hierarchy();
+                updateFullCode.setId(hierarchyId);
+                updateFullCode.setFullCode(fullCodeValue);
+                baseMapper.updateById(updateFullCode);
+                log.debug("传感器 {} 生成 fullCode: {}", hierarchyId, fullCodeValue);
+            }
+        }
+
+        // 3. 处理采集配置
         Map<String, Object> result = generateHierarchyCode(hierarchyId);
         if (result != null) {
-            String generatedCode = (String) result.get("code");
             String selectedConfiguration = (String) result.get("configuration");
             Long typePropertyId = (Long) result.get("typePropertyId");
 
-            if (generatedCode != null && !generatedCode.isEmpty()) {
-                Hierarchy update = new Hierarchy();
-                update.setId(hierarchyId);
-                update.setCode(generatedCode);
-                baseMapper.updateById(update);
-            }
-
-            // 处理采集配置 - 保存为当前层级的一个属性
             if (selectedConfiguration != null && !selectedConfiguration.isEmpty()) {
                 saveConfigurationToHierarchyProperty(hierarchyId, selectedConfiguration, typePropertyId);
             }
@@ -482,8 +651,9 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 bo.setId(add.getId());
             }
             initProperty(bo, type);
-            // 在主事务外调用新事务方法生成编码
+            // 在主事务外调用新事务方法生成编码（传感器类型）
             if (bo.getNeedGenerateCode() != null && bo.getNeedGenerateCode()) {
+                // updateHierarchyCodeInNewTransaction 会处理 code 和 fullCode
                 updateHierarchyCodeInNewTransaction(bo.getId());
             } else if(bo.getCode() == null){
                 // 如果不需要生成完整编码，但编码为空，则生成单层编码
@@ -496,6 +666,11 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                     updateEntity.setCode(generatedCode);
                     baseMapper.updateById(updateEntity);
                 }
+                // 非传感器类型，生成 fullCode
+                generateAndUpdateFullCode(bo.getId());
+            } else {
+                // code 已存在，生成 fullCode
+                generateAndUpdateFullCode(bo.getId());
             }
         }
         return flag;
@@ -541,15 +716,44 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     @Transactional(rollbackFor = Exception.class)
     public Boolean updateByBo(HierarchyBo bo) {
         Hierarchy update = MapstructUtils.convert(bo, Hierarchy.class);
-        if (update != null) {
-            validEntityBeforeSave(update);
+        if (update == null) {
+            throw new ServiceException("转换实体失败");
         }
+        
+        validEntityBeforeSave(update);
+        
         List<HierarchyProperty> properties = bo.getProperties();
         for (HierarchyProperty property : properties) {
             hierarchyPropertyMapper.updateById(property);
         }
 
-        return baseMapper.updateById(update) > 0;
+        // 获取更新前的数据
+        Hierarchy oldHierarchy = baseMapper.selectById(bo.getId());
+        boolean codeChanged = false;
+        boolean parentIdChanged = false;
+
+        if (oldHierarchy != null) {
+            // 检查 code 是否变化
+            if (update.getCode() != null && !update.getCode().equals(oldHierarchy.getCode())) {
+                codeChanged = true;
+            }
+            // 检查 parentId 是否变化
+            if (update.getParentId() != null && !update.getParentId().equals(oldHierarchy.getParentId())) {
+                parentIdChanged = true;
+            }
+        }
+
+        boolean result = baseMapper.updateById(update) > 0;
+
+        // 如果 code 或 parentId 发生变化，需要更新 fullCode
+        if (result && (codeChanged || parentIdChanged)) {
+            // 更新当前层级的 fullCode
+            generateAndUpdateFullCode(bo.getId());
+            // 递归更新所有子层级的 fullCode
+            updateChildrenFullCodeRecursively(bo.getId());
+        }
+
+        return result;
     }
     /**
      * 保存前的数据校验
@@ -1959,6 +2163,182 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
         // 3. 获取变电站详情和属性列表
         return queryById(substationId, true);
+    }
+
+    /**
+     * 补偿机制：批量更新所有层级的 fullCode
+     * 按照层级关系从顶层到底层递归更新
+     *
+     * @return 更新统计信息
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Integer> repairAllFullCodes() {
+        log.info("开始执行 fullCode 补偿修复...");
+        long startTime = System.currentTimeMillis();
+        
+        Map<String, Integer> result = new HashMap<>();
+        int totalCount = 0;
+        int updatedCount = 0;
+        int skippedCount = 0;
+
+        // 1. 查找所有没有 parentId 的根节点
+        List<Hierarchy> rootNodes = baseMapper.selectList(
+            Wrappers.<Hierarchy>lambdaQuery()
+                .isNull(Hierarchy::getParentId)
+                .isNotNull(Hierarchy::getCode)
+        );
+
+        log.info("找到 {} 个根节点", rootNodes.size());
+
+        // 2. 为每个根节点及其子树更新 fullCode
+        for (Hierarchy root : rootNodes) {
+            Map<String, Integer> subtreeResult = repairFullCodeForSubtree(root.getId(), null);
+            totalCount += subtreeResult.get("total");
+            updatedCount += subtreeResult.get("updated");
+            skippedCount += subtreeResult.get("skipped");
+        }
+
+        long endTime = System.currentTimeMillis();
+        log.info("fullCode 补偿修复完成! 总计: {}, 更新: {}, 跳过: {}, 耗时: {}ms", 
+            totalCount, updatedCount, skippedCount, (endTime - startTime));
+
+        result.put("totalCount", totalCount);
+        result.put("updatedCount", updatedCount);
+        result.put("skippedCount", skippedCount);
+        result.put("timeMs", (int)(endTime - startTime));
+
+        return result;
+    }
+
+    /**
+     * 递归修复某个节点及其子树的 fullCode 和 code（传感器）
+     *
+     * @param hierarchyId 层级ID
+     * @param parentFullCode 父级的 fullCode（根节点为 null）
+     * @return 修复统计信息
+     */
+    private Map<String, Integer> repairFullCodeForSubtree(Long hierarchyId, String parentFullCode) {
+        Map<String, Integer> result = new HashMap<>();
+        int total = 0;
+        int updated = 0;
+        int skipped = 0;
+
+        // 查询当前节点
+        Hierarchy current = baseMapper.selectById(hierarchyId);
+        if (current == null) {
+            result.put("total", 0);
+            result.put("updated", 0);
+            result.put("skipped", 0);
+            return result;
+        }
+
+        total++;
+
+        // 检查是否是传感器类型（通过 generateHierarchyCode 生成）
+        HierarchyType type = hierarchyTypeMapper.selectById(current.getTypeId());
+        boolean isSensorType = type != null && type.getCascadeFlag() != null && type.getCascadeFlag() 
+            && isBottomLevel(current.getTypeId());
+        
+        boolean needUpdate = false;
+        Hierarchy update = new Hierarchy();
+        update.setId(hierarchyId);
+        
+        if (isSensorType) {
+            // 传感器类型特殊处理
+            
+            // 1. 检查并修复 code：传感器的 code 应该是简单序号，不应该是长的完整编码
+            if (current.getCode() != null && current.getCode().length() > 10) {
+                // code 太长，说明存储的是完整编码
+                // 从完整编码的最后几位提取简单序号（code_length 位）
+                Integer codeLength = type != null && type.getCodeLength() != null ? type.getCodeLength() : 3;
+                String simpleCode;
+                
+                if (current.getCode().length() >= codeLength) {
+                    // 从当前的 code 中提取后几位
+                    simpleCode = current.getCode().substring(current.getCode().length() - codeLength);
+                } else {
+                    simpleCode = current.getCode();
+                }
+                
+                update.setCode(simpleCode);
+                current.setCode(simpleCode);  // 更新当前对象，后面生成fullCode时使用
+                needUpdate = true;
+                log.info("修复传感器 {} ({}) 的 code: {} -> {}", 
+                    hierarchyId, current.getName(), current.getCode(), simpleCode);
+            }
+            
+            // 2. 生成 full_code（编码前缀 + 传感器自己的code）
+            String codePrefix = generateSensorCodePrefix(hierarchyId);
+            if (StringUtils.isNotBlank(codePrefix)) {
+                String expectedFullCode = codePrefix + current.getCode();
+                if (!expectedFullCode.equals(current.getFullCode())) {
+                    update.setFullCode(expectedFullCode);
+                    needUpdate = true;
+                    log.debug("传感器层级 {} ({}) 更新 fullCode: {} -> {}", 
+                        hierarchyId, current.getName(), current.getFullCode(), expectedFullCode);
+                }
+            }
+        } else {
+            // 非传感器类型：普通逻辑（父级fullCode + 当前code）
+            if (StringUtils.isNotBlank(current.getCode())) {
+                String expectedFullCode;
+                if (StringUtils.isNotBlank(parentFullCode)) {
+                    expectedFullCode = parentFullCode + current.getCode();
+                } else {
+                    expectedFullCode = current.getCode();
+                }
+
+                if (!expectedFullCode.equals(current.getFullCode())) {
+                    update.setFullCode(expectedFullCode);
+                    needUpdate = true;
+                    log.debug("更新层级 {} ({}) 的 fullCode: {} -> {}", 
+                        hierarchyId, current.getName(), current.getFullCode(), expectedFullCode);
+                }
+            } else {
+                // code 为空，跳过当前节点的更新，但仍然处理子节点
+                log.debug("层级 {} ({}) code为空，跳过更新但继续处理子节点", hierarchyId, current.getName());
+            }
+        }
+
+        // 执行更新
+        if (needUpdate) {
+            baseMapper.updateById(update);
+            updated++;
+        } else {
+            skipped++;
+        }
+
+        // 递归处理所有子节点
+        List<Hierarchy> children = baseMapper.selectList(
+            Wrappers.<Hierarchy>lambdaQuery()
+                .eq(Hierarchy::getParentId, hierarchyId)
+        );
+
+        // 确定传递给子节点的 parentFullCode
+        String childParentFullCode;
+        if (update.getFullCode() != null) {
+            // 如果当前节点更新了 fullCode，使用新的
+            childParentFullCode = update.getFullCode();
+        } else if (current.getFullCode() != null) {
+            // 否则使用现有的 fullCode
+            childParentFullCode = current.getFullCode();
+        } else {
+            // 如果当前节点没有 fullCode，传递父级的 fullCode
+            childParentFullCode = parentFullCode;
+        }
+
+        for (Hierarchy child : children) {
+            Map<String, Integer> childResult = repairFullCodeForSubtree(child.getId(), childParentFullCode);
+            total += childResult.get("total");
+            updated += childResult.get("updated");
+            skipped += childResult.get("skipped");
+        }
+
+        result.put("total", total);
+        result.put("updated", updated);
+        result.put("skipped", skipped);
+        return result;
     }
 
     /**

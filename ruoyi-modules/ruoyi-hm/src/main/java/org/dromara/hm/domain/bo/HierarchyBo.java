@@ -52,6 +52,11 @@ public class HierarchyBo {
      */
     private String code;
 
+    /**
+     * 完整编码
+     */
+    private String fullCode;
+
     @TableField(exist = false)
     private List<HierarchyProperty> properties;
 

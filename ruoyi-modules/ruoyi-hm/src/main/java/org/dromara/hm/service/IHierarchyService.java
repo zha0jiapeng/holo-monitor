@@ -176,4 +176,12 @@ public interface IHierarchyService extends IService<Hierarchy> {
      * @return 修复的层级数量和新增的隐藏属性数量
      */
     Map<String, Integer> compensateMissingHiddenProperties(Long typeId);
+
+    /**
+     * 补偿机制：批量更新所有层级的 fullCode
+     * 按照层级关系从顶层到底层递归更新
+     *
+     * @return 更新统计信息
+     */
+    Map<String, Integer> repairAllFullCodes();
 }

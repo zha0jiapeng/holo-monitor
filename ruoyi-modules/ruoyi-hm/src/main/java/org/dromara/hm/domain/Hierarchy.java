@@ -44,4 +44,9 @@ public class Hierarchy {
      */
     private String code;
 
+    /**
+     * 完整编码（父级fullCode + 当前code）
+     */
+    private String fullCode;
+
 }

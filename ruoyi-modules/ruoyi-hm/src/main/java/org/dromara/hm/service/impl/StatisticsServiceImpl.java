@@ -352,19 +352,23 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     /**
-     * 构建统计结果项（包含sort）
+     * 构建统计结果项（包含sort和icon）
      *
      * @param name 名称
      * @param count 数量
      * @param sort 排序值
+     * @param icon 图标值
      * @return 统计结果项
      */
-    private Map<String, Object> buildResultItem(String name, Long count, String sort) {
+    private Map<String, Object> buildResultItem(String name, Long count, String sort, String icon) {
         Map<String, Object> resultItem = new HashMap<>();
         resultItem.put("name", name);
         resultItem.put("count", count);
         if (sort != null && !sort.isEmpty()) {
             resultItem.put("sort", sort);
+        }
+        if (icon != null && !icon.isEmpty()) {
+            resultItem.put("icon", icon);
         }
         return resultItem;
     }
@@ -428,10 +432,10 @@ public class StatisticsServiceImpl implements IStatisticsService {
             }
             }
 
-        // 查询目标类型的 sort 属性值
-        Map<Long, String> sortMap = getSortValuesForHierarchies(
-            targetHierarchys.stream().map(Hierarchy::getId).collect(Collectors.toList())
-        );
+        // 查询目标类型的 sort 和 icon 属性值
+        List<Long> targetHierarchyIds = targetHierarchys.stream().map(Hierarchy::getId).collect(Collectors.toList());
+        Map<Long, String> sortMap = getSortValuesForHierarchies(targetHierarchyIds);
+        Map<Long, String> iconMap = getIconValuesForHierarchies(targetHierarchyIds);
 
         // 构造返回结果 - 只返回有数据的结果
         List<Map<String, Object>> result = new ArrayList<>();
@@ -439,7 +443,8 @@ public class StatisticsServiceImpl implements IStatisticsService {
             Long count = sensorCountMap.get(targetHierarchy.getId());
             if (count != null && count > 0) {
                 String sort = sortMap.get(targetHierarchy.getId());
-                result.add(buildResultItem(targetHierarchy.getName(), count, sort));
+                String icon = iconMap.get(targetHierarchy.getId());
+                result.add(buildResultItem(targetHierarchy.getName(), count, sort, icon));
             }
         }
 
@@ -533,17 +538,17 @@ public class StatisticsServiceImpl implements IStatisticsService {
             }
         }
 
-        // 查询目标类型的 sort 属性值
-        Map<Long, String> sortMap = getSortValuesForHierarchies(
-            targetHierarchies.stream().map(Hierarchy::getId).collect(Collectors.toList())
-        );
+        // 查询目标类型的 sort 和 icon 属性值
+        Map<Long, String> sortMap = getSortValuesForHierarchies(targetHierarchyIds);
+        Map<Long, String> iconMap = getIconValuesForHierarchies(targetHierarchyIds);
 
         // 构造返回结果 - 只返回有数据的结果
         for (Hierarchy targetHierarchy : targetHierarchies) {
             Long count = targetCountMap.get(targetHierarchy.getId());
             if (count != null && count > 0) {
                 String sort = sortMap.get(targetHierarchy.getId());
-                result.add(buildResultItem(targetHierarchy.getName(), count, sort));
+                String icon = iconMap.get(targetHierarchy.getId());
+                result.add(buildResultItem(targetHierarchy.getName(), count, sort, icon));
             }
         }
 
@@ -1582,6 +1587,58 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     /**
+     * 批量获取层级的 icon 属性值
+     *
+     * @param hierarchyIds 层级ID列表
+     * @return hierarchyId -> icon 的映射
+     */
+    private Map<Long, String> getIconValuesForHierarchies(List<Long> hierarchyIds) {
+        Map<Long, String> iconMap = new HashMap<>();
+
+        if (hierarchyIds == null || hierarchyIds.isEmpty()) {
+            return iconMap;
+        }
+
+        // 查询 dict_key='icon' 的字典
+        HierarchyTypePropertyDict iconDict = hierarchyTypePropertyDictService.getOne(
+            Wrappers.<HierarchyTypePropertyDict>lambdaQuery()
+                .eq(HierarchyTypePropertyDict::getDictKey, "icon")
+        );
+
+        if (iconDict == null) {
+            return iconMap;
+        }
+
+        // 查询该字典对应的类型属性
+        List<HierarchyTypeProperty> iconTypeProperties = hierarchyTypePropertyService.list(
+            Wrappers.<HierarchyTypeProperty>lambdaQuery()
+                .eq(HierarchyTypeProperty::getPropertyDictId, iconDict.getId())
+        );
+
+        if (iconTypeProperties.isEmpty()) {
+            return iconMap;
+        }
+
+        Set<Long> iconTypePropertyIds = iconTypeProperties.stream()
+            .map(HierarchyTypeProperty::getId)
+            .collect(Collectors.toSet());
+
+        // 批量查询层级的 icon 属性值
+        List<HierarchyProperty> iconProperties = hierarchyPropertyService.list(
+            Wrappers.<HierarchyProperty>lambdaQuery()
+                .in(HierarchyProperty::getHierarchyId, hierarchyIds)
+                .in(HierarchyProperty::getTypePropertyId, iconTypePropertyIds)
+        );
+
+        // 构建映射
+        for (HierarchyProperty property : iconProperties) {
+            iconMap.put(property.getHierarchyId(), property.getPropertyValue());
+        }
+
+        return iconMap;
+    }
+
+    /**
      * 获取hierarchyId的所有子孙层级ID（只通过parentId关系，确保在子集范围内）
      *
      * @param hierarchyId 起始层级ID
@@ -1871,10 +1928,10 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
             // 使用并行流优化外部接口调用
             sensors.parallelStream()
-                .filter(sensor -> sensor.getCode() != null && !sensor.getCode().trim().isEmpty())
+                .filter(sensor -> sensor.getFullCode() != null && !sensor.getFullCode().trim().isEmpty())
                 .forEach(sensor -> {
                     try {
-                        JSONObject response = SD400MPUtils.testpointFind(sensor.getCode());
+                        JSONObject response = SD400MPUtils.testpointFind(sensor.getFullCode());
                         if (response != null && response.getInt("code") == 200) {
                             JSONObject data = response.getJSONObject("data");
                             if (data != null && data.getStr("id") != null) {
@@ -1884,7 +1941,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                             }
                         }
                     } catch (Exception e) {
-                        log.error("转换异常 - 传感器 {} (code: {}) 时发生异常", sensor.getName(), sensor.getCode(), e);
+                        log.error("转换异常 - 传感器 {} (code: {}) 时发生异常", sensor.getName(), sensor.getFullCode(), e);
                     }
                 });
             log.info("步骤4-testpointFind并行调用耗时: {}ms, 转换成功{}个", System.currentTimeMillis() - step4Start, testpointIds.size());
