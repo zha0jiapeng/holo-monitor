@@ -348,6 +348,24 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     /**
+     * 构建统计结果项（包含sort）
+     *
+     * @param name 名称
+     * @param count 数量
+     * @param sort 排序值
+     * @return 统计结果项
+     */
+    private Map<String, Object> buildResultItem(String name, Long count, String sort) {
+        Map<String, Object> resultItem = new HashMap<>();
+        resultItem.put("name", name);
+        resultItem.put("count", count);
+        if (sort != null && !sort.isEmpty()) {
+            resultItem.put("sort", sort);
+        }
+        return resultItem;
+    }
+
+    /**
      * 按count降序排列结果列表
      *
      * @param result 结果列表
@@ -406,12 +424,18 @@ public class StatisticsServiceImpl implements IStatisticsService {
             }
             }
 
+        // 查询目标类型的 sort 属性值
+        Map<Long, String> sortMap = getSortValuesForHierarchies(
+            targetHierarchys.stream().map(Hierarchy::getId).collect(Collectors.toList())
+        );
+
         // 构造返回结果 - 只返回有数据的结果
         List<Map<String, Object>> result = new ArrayList<>();
         for (Hierarchy targetHierarchy : targetHierarchys) {
             Long count = sensorCountMap.get(targetHierarchy.getId());
             if (count != null && count > 0) {
-                result.add(buildResultItem(targetHierarchy.getName(), count));
+                String sort = sortMap.get(targetHierarchy.getId());
+                result.add(buildResultItem(targetHierarchy.getName(), count, sort));
             }
         }
 
@@ -505,11 +529,17 @@ public class StatisticsServiceImpl implements IStatisticsService {
             }
         }
 
+        // 查询目标类型的 sort 属性值
+        Map<Long, String> sortMap = getSortValuesForHierarchies(
+            targetHierarchies.stream().map(Hierarchy::getId).collect(Collectors.toList())
+        );
+
         // 构造返回结果 - 只返回有数据的结果
         for (Hierarchy targetHierarchy : targetHierarchies) {
             Long count = targetCountMap.get(targetHierarchy.getId());
             if (count != null && count > 0) {
-                result.add(buildResultItem(targetHierarchy.getName(), count));
+                String sort = sortMap.get(targetHierarchy.getId());
+                result.add(buildResultItem(targetHierarchy.getName(), count, sort));
             }
         }
 
@@ -1493,6 +1523,58 @@ public class StatisticsServiceImpl implements IStatisticsService {
         }
 
         return new ArrayList<>(resultIds);
+    }
+
+    /**
+     * 批量查询层级的 sort 属性值
+     *
+     * @param hierarchyIds 层级ID列表
+     * @return 层级ID到sort值的映射
+     */
+    private Map<Long, String> getSortValuesForHierarchies(List<Long> hierarchyIds) {
+        Map<Long, String> sortMap = new HashMap<>();
+        
+        if (hierarchyIds == null || hierarchyIds.isEmpty()) {
+            return sortMap;
+        }
+
+        // 查询 dict_key='sort' 的字典
+        HierarchyTypePropertyDict sortDict = hierarchyTypePropertyDictService.getOne(
+            Wrappers.<HierarchyTypePropertyDict>lambdaQuery()
+                .eq(HierarchyTypePropertyDict::getDictKey, "sort")
+        );
+
+        if (sortDict == null) {
+            return sortMap;
+        }
+
+        // 查询该字典对应的类型属性
+        List<HierarchyTypeProperty> sortTypeProperties = hierarchyTypePropertyService.list(
+            Wrappers.<HierarchyTypeProperty>lambdaQuery()
+                .eq(HierarchyTypeProperty::getPropertyDictId, sortDict.getId())
+        );
+
+        if (sortTypeProperties.isEmpty()) {
+            return sortMap;
+        }
+
+        Set<Long> sortTypePropertyIds = sortTypeProperties.stream()
+            .map(HierarchyTypeProperty::getId)
+            .collect(Collectors.toSet());
+
+        // 批量查询层级的 sort 属性值
+        List<HierarchyProperty> sortProperties = hierarchyPropertyService.list(
+            Wrappers.<HierarchyProperty>lambdaQuery()
+                .in(HierarchyProperty::getHierarchyId, hierarchyIds)
+                .in(HierarchyProperty::getTypePropertyId, sortTypePropertyIds)
+        );
+
+        // 构建映射
+        for (HierarchyProperty property : sortProperties) {
+            sortMap.put(property.getHierarchyId(), property.getPropertyValue());
+        }
+
+        return sortMap;
     }
 
     /**

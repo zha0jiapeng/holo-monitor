@@ -119,7 +119,6 @@ public class HierarchyController extends BaseController {
     @Log(title = "层级", businessType = BusinessType.INSERT)
     @RepeatSubmit(interval = 2, timeUnit = TimeUnit.SECONDS, message = "{repeat.submit.message}")
     @PostMapping()
-    @SaIgnore
     public R<Void> add(@Validated(AddGroup.class) @RequestBody HierarchyBo bo) {
         return toAjax(hierarchyService.insertByBo(bo));
     }
@@ -177,7 +176,6 @@ public class HierarchyController extends BaseController {
      */
     //@SaCheckPermission("hm:hierarchyTypeProperty:list")
     @GetMapping("/getLocationByHierarchyId/{hierarchyId}")
-    @SaIgnore
     public R<JSONObject> getLocationByHierarchyId(@PathVariable("hierarchyId") Long hierarchyId) {
         return R.ok(hierarchyService.getLocationByHierarchyId(hierarchyId));
     }
@@ -186,7 +184,6 @@ public class HierarchyController extends BaseController {
      * 根据类型ID获取属性列表
      */
     @GetMapping("/download/template/{typeId}")
-    @SaIgnore
     public void downloadTemplate(@PathVariable("typeId") Long typeId, HttpServletResponse response) throws IOException {
 
             // Original code
@@ -205,7 +202,6 @@ public class HierarchyController extends BaseController {
     }
 
     @PostMapping("/upload/template")
-    @SaIgnore
     public R<Object> uploadTemplate(@RequestParam(name="properties") String properties,
                            @RequestParam(name="typeId") Long typeId,
                            @RequestParam(name="file") MultipartFile file
@@ -233,7 +229,6 @@ public class HierarchyController extends BaseController {
      */
     @SaCheckPermission("hm:hierarchy:list")
     @GetMapping("/getSensorList")
-    @SaIgnore
     public R<List<HierarchyTreeVo>> getUnitHierarchyTree(
         @RequestParam(value = "parentId", required = false) Long parentId,
         @RequestParam(value = "hierarchyId", required = false) Long hierarchyId) {
@@ -247,7 +242,6 @@ public class HierarchyController extends BaseController {
      */
     @SaCheckPermission("hm:hierarchy:query")
     @GetMapping("/substation/{sensorCode}")
-    @SaIgnore
     public R<HierarchyVo> getSubstationBySensorCode(
         @NotNull(message = "传感器编码不能为空") @PathVariable("sensorCode") String sensorCode) {
         HierarchyVo substationVo = hierarchyService.getSubstationBySensorCode(sensorCode);
@@ -266,7 +260,6 @@ public class HierarchyController extends BaseController {
     @SaCheckPermission("hm:hierarchy:edit")
     @Log(title = "层级", businessType = BusinessType.UPDATE)
     @PostMapping("/compensate/{typeId}")
-    @SaIgnore
     public R<Map<String, Integer>> compensateMissingHiddenProperties(
         @NotNull(message = "层级类型ID不能为空") @PathVariable("typeId") Long typeId) {
         Map<String, Integer> result = hierarchyService.compensateMissingHiddenProperties(typeId);
