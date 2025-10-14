@@ -75,6 +75,11 @@
             <artifactId>ruoyi-job</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.dromara</groupId>
+            <artifactId>ruoyi-hm</artifactId>
+        </dependency>
+
         <!-- 代码生成-->
         <!--  <dependency>
             <groupId>org.dromara</groupId>

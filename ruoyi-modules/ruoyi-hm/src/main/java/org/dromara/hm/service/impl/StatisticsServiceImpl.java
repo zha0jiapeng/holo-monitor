@@ -437,15 +437,13 @@ public class StatisticsServiceImpl implements IStatisticsService {
         Map<Long, String> sortMap = getSortValuesForHierarchies(targetHierarchyIds);
         Map<Long, String> iconMap = getIconValuesForHierarchies(targetHierarchyIds);
 
-        // 构造返回结果 - 只返回有数据的结果
+        // 构造返回结果 - 返回所有目标层级,包括count为0的
         List<Map<String, Object>> result = new ArrayList<>();
         for (Hierarchy targetHierarchy : targetHierarchys) {
-            Long count = sensorCountMap.get(targetHierarchy.getId());
-            if (count != null && count > 0) {
-                String sort = sortMap.get(targetHierarchy.getId());
-                String icon = iconMap.get(targetHierarchy.getId());
-                result.add(buildResultItem(targetHierarchy.getName(), count, sort, icon));
-            }
+            Long count = sensorCountMap.getOrDefault(targetHierarchy.getId(), 0L);
+            String sort = sortMap.get(targetHierarchy.getId());
+            String icon = iconMap.get(targetHierarchy.getId());
+            result.add(buildResultItem(targetHierarchy.getName(), count, sort, icon));
         }
 
         // 按count降序排列
@@ -542,14 +540,12 @@ public class StatisticsServiceImpl implements IStatisticsService {
         Map<Long, String> sortMap = getSortValuesForHierarchies(targetHierarchyIds);
         Map<Long, String> iconMap = getIconValuesForHierarchies(targetHierarchyIds);
 
-        // 构造返回结果 - 只返回有数据的结果
+        // 构造返回结果 - 返回所有目标层级,包括count为0的
         for (Hierarchy targetHierarchy : targetHierarchies) {
-            Long count = targetCountMap.get(targetHierarchy.getId());
-            if (count != null && count > 0) {
-                String sort = sortMap.get(targetHierarchy.getId());
-                String icon = iconMap.get(targetHierarchy.getId());
-                result.add(buildResultItem(targetHierarchy.getName(), count, sort, icon));
-            }
+            Long count = targetCountMap.getOrDefault(targetHierarchy.getId(), 0L);
+            String sort = sortMap.get(targetHierarchy.getId());
+            String icon = iconMap.get(targetHierarchy.getId());
+            result.add(buildResultItem(targetHierarchy.getName(), count, sort, icon));
         }
 
         // 按count降序排列
@@ -2072,6 +2068,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
                             if (testpointId != null && testpointIdToSensorMap.containsKey(testpointId)) {
                                 Hierarchy sensor = testpointIdToSensorMap.get(testpointId);
                                 Long sensorId = sensor.getId();
+
+                                // 添加传感器的full_code字段
+                                eventInfo.put("full_code", sensor.getFullCode());
 
                                 // 从预先查询好的sensorPropertiesMap中获取该sensor的属性
                                 if (sensorPropertiesMap.containsKey(sensorId)) {

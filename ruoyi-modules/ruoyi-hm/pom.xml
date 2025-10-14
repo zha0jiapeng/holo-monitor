@@ -106,7 +106,6 @@
         <dependency>
             <groupId>cn.idev.excel</groupId>
             <artifactId>fastexcel</artifactId>
-            <version>1.2.0</version>
         </dependency>
 
     </dependencies>
