@@ -561,7 +561,20 @@ public class StatisticsServiceImpl implements IStatisticsService {
         findMatchingDescendants(hierarchyId, targetTypeId, matchedIds);
 
         if (matchedIds.isEmpty()) {
-            return new ArrayList<>();
+            // 如果没有找到关联的目标类型层级，直接返回数据库中所有targetTypeId类型的层级
+            log.info("从hierarchyId={}未找到targetTypeId={}的子孙层级，返回全部该类型层级", hierarchyId, targetTypeId);
+            List<Hierarchy> allTargetTypeHierarchies = hierarchyService.lambdaQuery()
+                    .eq(Hierarchy::getTypeId, targetTypeId)
+                    .list();
+
+            if (allTargetTypeHierarchies.isEmpty()) {
+                return new ArrayList<>();
+            }
+
+            List<Long> allTargetIds = allTargetTypeHierarchies.stream()
+                    .map(Hierarchy::getId)
+                    .collect(Collectors.toList());
+            return hierarchyService.selectByIds(allTargetIds, true);
         }
         return hierarchyService.selectByIds(matchedIds, true);
     }
@@ -2514,6 +2527,121 @@ public class StatisticsServiceImpl implements IStatisticsService {
         }
 
         return result;
+    }
+
+    @Override
+    public Map<String, Object> statisticsByDeviceCategory(Long hierarchyId) {
+        Map<String, Object> result = new HashMap<>();
+
+        log.info("开始执行按设备类别统计 - hierarchyId: {}", hierarchyId);
+
+        // 获取所有设备类型 (typeKey = /ledger/deviceType)
+        List<HierarchyType> deviceTypes = hierarchyTypeService.lambdaQuery()
+            .eq(HierarchyType::getTypeKey, "device_category")
+            .list();
+
+        log.info("找到 {} 个设备类型(typeKey=/ledger/deviceType)", deviceTypes.size());
+
+        // 构建每个设备类型下的树形结构
+        List<Map<String, Object>> deviceTypeTreeList = new ArrayList<>();
+
+        for (HierarchyType deviceType : deviceTypes) {
+            log.info("处理设备类型: id={}, name={}, typeKey={}",
+                deviceType.getId(), deviceType.getName(), deviceType.getTypeKey());
+            Map<String, Object> deviceTypeNode = new HashMap<>();
+            deviceTypeNode.put("id", deviceType.getId());
+            deviceTypeNode.put("name", deviceType.getName());
+            deviceTypeNode.put("typeKey", deviceType.getTypeKey());
+            deviceTypeNode.put("level", "deviceType");
+
+            // 查询该设备类型下的所有设备区域
+            List<Hierarchy> deviceAreas = hierarchyService.lambdaQuery()
+                .eq(Hierarchy::getTypeId, deviceType.getId())
+                .isNull(Hierarchy::getParentId)
+                .list();
+
+            List<Map<String, Object>> deviceAreaList = new ArrayList<>();
+            for (Hierarchy deviceArea : deviceAreas) {
+                Map<String, Object> deviceAreaNode = buildDeviceAreaTree(deviceArea);
+                deviceAreaList.add(deviceAreaNode);
+            }
+
+            deviceTypeNode.put("children", deviceAreaList);
+            deviceTypeTreeList.add(deviceTypeNode);
+        }
+
+        result.put("deviceTypeTree", deviceTypeTreeList);
+        return result;
+    }
+
+    /**
+     * 构建设备区域树（包含设备和设备点）
+     */
+    private Map<String, Object> buildDeviceAreaTree(Hierarchy deviceArea) {
+        Map<String, Object> node = new HashMap<>();
+        node.put("id", deviceArea.getId());
+        node.put("name", deviceArea.getName());
+
+        // 获取类型信息
+        HierarchyType type = hierarchyTypeService.getById(deviceArea.getTypeId());
+        node.put("typeKey", type != null ? type.getTypeKey() : null);
+        node.put("level", "deviceArea");
+
+        // 查询该设备区域下的所有设备
+        List<Hierarchy> devices = hierarchyService.lambdaQuery()
+            .eq(Hierarchy::getParentId, deviceArea.getId())
+            .list();
+
+        // 过滤出设备节点（根据typeKey包含device）
+        List<Map<String, Object>> deviceList = new ArrayList<>();
+        for (Hierarchy device : devices) {
+            HierarchyType deviceHierarchyType = hierarchyTypeService.getById(device.getTypeId());
+            if (deviceHierarchyType != null && deviceHierarchyType.getTypeKey() != null
+                && deviceHierarchyType.getTypeKey().contains("/device")) {
+                Map<String, Object> deviceNode = buildDeviceTree(device);
+                deviceList.add(deviceNode);
+            }
+        }
+
+        node.put("children", deviceList);
+        return node;
+    }
+
+    /**
+     * 构建设备树（包含设备点）
+     */
+    private Map<String, Object> buildDeviceTree(Hierarchy device) {
+        Map<String, Object> node = new HashMap<>();
+        node.put("id", device.getId());
+        node.put("name", device.getName());
+
+        // 获取类型信息
+        HierarchyType type = hierarchyTypeService.getById(device.getTypeId());
+        node.put("typeKey", type != null ? type.getTypeKey() : null);
+        node.put("level", "device");
+
+        // 查询该设备下的所有设备点
+        List<Hierarchy> devicePoints = hierarchyService.lambdaQuery()
+            .eq(Hierarchy::getParentId, device.getId())
+            .list();
+
+        // 过滤出设备点节点（根据typeKey包含devicePoint）
+        List<Map<String, Object>> devicePointList = new ArrayList<>();
+        for (Hierarchy devicePoint : devicePoints) {
+            HierarchyType devicePointType = hierarchyTypeService.getById(devicePoint.getTypeId());
+            if (devicePointType != null && devicePointType.getTypeKey() != null
+                && devicePointType.getTypeKey().contains("/devicePoint")) {
+                Map<String, Object> devicePointNode = new HashMap<>();
+                devicePointNode.put("id", devicePoint.getId());
+                devicePointNode.put("name", devicePoint.getName());
+                devicePointNode.put("typeKey", devicePointType.getTypeKey());
+                devicePointNode.put("level", "devicePoint");
+                devicePointList.add(devicePointNode);
+            }
+        }
+
+        node.put("children", devicePointList);
+        return node;
     }
 
 }

@@ -243,6 +243,7 @@ public class HierarchyController extends BaseController {
      */
     @SaCheckPermission("hm:hierarchy:query")
     @GetMapping("/substation/{sensorCode}")
+    @SaIgnore
     public R<HierarchyVo> getSubstationBySensorCode(
         @NotNull(message = "传感器编码不能为空") @PathVariable("sensorCode") String sensorCode) {
         HierarchyVo substationVo = hierarchyService.getSubstationBySensorCode(sensorCode);

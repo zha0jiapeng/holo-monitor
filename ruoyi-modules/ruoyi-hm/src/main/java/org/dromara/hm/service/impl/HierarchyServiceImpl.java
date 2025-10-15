@@ -145,9 +145,9 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
     /**
      * 生成并更新 fullCode（完整编码）
-     * 规则：
-     * - 传感器类型：层级编码前缀（从属性拼接） + 传感器自己的code
-     * - 其他类型：如果有父级，fullCode = 父级fullCode + 当前code；如果没有父级，fullCode = 当前code
+     * 统一规则（传感器和非传感器都使用相同逻辑）：
+     * 1. 优先从隐藏属性中提取层级引用，按codeSort排序后拼接 + 当前code
+     * 2. 如果没有隐藏属性，使用传统逻辑：父级fullCode + 当前code
      *
      * @param hierarchyId 层级ID
      */
@@ -159,17 +159,17 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
         // 检查是否是传感器类型（cascade_flag=1 且是最底层）
         HierarchyType type = hierarchyTypeMapper.selectById(hierarchy.getTypeId());
-        boolean isSensorType = type != null && type.getCascadeFlag() != null && type.getCascadeFlag() 
+        boolean isSensorType = type != null && type.getCascadeFlag() != null && type.getCascadeFlag()
             && isBottomLevel(hierarchy.getTypeId());
 
         String fullCode;
-        
+
         if (isSensorType) {
             // 传感器类型：层级编码前缀 + 传感器自己的code
             fullCode = generateSensorFullCode(hierarchyId, hierarchy);
             log.debug("传感器层级 {} 生成 fullCode: {}", hierarchyId, fullCode);
         } else {
-            // 非传感器类型：普通逻辑
+            // 非传感器类型：统一使用基于隐藏属性的逻辑
             fullCode = calculateNormalFullCode(hierarchy);
         }
 
@@ -189,7 +189,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     private String generateSensorFullCode(Long hierarchyId, Hierarchy hierarchy) {
         // 获取编码前缀（通过属性拼接）
         String codePrefix = generateSensorCodePrefix(hierarchyId);
-        
+
         if (StringUtils.isNotBlank(codePrefix)) {
             // 前缀 + 传感器自己的code
             return codePrefix + hierarchy.getCode();
@@ -251,17 +251,30 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
     /**
      * 计算普通层级的 fullCode
-     * 规则：父级fullCode + 当前code
+     * 规则：
+     * 1. 优先从隐藏属性生成（与传感器逻辑一致）
+     * 2. 如果没有隐藏属性，使用父级fullCode + 当前code
      */
     private String calculateNormalFullCode(Hierarchy hierarchy) {
+        // 1. 尝试从隐藏属性生成 fullCode（与传感器逻辑一致）
+        String codePrefix = generateSensorCodePrefix(hierarchy.getId());
+        
+        if (StringUtils.isNotBlank(codePrefix)) {
+            // 如果有隐藏属性引用，使用隐藏属性前缀 + 当前code
+            log.debug("层级 {} ({}) 使用隐藏属性生成 fullCode", hierarchy.getId(), hierarchy.getName());
+            return codePrefix + hierarchy.getCode();
+        }
+        
+        // 2. 没有隐藏属性，使用传统逻辑（父级fullCode + 当前code）
         if (hierarchy.getParentId() != null) {
             // 有父级，获取父级的 fullCode 或 code
             Hierarchy parent = baseMapper.selectById(hierarchy.getParentId());
             if (parent != null) {
                 // 优先使用父级的 fullCode，如果没有则使用 code
-                String parentPrefix = StringUtils.isNotBlank(parent.getFullCode()) 
-                    ? parent.getFullCode() 
+                String parentPrefix = StringUtils.isNotBlank(parent.getFullCode())
+                    ? parent.getFullCode()
                     : (StringUtils.isNotBlank(parent.getCode()) ? parent.getCode() : "");
+                log.debug("层级 {} ({}) 使用父级fullCode生成", hierarchy.getId(), hierarchy.getName());
                 return parentPrefix + hierarchy.getCode();
             } else {
                 // 父级不存在，只使用当前 code
@@ -306,7 +319,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         Map<String,Object> map = new HashMap<>();
         List<Long> cascadeIds = new ArrayList<>();  // 收集所有cascade的层级ID
         List<Long> nonCascadeIds = new ArrayList<>();  // 收集所有非cascade的层级ID
-        
+
         for (HierarchyProperty property : properties) {
             HierarchyTypeProperty typeProperty = hierarchyTypePropertyMapper.selectById(property.getTypePropertyId());
             HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(typeProperty.getPropertyDictId());
@@ -321,13 +334,13 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 }
             }
         }
-        
+
         // 如果有cascade的层级，使用第一个作为parentId，其余的加入otherIds
         if (!cascadeIds.isEmpty()) {
             Long parentId = cascadeIds.get(0);
             updateHierarchyParent(hierarchyId, parentId);
             map.put("parentId", parentId);
-            
+
             // 将其余的cascade层级也加入otherIds，确保它们的隐藏属性也会被继承
             List<Long> otherIds = new ArrayList<>();
             otherIds.addAll(cascadeIds.subList(1, cascadeIds.size()));
@@ -337,7 +350,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             // 如果没有cascade的层级，只有非cascade的
             map.put("otherIds", nonCascadeIds);
         }
-        
+
         return map;
     }
 
@@ -395,40 +408,40 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     private void createHiddenPropertiesFromParent(Long currentHierarchyId, Long parentHierarchyId, List<HierarchyProperty> extraProperties) {
         Hierarchy parentHierarchy = baseMapper.selectById(parentHierarchyId);
         if (parentHierarchy == null) return;
-        
+
         log.debug("从父层级 {} (type={}) 继承隐藏属性到层级 {}", parentHierarchyId, parentHierarchy.getTypeId(), currentHierarchyId);
-        
+
         List<HierarchyTypeProperty> parentTypeProperties = hierarchyTypePropertyMapper.selectList(
             Wrappers.<HierarchyTypeProperty>lambdaQuery().eq(HierarchyTypeProperty::getTypeId, parentHierarchy.getTypeId())
         );
-        
+
         log.debug("父层级类型 {} 有 {} 个类型属性定义", parentHierarchy.getTypeId(), parentTypeProperties.size());
-        
+
         // 收集需要递归处理的关联层级ID
         Set<Long> relatedHierarchyIds = new HashSet<>();
-        
+
         for (HierarchyTypeProperty parentTypeProperty : parentTypeProperties) {
             Long relatedId = createHiddenPropertyIfNeeded(currentHierarchyId, parentHierarchyId, parentTypeProperty, extraProperties);
             if (relatedId != null) {
                 relatedHierarchyIds.add(relatedId);
             }
         }
-        
+
         log.debug("收集到 {} 个关联层级ID需要递归处理: {}", relatedHierarchyIds.size(), relatedHierarchyIds);
-        
+
         // 递归处理父级
         if (parentHierarchy.getParentId() != null) {
             log.debug("递归处理父层级的父级: {}", parentHierarchy.getParentId());
             createHiddenPropertiesFromParent(currentHierarchyId, parentHierarchy.getParentId(), extraProperties);
         }
-        
+
         // 递归处理属性值指向的层级（例如从city继承province）
         for (Long relatedId : relatedHierarchyIds) {
             log.debug("递归处理关联层级: {}", relatedId);
             createHiddenPropertiesFromRelatedHierarchy(currentHierarchyId, relatedId, extraProperties);
         }
     }
-    
+
     /**
      * 从关联的层级继承隐藏属性
      * 例如：传感器关联到unit，unit有city属性，需要从city继承province
@@ -440,30 +453,30 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     private void createHiddenPropertiesFromRelatedHierarchy(Long currentHierarchyId, Long relatedHierarchyId, List<HierarchyProperty> extraProperties) {
         Hierarchy relatedHierarchy = baseMapper.selectById(relatedHierarchyId);
         if (relatedHierarchy == null) return;
-        
+
         log.debug("从关联层级 {} 继承隐藏属性到层级 {}", relatedHierarchyId, currentHierarchyId);
-        
+
         // 查询关联层级的所有属性（包括显式和隐藏）
         List<HierarchyProperty> relatedProperties = hierarchyPropertyMapper.selectList(
             Wrappers.<HierarchyProperty>lambdaQuery()
                 .eq(HierarchyProperty::getHierarchyId, relatedHierarchyId)
         );
-        
+
         log.debug("关联层级 {} 有 {} 个属性", relatedHierarchyId, relatedProperties.size());
-        
+
         for (HierarchyProperty relatedProperty : relatedProperties) {
             HierarchyTypeProperty typeProperty = hierarchyTypePropertyMapper.selectById(relatedProperty.getTypePropertyId());
             if (typeProperty == null) continue;
-            
+
             HierarchyTypePropertyDictVo dictVo = hierarchyTypePropertyDictMapper.selectVoById(typeProperty.getPropertyDictId());
             // 只处理层级类型属性（data_type=1001）
             if (dictVo != null && dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
                 log.debug("发现层级类型属性: typePropertyId={}, propertyValue={}", relatedProperty.getTypePropertyId(), relatedProperty.getPropertyValue());
-                
+
                 // 检查是否已经存在该属性
                 boolean exists = extraProperties.stream()
                     .anyMatch(p -> p.getTypePropertyId().equals(relatedProperty.getTypePropertyId()));
-                
+
                 if (!exists) {
                     HierarchyProperty hidden = new HierarchyProperty();
                     hidden.setHierarchyId(currentHierarchyId);
@@ -472,7 +485,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                     hidden.setScope(0); // 隐藏属性
                     extraProperties.add(hidden);
                     log.debug("创建隐藏属性: typePropertyId={}, propertyValue={}", typeProperty.getId(), relatedProperty.getPropertyValue());
-                    
+
                     // 递归继承（例如从province继承其他属性）
                     try {
                         Long nextRelatedId = Long.valueOf(relatedProperty.getPropertyValue());
@@ -489,7 +502,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
     /**
      * 如需要则创建隐藏属性
-     * 
+     *
      * @return 返回属性值指向的层级ID，如果不是层级类型属性则返回null
      */
     private Long createHiddenPropertyIfNeeded(Long currentHierarchyId, Long parentHierarchyId,
@@ -513,7 +526,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             hidden.setPropertyValue(parentProperty.getPropertyValue());
             hidden.setScope(0);
             extraProperties.add(hidden);
-            
+
             // 返回属性值指向的层级ID，用于后续递归处理
             try {
                 return Long.valueOf(parentProperty.getPropertyValue());
@@ -547,9 +560,9 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         if (currentHierarchy.getCode() == null || currentHierarchy.getCode().isEmpty()) {
             if (type.getCodeLength() != null) {
                 String singleCode = HierarchyCodeUtils.generateNextCode(
-                    currentHierarchy.getTypeId(), 
-                    currentHierarchy.getParentId(), 
-                    type.getCodeLength(), 
+                    currentHierarchy.getTypeId(),
+                    currentHierarchy.getParentId(),
+                    type.getCodeLength(),
                     baseMapper
                 );
                 if (singleCode != null) {
@@ -683,9 +696,9 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         Map<String, Object> cascadeParentAndSetRelation = findCascadeParentAndSetRelation(bo.getProperties(), hierarchyId);
         Object parentIdObj = cascadeParentAndSetRelation.get("parentId");
         Object otherIdsObj = cascadeParentAndSetRelation.get("otherIds");
-        
+
         log.debug("层级 {} 初始化属性: parentId={}, otherIds={}", hierarchyId, parentIdObj, otherIdsObj);
-        
+
         if (parentIdObj != null) {
             Long parentId = Long.valueOf(parentIdObj.toString());
             List<Long> otherIds = (List<Long>) otherIdsObj;
@@ -706,7 +719,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 createHiddenPropertiesFromParent(hierarchyId, otherId, extraProperties);
             }
         }
-        
+
         log.debug("层级 {} 共创建 {} 个隐藏属性", hierarchyId, extraProperties.size());
         batchInsertProperties(bo.getProperties(), extraProperties);
         bo.setNeedGenerateCode(isBottomLevel(bo.getTypeId()) && type.getCascadeFlag());
@@ -719,9 +732,9 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         if (update == null) {
             throw new ServiceException("转换实体失败");
         }
-        
+
         validEntityBeforeSave(update);
-        
+
         List<HierarchyProperty> properties = bo.getProperties();
         for (HierarchyProperty property : properties) {
             hierarchyPropertyMapper.updateById(property);
@@ -1497,21 +1510,21 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         if (hierarchyId != null) {
             // 添加hierarchyId本身
             targetHierarchyIdStrings.add(hierarchyId.toString());
-            
+
             // 获取hierarchyId的所有子孙层级
             List<HierarchyVo> descendants = new ArrayList<>();
             getAllDescendants(hierarchyId, descendants);
-            
+
             // 将所有子孙层级ID转换为字符串并添加到集合中
             for (HierarchyVo descendant : descendants) {
                 targetHierarchyIdStrings.add(descendant.getId().toString());
             }
         }
-        
+
         // 8. 根据hierarchyId及其子孙层级区分绑定的传感器
         Set<Long> boundToTargetDeviceSensorIds = new HashSet<>();
         Set<Long> boundToOtherDeviceSensorIds = new HashSet<>();
-        
+
         for (HierarchyProperty property : boundProperties) {
             String propertyValue = property.getPropertyValue();
             if (hierarchyId != null && targetHierarchyIdStrings.contains(propertyValue)) {
@@ -1527,7 +1540,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         Set<Long> allBoundSensorIds = new HashSet<>();
         allBoundSensorIds.addAll(boundToTargetDeviceSensorIds);
         allBoundSensorIds.addAll(boundToOtherDeviceSensorIds);
-        
+
         List<HierarchyVo> unboundSensors = allSensors.stream()
             .filter(sensor -> !allBoundSensorIds.contains(sensor.getId()))
             .collect(Collectors.toList());
@@ -2145,7 +2158,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         // 1. 根据code查找传感器层级
         Hierarchy sensorHierarchy = baseMapper.selectOne(
             Wrappers.<Hierarchy>lambdaQuery()
-                .eq(Hierarchy::getCode, sensorCode)
+                .eq(Hierarchy::getFullCode, sensorCode)
                 .last("LIMIT 1")
         );
 
@@ -2176,7 +2189,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     public Map<String, Integer> repairAllFullCodes() {
         log.info("开始执行 fullCode 补偿修复...");
         long startTime = System.currentTimeMillis();
-        
+
         Map<String, Integer> result = new HashMap<>();
         int totalCount = 0;
         int updatedCount = 0;
@@ -2200,7 +2213,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         }
 
         long endTime = System.currentTimeMillis();
-        log.info("fullCode 补偿修复完成! 总计: {}, 更新: {}, 跳过: {}, 耗时: {}ms", 
+        log.info("fullCode 补偿修复完成! 总计: {}, 更新: {}, 跳过: {}, 耗时: {}ms",
             totalCount, updatedCount, skippedCount, (endTime - startTime));
 
         result.put("totalCount", totalCount);
@@ -2237,37 +2250,37 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
         // 检查是否是传感器类型（通过 generateHierarchyCode 生成）
         HierarchyType type = hierarchyTypeMapper.selectById(current.getTypeId());
-        boolean isSensorType = type != null && type.getCascadeFlag() != null && type.getCascadeFlag() 
+        boolean isSensorType = type != null && type.getCascadeFlag() != null && type.getCascadeFlag()
             && isBottomLevel(current.getTypeId());
-        
+
         boolean needUpdate = false;
         Hierarchy update = new Hierarchy();
         update.setId(hierarchyId);
-        
+
         if (isSensorType) {
             // 传感器类型特殊处理
-            
+
             // 1. 检查并修复 code：传感器的 code 应该是简单序号，不应该是长的完整编码
             if (current.getCode() != null && current.getCode().length() > 10) {
                 // code 太长，说明存储的是完整编码
                 // 从完整编码的最后几位提取简单序号（code_length 位）
                 Integer codeLength = type != null && type.getCodeLength() != null ? type.getCodeLength() : 3;
                 String simpleCode;
-                
+
                 if (current.getCode().length() >= codeLength) {
                     // 从当前的 code 中提取后几位
                     simpleCode = current.getCode().substring(current.getCode().length() - codeLength);
                 } else {
                     simpleCode = current.getCode();
                 }
-                
+
                 update.setCode(simpleCode);
                 current.setCode(simpleCode);  // 更新当前对象，后面生成fullCode时使用
                 needUpdate = true;
-                log.info("修复传感器 {} ({}) 的 code: {} -> {}", 
+                log.info("修复传感器 {} ({}) 的 code: {} -> {}",
                     hierarchyId, current.getName(), current.getCode(), simpleCode);
             }
-            
+
             // 2. 生成 full_code（编码前缀 + 传感器自己的code）
             String codePrefix = generateSensorCodePrefix(hierarchyId);
             if (StringUtils.isNotBlank(codePrefix)) {
@@ -2275,24 +2288,36 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                 if (!expectedFullCode.equals(current.getFullCode())) {
                     update.setFullCode(expectedFullCode);
                     needUpdate = true;
-                    log.debug("传感器层级 {} ({}) 更新 fullCode: {} -> {}", 
+                    log.debug("传感器层级 {} ({}) 更新 fullCode: {} -> {}",
                         hierarchyId, current.getName(), current.getFullCode(), expectedFullCode);
                 }
             }
         } else {
-            // 非传感器类型：普通逻辑（父级fullCode + 当前code）
+            // 非传感器类型：统一使用基于隐藏属性的逻辑
             if (StringUtils.isNotBlank(current.getCode())) {
                 String expectedFullCode;
-                if (StringUtils.isNotBlank(parentFullCode)) {
-                    expectedFullCode = parentFullCode + current.getCode();
+                
+                // 尝试从隐藏属性生成 fullCode（与传感器逻辑一致）
+                String codePrefix = generateSensorCodePrefix(hierarchyId);
+                
+                if (StringUtils.isNotBlank(codePrefix)) {
+                    // 如果有隐藏属性引用，使用隐藏属性前缀 + 当前code
+                    expectedFullCode = codePrefix + current.getCode();
+                    log.debug("层级 {} ({}) 使用隐藏属性生成 fullCode", hierarchyId, current.getName());
                 } else {
-                    expectedFullCode = current.getCode();
+                    // 没有隐藏属性，使用传统逻辑（父级fullCode + 当前code）
+                    if (StringUtils.isNotBlank(parentFullCode)) {
+                        expectedFullCode = parentFullCode + current.getCode();
+                    } else {
+                        expectedFullCode = current.getCode();
+                    }
+                    log.debug("层级 {} ({}) 使用父级fullCode生成", hierarchyId, current.getName());
                 }
 
                 if (!expectedFullCode.equals(current.getFullCode())) {
                     update.setFullCode(expectedFullCode);
                     needUpdate = true;
-                    log.debug("更新层级 {} ({}) 的 fullCode: {} -> {}", 
+                    log.debug("更新层级 {} ({}) 的 fullCode: {} -> {}",
                         hierarchyId, current.getName(), current.getFullCode(), expectedFullCode);
                 }
             } else {
@@ -2376,27 +2401,27 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Integer> compensateMissingHiddenProperties(Long typeId) {
         log.info("开始补偿修复 typeId={} 的层级缺失的隐藏属性", typeId);
-        
+
         // 查询该类型的所有层级
         List<Hierarchy> hierarchies = lambdaQuery()
             .eq(Hierarchy::getTypeId, typeId)
             .list();
-        
+
         log.info("找到 {} 个 typeId={} 的层级需要检查", hierarchies.size(), typeId);
-        
+
         int processedCount = 0;  // 处理的层级数量
         int addedPropertiesCount = 0;  // 新增的隐藏属性数量
-        
+
         for (Hierarchy hierarchy : hierarchies) {
             try {
                 log.debug("处理层级: id={}, name={}", hierarchy.getId(), hierarchy.getName());
-                
+
                 // 查询该层级已有的属性
                 List<HierarchyProperty> existingProperties = hierarchyPropertyMapper.selectList(
                     Wrappers.<HierarchyProperty>lambdaQuery()
                         .eq(HierarchyProperty::getHierarchyId, hierarchy.getId())
                 );
-                
+
                 // 查询该层级的所有显式（scope=1）层级类型属性
                 List<HierarchyProperty> explicitHierarchyProperties = existingProperties.stream()
                     .filter(p -> p.getScope() == 1)
@@ -2407,20 +2432,20 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                         return dictVo != null && dictVo.getDataType().equals(DataTypeEnum.HIERARCHY.getCode());
                     })
                     .collect(Collectors.toList());
-                
+
                 log.debug("层级 {} 有 {} 个显式层级类型属性", hierarchy.getId(), explicitHierarchyProperties.size());
-                
+
                 if (explicitHierarchyProperties.isEmpty()) {
                     log.debug("层级 {} 没有显式层级类型属性，跳过", hierarchy.getId());
                     continue;
                 }
-                
+
                 // 计算应该有的隐藏属性
                 List<HierarchyProperty> shouldHaveProperties = new ArrayList<>();
                 Map<String, Object> cascadeInfo = findCascadeParentAndSetRelation(explicitHierarchyProperties, hierarchy.getId());
                 Object parentIdObj = cascadeInfo.get("parentId");
                 Object otherIdsObj = cascadeInfo.get("otherIds");
-                
+
                 if (parentIdObj != null) {
                     Long parentId = Long.valueOf(parentIdObj.toString());
                     List<Long> otherIds = (List<Long>) otherIdsObj;
@@ -2428,64 +2453,64 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                         otherIds = new ArrayList<>();
                     }
                     otherIds.add(parentId);
-                    
+
                     log.debug("层级 {} 应该从以下层级继承隐藏属性: {}", hierarchy.getId(), otherIds);
-                    
+
                     for (Long otherId : otherIds) {
                         createHiddenPropertiesFromParent(hierarchy.getId(), otherId, shouldHaveProperties);
                     }
                 } else if (otherIdsObj != null) {
                     List<Long> otherIds = (List<Long>) otherIdsObj;
                     log.debug("层级 {} 应该从以下层级继承隐藏属性(无parentId): {}", hierarchy.getId(), otherIds);
-                    
+
                     for (Long otherId : otherIds) {
                         createHiddenPropertiesFromParent(hierarchy.getId(), otherId, shouldHaveProperties);
                     }
                 }
-                
+
                 log.debug("层级 {} 应该有 {} 个隐藏属性", hierarchy.getId(), shouldHaveProperties.size());
-                
+
                 // 找出缺失的隐藏属性
                 List<HierarchyProperty> missingProperties = shouldHaveProperties.stream()
                     .filter(shouldHave -> {
                         // 检查是否已经存在该属性
                         return existingProperties.stream()
-                            .noneMatch(existing -> 
+                            .noneMatch(existing ->
                                 existing.getTypePropertyId().equals(shouldHave.getTypePropertyId())
                             );
                     })
                     .collect(Collectors.toList());
-                
+
                 if (!missingProperties.isEmpty()) {
                     log.info("层级 {} 缺失 {} 个隐藏属性，开始补偿", hierarchy.getId(), missingProperties.size());
-                    
+
                     // 批量插入缺失的隐藏属性
                     for (HierarchyProperty missingProperty : missingProperties) {
                         hierarchyPropertyMapper.insert(missingProperty);
-                        log.debug("为层级 {} 添加隐藏属性: typePropertyId={}, value={}", 
+                        log.debug("为层级 {} 添加隐藏属性: typePropertyId={}, value={}",
                             hierarchy.getId(), missingProperty.getTypePropertyId(), missingProperty.getPropertyValue());
                     }
-                    
+
                     addedPropertiesCount += missingProperties.size();
                     processedCount++;
                 } else {
                     log.debug("层级 {} 的隐藏属性完整，无需补偿", hierarchy.getId());
                 }
-                
+
             } catch (Exception e) {
                 log.error("处理层级 {} 时发生错误: {}", hierarchy.getId(), e.getMessage(), e);
                 // 继续处理下一个层级
             }
         }
-        
+
         Map<String, Integer> result = new HashMap<>();
         result.put("totalHierarchies", hierarchies.size());
         result.put("processedHierarchies", processedCount);
         result.put("addedProperties", addedPropertiesCount);
-        
-        log.info("补偿完成: 共检查 {} 个层级，修复 {} 个层级，新增 {} 个隐藏属性", 
+
+        log.info("补偿完成: 共检查 {} 个层级，修复 {} 个层级，新增 {} 个隐藏属性",
             hierarchies.size(), processedCount, addedPropertiesCount);
-        
+
         return result;
     }
 
