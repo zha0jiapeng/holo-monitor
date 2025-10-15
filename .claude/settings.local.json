@@ -7,7 +7,16 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(mvn dependency:tree:*)",
-      "Bash(mvn validate)"
+      "Bash(mvn validate)",
+      "Bash(claude config:*)",
+      "Bash(if [ ! -d \".claude\" ])",
+      "Bash(then mkdir .claude)",
+      "Bash(fi)",
+      "Bash(if [ -f \"nul\" ])",
+      "Bash(then ls -la nul)",
+      "Bash(cat:*)",
+      "Bash(else echo \"File not found\")",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []

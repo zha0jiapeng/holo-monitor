@@ -35,6 +35,11 @@ public class HierarchyProperty {
     private Long typePropertyId;
 
     /**
+     * 属性字典id
+     */
+    private Long propertyDictId;
+
+    /**
      * 属性值
      */
     private String propertyValue;

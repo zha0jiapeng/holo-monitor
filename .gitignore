@@ -47,3 +47,7 @@ nbdist/
 
 .flattened-pom.xml
 
+
+# Claude Code MCP configuration (contains secrets)
+.claude/mcp.json
+nul
