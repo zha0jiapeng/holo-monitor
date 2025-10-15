@@ -605,12 +605,16 @@ public class StatisticsServiceImpl implements IStatisticsService {
             return alarmByPropertyDimension(hierarchyId, targetTypeId, statisticalType, sensorHierarchyType);
         }
 
-        // targetTypeId 在层级树下，根据 hierarchyId 类型选择统计策略
-        if (isDeviceType(hierarchyType.getTypeKey())) {
-            // 设备类型：使用反向统计逻辑
+        // targetTypeId 在层级树下，根据 hierarchyId 和 targetTypeId 类型选择统计策略
+        HierarchyType targetHierarchyType = hierarchyTypeService.getById(targetTypeId);
+        boolean targetIsDeviceType = targetHierarchyType != null && isDeviceType(targetHierarchyType.getTypeKey());
+        
+        if (isDeviceType(hierarchyType.getTypeKey()) && !targetIsDeviceType) {
+            // hierarchyId 是设备类型，但 targetTypeId 不是设备类型（如三级系统）：使用反向统计逻辑
+            log.info("hierarchyId={} 是设备类型，targetTypeId={} 不是设备类型，使用反向统计", hierarchyId, targetTypeId);
             return alarmByReverseStatistics(hierarchyId, targetTypeId, statisticalType, sensorHierarchyType, hierarchyType);
         } else {
-            // 非设备类型：使用正向统计逻辑
+            // 其他情况：使用正向统计逻辑
             List<Hierarchy> targetHierarchies = getTargetHierarchies(hierarchyId, targetTypeId);
             if (targetHierarchies.isEmpty()) {
                 return createEmptyResult(targetTypeId, statisticalType);
@@ -1046,6 +1050,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
         // 获取所有传感器的报警状态（report_st值）
         Map<Long, Integer> sensorAlarmLevels = getSensorAlarmLevels(sensorHierarchyType.getId());
 
+        // 检查 targetTypeId 是否就是 device_point 类型
+        boolean targetIsDevicePoint = devicePointHierarchyType.getId().equals(targetTypeId);
+
         // 统计每个目标层级下的设备点报警情况
         List<Map<String, Object>> statistics = new ArrayList<>();
         int totalDeviceCount = 0;
@@ -1054,9 +1061,16 @@ public class StatisticsServiceImpl implements IStatisticsService {
         int totalSeriousCount = 0; // 全局严重报警设备点数量
 
         for (Hierarchy targetHierarchy : targetHierarchies) {
-            // 查找该目标层级下的所有device_point类型的层级
-            List<Hierarchy> devicesUnderTarget = findDevicesUnderTarget(targetHierarchy.getId(),
-                    devicePointHierarchyType.getId());
+            // 如果 targetTypeId 本身就是 device_point，直接统计 targetHierarchy 本身
+            // 否则查找该目标层级下的所有 device_point 类型的层级
+            List<Hierarchy> devicesUnderTarget;
+            if (targetIsDevicePoint) {
+                devicesUnderTarget = List.of(targetHierarchy);
+                log.debug("目标类型是设备点，直接统计 hierarchyId={}", targetHierarchy.getId());
+            } else {
+                devicesUnderTarget = findDevicesUnderTarget(targetHierarchy.getId(),
+                        devicePointHierarchyType.getId());
+            }
 
             // 统计该层级下的报警设备点
             List<Map<String, Object>> alarmDevices = new ArrayList<>();
@@ -1131,6 +1145,10 @@ public class StatisticsServiceImpl implements IStatisticsService {
         // 获取所有离线的传感器ID列表
         List<Long> offlineSensorIds = getOfflineFlagHierarchyIds(sensorHierarchyType.getId());
 
+        // 检查目标类型是否是设备类型
+        HierarchyType targetHierarchyType = hierarchyTypeService.getById(targetTypeId);
+        boolean targetIsDeviceType = targetHierarchyType != null && isDeviceType(targetHierarchyType.getTypeKey());
+
         // 统计每个目标层级下的报警、离线和总传感器数量
         List<Map<String, Object>> statistics = new ArrayList<>();
         int totalAlarmSensorCount = 0;
@@ -1139,16 +1157,26 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         for (Hierarchy targetHierarchy : targetHierarchies) {
             // 查找该目标层级下的所有传感器
-            List<Hierarchy> allSensorsUnderTarget = findAllSensorsUnderTarget(
-                    targetHierarchy.getId(), sensorHierarchyType.getId());
+            // 如果目标是设备类型，使用 getSensorsForHierarchy（支持设备绑定）
+            // 否则使用 findAllSensorsUnderTarget（层级树查找）
+            List<Hierarchy> allSensorsUnderTarget;
+            if (targetIsDeviceType) {
+                allSensorsUnderTarget = getSensorsForHierarchy(
+                        targetHierarchy.getId(), sensorHierarchyType.getId());
+                log.debug("目标是设备类型，使用绑定属性查找传感器，找到 {} 个", allSensorsUnderTarget.size());
+            } else {
+                allSensorsUnderTarget = findAllSensorsUnderTarget(
+                        targetHierarchy.getId(), sensorHierarchyType.getId());
+            }
 
-            // 查找该目标层级下的所有报警传感器
-            List<Hierarchy> alarmSensorsUnderTarget = findAlarmSensorsUnderTarget(
-                    targetHierarchy.getId(), sensorHierarchyType.getId(), alarmSensorIds);
+            // 从所有传感器中筛选出报警的和离线的
+            List<Hierarchy> alarmSensorsUnderTarget = allSensorsUnderTarget.stream()
+                    .filter(sensor -> alarmSensorIds.contains(sensor.getId()))
+                    .collect(Collectors.toList());
 
-            // 查找该目标层级下的所有离线传感器
-            List<Hierarchy> offlineSensorsUnderTarget = findAlarmSensorsUnderTarget(
-                    targetHierarchy.getId(), sensorHierarchyType.getId(), offlineSensorIds);
+            List<Hierarchy> offlineSensorsUnderTarget = allSensorsUnderTarget.stream()
+                    .filter(sensor -> offlineSensorIds.contains(sensor.getId()))
+                    .collect(Collectors.toList());
 
             Map<String, Object> stat = new HashMap<>();
             stat.put("targetHierarchyName", targetHierarchy.getName());
