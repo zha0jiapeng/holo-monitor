@@ -3031,8 +3031,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         log.info("找到 {} 个设备区域", deviceGroups.size());
 
-        // 获取设备区域的设备大类属性（type_property_id=40）
-        // 先查询type_property_id=40对应的属性字典
+        // 获取设备区域的设备大类属性
         HierarchyTypePropertyDict deviceCategoryDict = hierarchyTypePropertyDictService.lambdaQuery()
             .eq(HierarchyTypePropertyDict::getDictKey, "device_type")
             .one();
@@ -3078,6 +3077,50 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         log.info("涉及 {} 个设备大类", deviceCategories.size());
 
+        // 批量加载设备大类的图标属性（click_icon 和 unclick_icon）
+        Map<Long, String> categoryClickIcons = new HashMap<>();
+        Map<Long, String> categoryUnclickIcons = new HashMap<>();
+        
+        if (!categoryIds.isEmpty()) {
+            // 获取图标属性字典
+            HierarchyTypePropertyDict clickIconDict = hierarchyTypePropertyDictService.lambdaQuery()
+                .eq(HierarchyTypePropertyDict::getDictKey, "click_icon")
+                .one();
+            HierarchyTypePropertyDict unclickIconDict = hierarchyTypePropertyDictService.lambdaQuery()
+                .eq(HierarchyTypePropertyDict::getDictKey, "unclick_icon")
+                .one();
+
+            // 批量加载属性值
+            if (clickIconDict != null) {
+                List<HierarchyProperty> clickIconProps = hierarchyPropertyService.lambdaQuery()
+                    .in(HierarchyProperty::getHierarchyId, categoryIds)
+                    .eq(HierarchyProperty::getPropertyDictId, clickIconDict.getId())
+                    .list();
+                categoryClickIcons = clickIconProps.stream()
+                    .collect(Collectors.toMap(
+                        HierarchyProperty::getHierarchyId,
+                        HierarchyProperty::getPropertyValue,
+                        (v1, v2) -> v1
+                    ));
+            }
+
+            if (unclickIconDict != null) {
+                List<HierarchyProperty> unclickIconProps = hierarchyPropertyService.lambdaQuery()
+                    .in(HierarchyProperty::getHierarchyId, categoryIds)
+                    .eq(HierarchyProperty::getPropertyDictId, unclickIconDict.getId())
+                    .list();
+                categoryUnclickIcons = unclickIconProps.stream()
+                    .collect(Collectors.toMap(
+                        HierarchyProperty::getHierarchyId,
+                        HierarchyProperty::getPropertyValue,
+                        (v1, v2) -> v1
+                    ));
+            }
+
+            log.info("加载了 {} 个设备大类的click_icon，{} 个unclick_icon", 
+                categoryClickIcons.size(), categoryUnclickIcons.size());
+        }
+
         // 构建树形结构
         List<Map<String, Object>> deviceTypeTreeList = new ArrayList<>();
         
@@ -3089,6 +3132,10 @@ public class StatisticsServiceImpl implements IStatisticsService {
             deviceCategoryNode.put("fullCode", deviceCategory.getFullCode());
             deviceCategoryNode.put("typeKey", "device_category");
             deviceCategoryNode.put("level", "deviceCategory");
+            
+            // 添加图标属性
+            deviceCategoryNode.put("clickIcon", categoryClickIcons.getOrDefault(deviceCategory.getId(), ""));
+            deviceCategoryNode.put("unclickIcon", categoryUnclickIcons.getOrDefault(deviceCategory.getId(), ""));
 
             // 获取该设备大类下的设备区域
             List<Hierarchy> groupsInCategory = categoryToDeviceGroups.get(deviceCategory.getId());
@@ -3111,7 +3158,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     /**
-     * 构建设备区域树（包含设备和设备点）
+     * 构建设备区域树（包含设备和设备点，包含报警状态）
      */
     private Map<String, Object> buildDeviceGroupTree(Hierarchy deviceGroup) {
         Map<String, Object> node = new HashMap<>();
@@ -3121,6 +3168,11 @@ public class StatisticsServiceImpl implements IStatisticsService {
         node.put("fullCode", deviceGroup.getFullCode());
         node.put("typeKey", "device_group");
         node.put("level", "deviceGroup");
+
+        // 获取自身绑定的传感器报警状态
+        List<Long> selfSensorIds = getBindingSensorIds(deviceGroup.getId());
+        Map<Long, Integer> sensorAlarmLevels = getSensorAlarmLevels(selfSensorIds);
+        int selfAlarmLevel = getMaxAlarmLevel(selfSensorIds, sensorAlarmLevels);
 
         // 获取设备类型（device, type_key="device"）
         HierarchyType deviceType = hierarchyTypeService.lambdaQuery()
@@ -3136,21 +3188,34 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 .list();
         }
 
-        log.debug("设备区域 {} 下有 {} 个设备", deviceGroup.getName(), devices.size());
+        log.debug("设备区域 {} 下有 {} 个设备，自身绑定 {} 个传感器，自身报警等级: {}", 
+            deviceGroup.getName(), devices.size(), selfSensorIds.size(), selfAlarmLevel);
 
-        // 构建设备节点
+        // 构建设备节点并收集子集最高报警等级
         List<Map<String, Object>> deviceList = new ArrayList<>();
+        int childrenAlarmLevel = 0;
         for (Hierarchy device : devices) {
             Map<String, Object> deviceNode = buildDeviceTree(device);
             deviceList.add(deviceNode);
+            
+            // 获取子节点的综合报警等级
+            Integer childAlarmLevel = (Integer) deviceNode.get("alarmLevel");
+            if (childAlarmLevel != null && childAlarmLevel > childrenAlarmLevel) {
+                childrenAlarmLevel = childAlarmLevel;
+            }
         }
+
+        // 设置报警状态
+        node.put("selfAlarmLevel", selfAlarmLevel);  // 自身绑定传感器的报警等级
+        node.put("childrenAlarmLevel", childrenAlarmLevel);  // 子集的最高报警等级
+        node.put("alarmLevel", Math.max(selfAlarmLevel, childrenAlarmLevel));  // 综合报警等级
 
         node.put("children", deviceList);
         return node;
     }
 
     /**
-     * 构建设备树（包含设备点）
+     * 构建设备树（包含设备点，包含报警状态）
      */
     private Map<String, Object> buildDeviceTree(Hierarchy device) {
         Map<String, Object> node = new HashMap<>();
@@ -3160,6 +3225,11 @@ public class StatisticsServiceImpl implements IStatisticsService {
         node.put("fullCode", device.getFullCode());
         node.put("typeKey", "device");
         node.put("level", "device");
+
+        // 获取自身绑定的传感器报警状态
+        List<Long> selfSensorIds = getBindingSensorIds(device.getId());
+        Map<Long, Integer> sensorAlarmLevels = getSensorAlarmLevels(selfSensorIds);
+        int selfAlarmLevel = getMaxAlarmLevel(selfSensorIds, sensorAlarmLevels);
 
         // 获取设备点类型（device_point, type_key="device_point"）
         HierarchyType devicePointType = hierarchyTypeService.lambdaQuery()
@@ -3175,11 +3245,18 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 .list();
         }
 
-        log.debug("设备 {} 下有 {} 个设备点", device.getName(), devicePoints.size());
+        log.debug("设备 {} 下有 {} 个设备点，自身绑定 {} 个传感器，自身报警等级: {}", 
+            device.getName(), devicePoints.size(), selfSensorIds.size(), selfAlarmLevel);
 
-        // 构建设备点节点
+        // 构建设备点节点并收集子集最高报警等级
         List<Map<String, Object>> devicePointList = new ArrayList<>();
+        int childrenAlarmLevel = 0;
         for (Hierarchy devicePoint : devicePoints) {
+            // 获取设备点自身绑定的传感器报警状态
+            List<Long> dpSensorIds = getBindingSensorIds(devicePoint.getId());
+            Map<Long, Integer> dpSensorAlarmLevels = getSensorAlarmLevels(dpSensorIds);
+            int dpAlarmLevel = getMaxAlarmLevel(dpSensorIds, dpSensorAlarmLevels);
+
             Map<String, Object> devicePointNode = new HashMap<>();
             devicePointNode.put("id", devicePoint.getId());
             devicePointNode.put("name", devicePoint.getName());
@@ -3187,11 +3264,132 @@ public class StatisticsServiceImpl implements IStatisticsService {
             devicePointNode.put("fullCode", devicePoint.getFullCode());
             devicePointNode.put("typeKey", "device_point");
             devicePointNode.put("level", "devicePoint");
+            
+            // 设备点没有子集，所以selfAlarmLevel就是alarmLevel
+            devicePointNode.put("selfAlarmLevel", dpAlarmLevel);
+            devicePointNode.put("childrenAlarmLevel", 0);  // 设备点没有子集
+            devicePointNode.put("alarmLevel", dpAlarmLevel);
+            
             devicePointList.add(devicePointNode);
+
+            // 更新父节点的子集报警等级
+            if (dpAlarmLevel > childrenAlarmLevel) {
+                childrenAlarmLevel = dpAlarmLevel;
+            }
         }
+
+        // 设置报警状态
+        node.put("selfAlarmLevel", selfAlarmLevel);  // 自身绑定传感器的报警等级
+        node.put("childrenAlarmLevel", childrenAlarmLevel);  // 子集的最高报警等级
+        node.put("alarmLevel", Math.max(selfAlarmLevel, childrenAlarmLevel));  // 综合报警等级
 
         node.put("children", devicePointList);
         return node;
+    }
+
+    /**
+     * 获取层级绑定的传感器ID列表
+     * 
+     * @param hierarchyId 层级ID
+     * @return 传感器ID列表
+     */
+    private List<Long> getBindingSensorIds(Long hierarchyId) {
+        // 查询sensors字典属性
+        HierarchyTypePropertyDict sensorsDict = hierarchyTypePropertyDictService.lambdaQuery()
+            .eq(HierarchyTypePropertyDict::getDictKey, "sensors")
+            .one();
+
+        if (sensorsDict == null) {
+            return new ArrayList<>();
+        }
+
+        // 查询该层级的sensors属性
+        List<HierarchyProperty> properties = hierarchyPropertyService.lambdaQuery()
+            .eq(HierarchyProperty::getHierarchyId, hierarchyId)
+            .eq(HierarchyProperty::getPropertyDictId, sensorsDict.getId())
+            .list();
+
+        // 解析传感器ID列表（逗号分隔）
+        List<Long> sensorIds = new ArrayList<>();
+        for (HierarchyProperty property : properties) {
+            String value = property.getPropertyValue();
+            if (value != null && !value.trim().isEmpty()) {
+                String[] idStrs = value.split(",");
+                for (String idStr : idStrs) {
+                    try {
+                        sensorIds.add(Long.parseLong(idStr.trim()));
+                    } catch (NumberFormatException e) {
+                        log.warn("解析传感器ID失败: {}", idStr);
+                    }
+                }
+            }
+        }
+
+        return sensorIds;
+    }
+
+    /**
+     * 获取传感器的报警等级
+     * 
+     * @param sensorIds 传感器ID列表
+     * @return 传感器ID到报警等级的映射
+     */
+    private Map<Long, Integer> getSensorAlarmLevels(List<Long> sensorIds) {
+        Map<Long, Integer> alarmLevels = new HashMap<>();
+
+        if (sensorIds == null || sensorIds.isEmpty()) {
+            return alarmLevels;
+        }
+
+        // 获取sys:st字典
+        HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.lambdaQuery()
+            .eq(HierarchyTypePropertyDict::getDictKey, "sys:st")
+            .one();
+
+        if (dict == null) {
+            log.warn("未找到sys:st属性字典");
+            return alarmLevels;
+        }
+
+        // 查询传感器的sys:st属性
+        List<HierarchyProperty> properties = hierarchyPropertyService.lambdaQuery()
+            .in(HierarchyProperty::getHierarchyId, sensorIds)
+            .eq(HierarchyProperty::getPropertyDictId, dict.getId())
+            .list();
+
+        // 解析报警等级
+        for (HierarchyProperty property : properties) {
+            try {
+                String value = property.getPropertyValue();
+                if (value != null && !value.trim().isEmpty()) {
+                    int alarmLevel = Integer.parseInt(value.trim());
+                    alarmLevels.put(property.getHierarchyId(), alarmLevel);
+                }
+            } catch (NumberFormatException e) {
+                log.warn("解析报警等级失败: hierarchyId={}, value={}", 
+                    property.getHierarchyId(), property.getPropertyValue());
+            }
+        }
+
+        return alarmLevels;
+    }
+
+    /**
+     * 计算最高报警等级
+     * 
+     * @param sensorIds 传感器ID列表
+     * @param sensorAlarmLevels 传感器报警等级映射
+     * @return 最高报警等级
+     */
+    private int getMaxAlarmLevel(List<Long> sensorIds, Map<Long, Integer> sensorAlarmLevels) {
+        int maxLevel = 0;
+        for (Long sensorId : sensorIds) {
+            Integer level = sensorAlarmLevels.get(sensorId);
+            if (level != null && level > maxLevel) {
+                maxLevel = level;
+            }
+        }
+        return maxLevel;
     }
 
 }
