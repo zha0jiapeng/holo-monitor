@@ -65,8 +65,8 @@ import org.dromara.hm.service.IStatisticsService;
         return R.ok(result);
     }
     @GetMapping("/deviceCategoryStatistics")
-    public R<Map<String, Object> > statisticsByDeviceCategory(Long hierarchyId) {
-        Map<String, Object>  result = statisticsService.statisticsByDeviceCategory(hierarchyId);
+    public R<Map<String, Object> > statisticsByDeviceCategory(Long hierarchyId, Long deviceCategoryId) {
+        Map<String, Object>  result = statisticsService.statisticsByDeviceCategory(hierarchyId, deviceCategoryId);
         return R.ok(result);
     }
 

@@ -2995,10 +2995,10 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     @Override
-    public Map<String, Object> statisticsByDeviceCategory(Long hierarchyId) {
+    public Map<String, Object> statisticsByDeviceCategory(Long hierarchyId, Long deviceCategoryId) {
         Map<String, Object> result = new HashMap<>();
 
-        log.info("开始执行按设备类别统计 - hierarchyId(变电站ID): {}", hierarchyId);
+        log.info("开始执行按设备类别统计 - hierarchyId(变电站ID): {}, deviceCategoryId: {}", hierarchyId, deviceCategoryId);
 
         // 验证传入的hierarchyId是否是变电站（power_plant）
         Hierarchy station = hierarchyService.getById(hierarchyId);
@@ -3068,8 +3068,42 @@ public class StatisticsServiceImpl implements IStatisticsService {
             }
         }
 
-        // 获取所有涉及的设备大类信息
-        List<Long> categoryIds = new ArrayList<>(categoryToDeviceGroups.keySet());
+        // 根据deviceCategoryId筛选设备大类
+        List<Long> categoryIds;
+
+        // 如果传入了deviceCategoryId,只查询该设备大类
+        if (deviceCategoryId != null) {
+            // 验证deviceCategoryId是否存在于数据库中
+            Hierarchy deviceCategory = hierarchyService.getById(deviceCategoryId);
+            if (deviceCategory == null) {
+                log.warn("指定的deviceCategoryId {} 不存在", deviceCategoryId);
+                result.put("deviceTypeTree", new ArrayList<>());
+                return result;
+            }
+            categoryIds = List.of(deviceCategoryId);
+            log.info("只查询指定的设备大类: id={}, name={}", deviceCategory.getId(), deviceCategory.getName());
+        } else {
+            // 没有指定deviceCategoryId,返回所有设备大类（包括没有children的）
+            // 获取device_category类型
+            HierarchyType deviceCategoryType = hierarchyTypeService.lambdaQuery()
+                .eq(HierarchyType::getTypeKey, "device_category")
+                .one();
+
+            if (deviceCategoryType == null) {
+                log.warn("未找到device_category类型");
+                result.put("deviceTypeTree", new ArrayList<>());
+                return result;
+            }
+
+            List<Hierarchy> allDeviceCategories = hierarchyService.lambdaQuery()
+                .eq(Hierarchy::getTypeId, deviceCategoryType.getId())
+                .list();
+            categoryIds = allDeviceCategories.stream()
+                .map(Hierarchy::getId)
+                .collect(Collectors.toList());
+            log.info("未指定deviceCategoryId,返回所有设备大类（共{}个）", categoryIds.size());
+        }
+
         List<Hierarchy> deviceCategories = categoryIds.isEmpty() ? new ArrayList<>()
             : hierarchyService.lambdaQuery()
                 .in(Hierarchy::getId, categoryIds)

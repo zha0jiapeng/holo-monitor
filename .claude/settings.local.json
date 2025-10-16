@@ -16,7 +16,8 @@
       "Bash(then ls -la nul)",
       "Bash(cat:*)",
       "Bash(else echo \"File not found\")",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Read(//d/**)"
     ],
     "deny": [],
     "ask": []

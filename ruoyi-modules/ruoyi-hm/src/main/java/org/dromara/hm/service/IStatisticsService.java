@@ -39,8 +39,9 @@
 
     /**
      * 按设备类型获取设备树形结构
-     * @param hierarchyId 层级ID（可选）
+     * @param hierarchyId 层级ID
+     * @param deviceCategoryId 设备大类ID(必填,用于筛选指定的设备类型)
      * @return 设备类型下的设备区域、设备、设备点树形列表
      */
-    Map<String, Object> statisticsByDeviceCategory(Long hierarchyId);
+    Map<String, Object> statisticsByDeviceCategory(Long hierarchyId, Long deviceCategoryId);
 }
