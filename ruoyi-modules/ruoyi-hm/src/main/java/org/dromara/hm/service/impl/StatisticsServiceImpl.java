@@ -2546,69 +2546,233 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     @Override
     public Map<String, List<HierarchyVo>> sensorListGroupByThreeSystem(Long hierarchyId, boolean showAllFlag) {
+        log.info("开始按sensor_group分组查询 - hierarchyId: {}, showAllFlag: {}", hierarchyId, showAllFlag);
+
         // 获取所有传感器列表
         List<HierarchyVo> sensorList = hierarchyService.getSensorListByDeviceId(hierarchyId, showAllFlag);
 
+        log.info("查询到 {} 个传感器", sensorList != null ? sensorList.size() : 0);
+
         if (sensorList == null || sensorList.isEmpty()) {
+            log.warn("传感器列表为空，返回空Map");
             return new HashMap<>();
         }
 
-        // 获取三级系统类型ID
-        HierarchyType threeSystemType = getThreeSystemType();
-        if (threeSystemType == null) {
+        // 获取sensor_group类型ID
+        HierarchyType sensorGroupType = getSensorGroupType();
+        if (sensorGroupType == null) {
+            log.warn("未找到sensor_group类型，所有传感器归入'未分类'");
             Map<String, List<HierarchyVo>> result = new HashMap<>();
             result.put("未分类", sensorList);
             return result;
         }
 
-        // 查找每个传感器所属的三级系统
-        Map<String, List<HierarchyVo>> groupedSensors = new HashMap<>();
+        log.info("找到sensor_group类型，ID: {}", sensorGroupType.getId());
 
+        // 批量查找所有传感器所属的sensor_group（优化性能）
+        Map<Long, String> sensorToGroupMap = batchFindSensorGroups(
+            sensorList.stream().map(HierarchyVo::getId).collect(Collectors.toList()),
+            sensorGroupType.getId()
+        );
+
+        // 按sensor_group分组
+        Map<String, List<HierarchyVo>> groupedSensors = new HashMap<>();
         for (HierarchyVo sensor : sensorList) {
-            String threeSystemName = findThreeSystemForSensor(sensor.getId(), threeSystemType.getId());
-            groupedSensors.computeIfAbsent(threeSystemName, k -> new ArrayList<>()).add(sensor);
+            String sensorGroupName = sensorToGroupMap.getOrDefault(sensor.getId(), "未分类");
+            groupedSensors.computeIfAbsent(sensorGroupName, k -> new ArrayList<>()).add(sensor);
         }
 
+        log.info("按sensor_group分组完成，共 {} 个分组", groupedSensors.size());
         return groupedSensors;
     }
 
     /**
-     * 获取三级系统类型
-     * @return 三级系统类型，如果未找到返回null
+     * 获取sensor_group类型
+     * @return sensor_group类型，如果未找到返回null
      */
-    private HierarchyType getThreeSystemType() {
+    private HierarchyType getSensorGroupType() {
 
         return hierarchyTypeService.lambdaQuery()
-        .eq(HierarchyType::getTypeKey, "three_system")
+        .eq(HierarchyType::getTypeKey, "sensor_group")
         .one();
     }
 
     /**
-     * 查找传感器所属的三级系统
-     * @param sensorId 传感器ID
-     * @param threeSystemTypeId 三级系统类型ID
-     * @return 三级系统名称
+     * 批量查找传感器所属的sensor_group（性能优化版本）
+     * @param sensorIds 传感器ID列表
+     * @param sensorGroupTypeId sensor_group类型ID
+     * @return 传感器ID到sensor_group名称的映射
      */
-    private String findThreeSystemForSensor(Long sensorId, Long threeSystemTypeId) {
+    private Map<Long, String> batchFindSensorGroups(List<Long> sensorIds, Long sensorGroupTypeId) {
+        Map<Long, String> resultMap = new HashMap<>();
+
+        if (sensorIds == null || sensorIds.isEmpty()) {
+            return resultMap;
+        }
+
         try {
-            // 查询传感器层级
-            Hierarchy sensor = hierarchyService.getById(sensorId);
-            if (sensor == null) {
-                return "未分类";
+            log.info("开始批量查找 {} 个传感器的sensor_group分组", sensorIds.size());
+
+            // 1. 批量查询所有传感器的属性
+            List<HierarchyProperty> allProperties = hierarchyPropertyService.lambdaQuery()
+                .in(HierarchyProperty::getHierarchyId, sensorIds)
+                .list();
+
+            if (allProperties.isEmpty()) {
+                log.debug("没有找到任何传感器属性，所有传感器归入'未分类'");
+                sensorIds.forEach(id -> resultMap.put(id, "未分类"));
+                return resultMap;
             }
 
-            // 向上查找三级系统
-            Long threeSystemId = findTargetTypeUpward(sensor, threeSystemTypeId, null);
-            if (threeSystemId != null) {
-                Hierarchy threeSystem = hierarchyService.getById(threeSystemId);
-                if (threeSystem != null) {
-                    return threeSystem.getName();
+            log.debug("查询到 {} 条传感器属性记录", allProperties.size());
+
+            // 2. 批量查询类型属性
+            Set<Long> typePropertyIds = allProperties.stream()
+                .map(HierarchyProperty::getTypePropertyId)
+                .collect(Collectors.toSet());
+
+            List<HierarchyTypeProperty> typeProperties = hierarchyTypePropertyService.lambdaQuery()
+                .in(HierarchyTypeProperty::getId, typePropertyIds)
+                .list();
+
+            Map<Long, HierarchyTypeProperty> typePropertyMap = typeProperties.stream()
+                .collect(Collectors.toMap(HierarchyTypeProperty::getId, tp -> tp));
+
+            // 3. 批量查询属性字典
+            Set<Long> dictIds = typeProperties.stream()
+                .map(HierarchyTypeProperty::getPropertyDictId)
+                .collect(Collectors.toSet());
+
+            List<HierarchyTypePropertyDict> dicts = hierarchyTypePropertyDictService.lambdaQuery()
+                .in(HierarchyTypePropertyDict::getId, dictIds)
+                .list();
+
+            Map<Long, HierarchyTypePropertyDict> dictMap = dicts.stream()
+                .collect(Collectors.toMap(HierarchyTypePropertyDict::getId, d -> d));
+
+            // 4. 收集所有层级类型(data_type=1001)的属性值（这些是潜在的sensor_group ID）
+            Set<Long> relatedHierarchyIds = new HashSet<>();
+            Map<Long, Long> sensorToRelatedHierarchyMap = new HashMap<>();
+
+            for (HierarchyProperty property : allProperties) {
+                HierarchyTypeProperty typeProperty = typePropertyMap.get(property.getTypePropertyId());
+                if (typeProperty != null) {
+                    HierarchyTypePropertyDict dict = dictMap.get(typeProperty.getPropertyDictId());
+                    if (dict != null && dict.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
+                        // 这是层级类型属性
+                        try {
+                            Long relatedHierarchyId = Long.parseLong(property.getPropertyValue());
+                            relatedHierarchyIds.add(relatedHierarchyId);
+                            sensorToRelatedHierarchyMap.put(property.getHierarchyId(), relatedHierarchyId);
+                        } catch (NumberFormatException e) {
+                            log.warn("传感器 {} 的属性值不是有效的层级ID: {}",
+                                property.getHierarchyId(), property.getPropertyValue());
+                        }
+                    }
                 }
             }
 
+            log.debug("找到 {} 个关联层级ID", relatedHierarchyIds.size());
+
+            // 5. 批量查询所有关联的层级，并筛选出sensor_group类型的
+            Map<Long, String> sensorGroupMap = new HashMap<>();
+            if (!relatedHierarchyIds.isEmpty()) {
+                List<Hierarchy> relatedHierarchies = hierarchyService.lambdaQuery()
+                    .in(Hierarchy::getId, relatedHierarchyIds)
+                    .list();
+
+                // 只保留sensor_group类型的层级
+                sensorGroupMap = relatedHierarchies.stream()
+                    .filter(h -> sensorGroupTypeId.equals(h.getTypeId()))
+                    .collect(Collectors.toMap(Hierarchy::getId, Hierarchy::getName));
+
+                log.debug("找到 {} 个sensor_group类型的层级", sensorGroupMap.size());
+            }
+
+            // 6. 构建最终结果映射
+            for (Long sensorId : sensorIds) {
+                Long relatedHierarchyId = sensorToRelatedHierarchyMap.get(sensorId);
+                if (relatedHierarchyId != null && sensorGroupMap.containsKey(relatedHierarchyId)) {
+                    String sensorGroupName = sensorGroupMap.get(relatedHierarchyId);
+                    resultMap.put(sensorId, sensorGroupName);
+                    log.debug("传感器 {} 属于sensor_group: {}", sensorId, sensorGroupName);
+                } else {
+                    resultMap.put(sensorId, "未分类");
+                }
+            }
+
+            log.info("批量查找完成：{} 个传感器中，{} 个已分类，{} 个未分类",
+                sensorIds.size(),
+                resultMap.values().stream().filter(v -> !"未分类".equals(v)).count(),
+                resultMap.values().stream().filter(v -> "未分类".equals(v)).count());
+
+            return resultMap;
+
+        } catch (Exception e) {
+            log.error("批量查找传感器sensor_group失败", e);
+            // 出错时，所有传感器归入未分类
+            sensorIds.forEach(id -> resultMap.put(id, "未分类"));
+            return resultMap;
+        }
+    }
+
+    /**
+     * 查找传感器所属的sensor_group（单个查询版本，已废弃，保留用于兼容性）
+     * @deprecated 使用 {@link #batchFindSensorGroups(List, Long)} 代替以获得更好的性能
+     * @param sensorId 传感器ID
+     * @param sensorGroupTypeId sensor_group类型ID
+     * @return sensor_group名称
+     */
+    @Deprecated
+    private String findSensorGroupForSensor(Long sensorId, Long sensorGroupTypeId) {
+        try {
+            // 查询传感器的所有属性
+            List<HierarchyProperty> sensorProperties = hierarchyPropertyService.lambdaQuery()
+                .eq(HierarchyProperty::getHierarchyId, sensorId)
+                .list();
+
+            if (sensorProperties.isEmpty()) {
+                log.debug("传感器 {} 没有任何属性", sensorId);
+                return "未分类";
+            }
+
+            // 查找属性值指向sensor_group类型的属性
+            for (HierarchyProperty property : sensorProperties) {
+                // 获取类型属性
+                HierarchyTypeProperty typeProperty = hierarchyTypePropertyService.getById(property.getTypePropertyId());
+                if (typeProperty == null) {
+                    continue;
+                }
+
+                // 获取属性字典
+                HierarchyTypePropertyDict dict = hierarchyTypePropertyDictService.getById(typeProperty.getPropertyDictId());
+                if (dict == null) {
+                    continue;
+                }
+
+                // 检查是否是层级类型属性(data_type=1001)
+                if (dict.getDataType().equals(DataTypeEnum.HIERARCHY.getCode())) {
+                    // 检查属性值指向的层级是否是sensor_group类型
+                    try {
+                        Long relatedHierarchyId = Long.parseLong(property.getPropertyValue());
+                        Hierarchy relatedHierarchy = hierarchyService.getById(relatedHierarchyId);
+
+                        if (relatedHierarchy != null && sensorGroupTypeId.equals(relatedHierarchy.getTypeId())) {
+                            // 找到了sensor_group
+                            log.debug("传感器 {} 属于sensor_group: {} (id={})",
+                                sensorId, relatedHierarchy.getName(), relatedHierarchyId);
+                            return relatedHierarchy.getName();
+                        }
+                    } catch (NumberFormatException e) {
+                        log.warn("传感器 {} 的属性值不是有效的层级ID: {}", sensorId, property.getPropertyValue());
+                    }
+                }
+            }
+
+            log.debug("传感器 {} 没有找到sensor_group属性", sensorId);
             return "未分类";
         } catch (Exception e) {
-            log.error("查找传感器{}所属三级系统失败", sensorId, e);
+            log.error("查找传感器{}所属sensor_group失败", sensorId, e);
             return "未分类";
         }
     }

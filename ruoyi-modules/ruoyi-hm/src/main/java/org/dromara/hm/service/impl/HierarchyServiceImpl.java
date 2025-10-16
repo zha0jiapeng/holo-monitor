@@ -258,13 +258,13 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
     private String calculateNormalFullCode(Hierarchy hierarchy) {
         // 1. 尝试从隐藏属性生成 fullCode（与传感器逻辑一致）
         String codePrefix = generateSensorCodePrefix(hierarchy.getId());
-        
+
         if (StringUtils.isNotBlank(codePrefix)) {
             // 如果有隐藏属性引用，使用隐藏属性前缀 + 当前code
             log.debug("层级 {} ({}) 使用隐藏属性生成 fullCode", hierarchy.getId(), hierarchy.getName());
             return codePrefix + hierarchy.getCode();
         }
-        
+
         // 2. 没有隐藏属性，使用传统逻辑（父级fullCode + 当前code）
         if (hierarchy.getParentId() != null) {
             // 有父级，获取父级的 fullCode 或 code
@@ -1145,14 +1145,19 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
 
     @Override
     public List<HierarchyVo> getSensorListByDeviceId(Long hierarchyId,boolean showAllFlag) {
-
         // 获取当前层级
         HierarchyVo currentHierarchy = queryById(hierarchyId,true);
+        if (currentHierarchy == null) {
+            log.warn("未找到 hierarchyId={} 的层级", hierarchyId);
+            return new ArrayList<>();
+        }
+
         List<HierarchyVo> allHierarchies = new ArrayList<>();
         allHierarchies.add(currentHierarchy);
 
         // 获取所有子层级
         List<HierarchyVo> childHierarchies = getAllChildrenOptimized(Arrays.asList(currentHierarchy));
+
         // 移除第一个元素（当前层级），避免重复处理
         if (!childHierarchies.isEmpty()) {
             childHierarchies.remove(0);
@@ -1163,8 +1168,8 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         batchLoadProperties(allHierarchies, false);
 
         // 批量获取所有层级绑定的传感器 - 重点优化
-
-        return getSensorsFromHierarchiesBatch(allHierarchies, showAllFlag);
+        List<HierarchyVo> result = getSensorsFromHierarchiesBatch(allHierarchies, showAllFlag);
+        return result;
     }
 
     /**
@@ -1181,6 +1186,10 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         Map<Long, HierarchyVo> hierarchyMap = new HashMap<>();
 
         for (HierarchyVo hierarchy : allHierarchies) {
+            log.debug("检查层级: id={}, name={}, haveSensorFlag={}, properties={}",
+                hierarchy.getId(), hierarchy.getName(), hierarchy.isHaveSensorFlag(),
+                hierarchy.getProperties() != null ? hierarchy.getProperties().size() : 0);
+
             if (hierarchy.isHaveSensorFlag() && hierarchy.getProperties() != null) {
                 for (HierarchyPropertyVo property : hierarchy.getProperties()) {
                     if (property.getTypeProperty() != null &&
@@ -1204,6 +1213,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         }
 
         if (allSensorIds.isEmpty()) {
+            log.warn("没有收集到任何传感器ID，返回空列表");
             return sensorList;
         }
 
@@ -1217,6 +1227,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                         .eq(HierarchyTypePropertyDict::getDictKey, "sensor_location"));
 
         if (sensorLocation == null) {
+            log.warn("未找到 sensor_location 字典，无法处理传感器数据，返回空列表");
             return sensorList;
         }
 
@@ -1226,6 +1237,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
                         .eq(HierarchyTypeProperty::getPropertyDictId, sensorLocation.getId()));
 
         if (hierarchyTypeProperty == null) {
+            log.warn("未找到 sensor_location 对应的类型属性，无法处理传感器数据，返回空列表");
             return sensorList;
         }
 
@@ -1287,7 +1299,7 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
      */
     private HierarchyVo processSensorData(HierarchyVo sensorVo, List<String> tags, boolean showAllFlag) {
         try {
-            JSONObject entries = SD400MPUtils.testpointFind(sensorVo.getCode());
+            JSONObject entries = SD400MPUtils.testpointFind(sensorVo.getFullCode());
             if (entries.getInt("code") == 200) {
                 String id = entries.getJSONObject("data").getStr("id");
                 JSONObject data = SD400MPUtils.data(Long.valueOf(id), tags, null);
@@ -2296,10 +2308,10 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             // 非传感器类型：统一使用基于隐藏属性的逻辑
             if (StringUtils.isNotBlank(current.getCode())) {
                 String expectedFullCode;
-                
+
                 // 尝试从隐藏属性生成 fullCode（与传感器逻辑一致）
                 String codePrefix = generateSensorCodePrefix(hierarchyId);
-                
+
                 if (StringUtils.isNotBlank(codePrefix)) {
                     // 如果有隐藏属性引用，使用隐藏属性前缀 + 当前code
                     expectedFullCode = codePrefix + current.getCode();

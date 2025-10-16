@@ -17,7 +17,10 @@
       "Bash(cat:*)",
       "Bash(else echo \"File not found\")",
       "Bash(git log:*)",
-      "Read(//d/**)"
+      "Read(//d/**)",
+      "Bash(then rm nul)",
+      "Bash(mysql:*)",
+      "Bash(where mysql)"
     ],
     "deny": [],
     "ask": []
