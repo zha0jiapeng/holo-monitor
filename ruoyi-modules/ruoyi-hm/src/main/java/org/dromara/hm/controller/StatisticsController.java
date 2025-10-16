@@ -60,8 +60,8 @@ import org.dromara.hm.service.IStatisticsService;
     }
 
     @GetMapping("/sensorGroupList")
-    public R<Map<String, List<HierarchyVo>>> sensorListGroupByThreeSystem(Long hierarchyId, boolean showAllFlag) {
-        Map<String, List<HierarchyVo>> result = statisticsService.sensorListGroupByThreeSystem(hierarchyId, showAllFlag);
+    public R<Map<String, Object>> sensorListGroupByThreeSystem(Long hierarchyId, boolean showAllFlag, Long sensorGroupId) {
+        Map<String, Object> result = statisticsService.sensorListGroupByThreeSystem(hierarchyId, showAllFlag, sensorGroupId);
         return R.ok(result);
     }
     @GetMapping("/deviceCategoryStatistics")

@@ -30,12 +30,13 @@
      List<HierarchyVo> sensorList(Long hierarchyId, boolean showAllFlag);
 
     /**
-     * 根据三级系统分组获取传感器列表
+     * 根据sensor_group分组获取传感器列表
      * @param hierarchyId 层级ID
      * @param showAllFlag 是否显示所有
-     * @return 按三级系统分组的传感器列表 Map<三级系统名称, List<传感器>>
+     * @param sensorGroupId sensor_group ID(可选,用于筛选指定的sensor_group)
+     * @return 按sensor_group分组的传感器列表，包含分组结构信息
      */
-    Map<String, List<HierarchyVo>> sensorListGroupByThreeSystem(Long hierarchyId, boolean showAllFlag);
+    Map<String, Object> sensorListGroupByThreeSystem(Long hierarchyId, boolean showAllFlag, Long sensorGroupId);
 
     /**
      * 按设备类型获取设备树形结构

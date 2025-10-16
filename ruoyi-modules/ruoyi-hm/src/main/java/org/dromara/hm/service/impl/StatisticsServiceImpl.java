@@ -2545,45 +2545,102 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     @Override
-    public Map<String, List<HierarchyVo>> sensorListGroupByThreeSystem(Long hierarchyId, boolean showAllFlag) {
-        log.info("开始按sensor_group分组查询 - hierarchyId: {}, showAllFlag: {}", hierarchyId, showAllFlag);
+    public Map<String, Object> sensorListGroupByThreeSystem(Long hierarchyId, boolean showAllFlag, Long sensorGroupId) {
+        Map<String, Object> result = new HashMap<>();
+        log.info("开始按sensor_group分组查询 - hierarchyId: {}, showAllFlag: {}, sensorGroupId: {}",
+            hierarchyId, showAllFlag, sensorGroupId);
 
         // 获取所有传感器列表
         List<HierarchyVo> sensorList = hierarchyService.getSensorListByDeviceId(hierarchyId, showAllFlag);
-
         log.info("查询到 {} 个传感器", sensorList != null ? sensorList.size() : 0);
 
-        if (sensorList == null || sensorList.isEmpty()) {
-            log.warn("传感器列表为空，返回空Map");
-            return new HashMap<>();
-        }
-
-        // 获取sensor_group类型ID
+        // 获取sensor_group类型
         HierarchyType sensorGroupType = getSensorGroupType();
         if (sensorGroupType == null) {
-            log.warn("未找到sensor_group类型，所有传感器归入'未分类'");
-            Map<String, List<HierarchyVo>> result = new HashMap<>();
-            result.put("未分类", sensorList);
+            log.warn("未找到sensor_group类型");
+            result.put("sensorGroupList", new ArrayList<>());
             return result;
         }
 
         log.info("找到sensor_group类型，ID: {}", sensorGroupType.getId());
 
-        // 批量查找所有传感器所属的sensor_group（优化性能）
-        Map<Long, String> sensorToGroupMap = batchFindSensorGroups(
-            sensorList.stream().map(HierarchyVo::getId).collect(Collectors.toList()),
-            sensorGroupType.getId()
-        );
-
-        // 按sensor_group分组
-        Map<String, List<HierarchyVo>> groupedSensors = new HashMap<>();
-        for (HierarchyVo sensor : sensorList) {
-            String sensorGroupName = sensorToGroupMap.getOrDefault(sensor.getId(), "未分类");
-            groupedSensors.computeIfAbsent(sensorGroupName, k -> new ArrayList<>()).add(sensor);
+        // 查询所有的sensor_group层级（包括没有传感器的）
+        // 如果传入了sensorGroupId，只查询该sensor_group
+        List<Hierarchy> allSensorGroups;
+        if (sensorGroupId != null) {
+            // 验证sensorGroupId是否存在
+            Hierarchy sensorGroup = hierarchyService.getById(sensorGroupId);
+            if (sensorGroup == null) {
+                log.warn("指定的sensorGroupId {} 不存在", sensorGroupId);
+                result.put("sensorGroupList", new ArrayList<>());
+                return result;
+            }
+            allSensorGroups = List.of(sensorGroup);
+            log.info("只查询指定的sensor_group: id={}, name={}", sensorGroup.getId(), sensorGroup.getName());
+        } else {
+            // 没有指定sensorGroupId，返回所有sensor_group（包括没有传感器的）
+            allSensorGroups = hierarchyService.lambdaQuery()
+                .eq(Hierarchy::getTypeId, sensorGroupType.getId())
+                .list();
+            log.info("未指定sensorGroupId，返回所有sensor_group（共{}个）", allSensorGroups.size());
         }
 
-        log.info("按sensor_group分组完成，共 {} 个分组", groupedSensors.size());
-        return groupedSensors;
+        // 如果有传感器，批量查找所有传感器所属的sensor_group
+        Map<Long, String> sensorToGroupNameMap = new HashMap<>();
+        Map<Long, Long> sensorToGroupIdMap = new HashMap<>();
+
+        if (sensorList != null && !sensorList.isEmpty()) {
+            Map<Long, String> groupMapping = batchFindSensorGroups(
+                sensorList.stream().map(HierarchyVo::getId).collect(Collectors.toList()),
+                sensorGroupType.getId()
+            );
+
+            // 构建sensor到groupId的映射
+            Map<String, Long> groupNameToIdMap = allSensorGroups.stream()
+                .collect(Collectors.toMap(Hierarchy::getName, Hierarchy::getId));
+
+            for (Map.Entry<Long, String> entry : groupMapping.entrySet()) {
+                Long sensorId = entry.getKey();
+                String groupName = entry.getValue();
+                sensorToGroupNameMap.put(sensorId, groupName);
+                if (groupNameToIdMap.containsKey(groupName)) {
+                    sensorToGroupIdMap.put(sensorId, groupNameToIdMap.get(groupName));
+                }
+            }
+        }
+
+        // 按sensor_group分组传感器
+        Map<Long, List<HierarchyVo>> groupedSensorsById = new HashMap<>();
+        if (sensorList != null) {
+            for (HierarchyVo sensor : sensorList) {
+                Long groupId = sensorToGroupIdMap.get(sensor.getId());
+                if (groupId != null) {
+                    groupedSensorsById.computeIfAbsent(groupId, k -> new ArrayList<>()).add(sensor);
+                }
+            }
+        }
+
+        // 构建返回结构（借鉴deviceCategoryStatistics的结构）
+        List<Map<String, Object>> sensorGroupList = new ArrayList<>();
+        for (Hierarchy sensorGroup : allSensorGroups) {
+            Map<String, Object> groupNode = new HashMap<>();
+            groupNode.put("id", sensorGroup.getId());
+            groupNode.put("name", sensorGroup.getName());
+            groupNode.put("code", sensorGroup.getCode());
+            groupNode.put("fullCode", sensorGroup.getFullCode());
+            groupNode.put("typeKey", "sensor_group");
+
+            // 获取该分组下的传感器列表
+            List<HierarchyVo> sensorsInGroup = groupedSensorsById.getOrDefault(sensorGroup.getId(), new ArrayList<>());
+            groupNode.put("sensors", sensorsInGroup);
+            groupNode.put("sensorCount", sensorsInGroup.size());
+
+            sensorGroupList.add(groupNode);
+        }
+
+        result.put("sensorGroupList", sensorGroupList);
+        log.info("按sensor_group分组完成，共 {} 个分组（包含缺省）", sensorGroupList.size());
+        return result;
     }
 
     /**
