@@ -31,8 +31,8 @@ import org.dromara.hm.service.IStatisticsService;
      private final IStatisticsService statisticsService;
 
     @GetMapping("/getTargetTypeCount")
-    public R<List<Map<String, Object>>> getTargetTypeList(Long hierarchyId,Long targetTypeId,@RequestParam(required = false) Long statisticsTypeId) {
-        return R.ok(statisticsService.getTargetTypeList(hierarchyId,targetTypeId,statisticsTypeId));
+    public R<List<Map<String, Object>>> getTargetTypeList(Long hierarchyId, Long targetTypeId, @RequestParam(required = false) Long statisticsTypeId, @RequestParam(required = false) Long sensorGroupId) {
+        return R.ok(statisticsService.getTargetTypeList(hierarchyId, targetTypeId, statisticsTypeId, sensorGroupId));
      }
 
      @GetMapping("/getNextHierarchyList")

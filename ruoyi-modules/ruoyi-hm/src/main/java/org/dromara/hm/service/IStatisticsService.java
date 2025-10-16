@@ -13,7 +13,7 @@
  public interface IStatisticsService {
 
 
-     List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId,Long statisticsTypeId);
+     List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId, Long statisticsTypeId, Long sensorGroupId);
 
 
      List<HierarchyVo> getNextHierarchyList(Long hierarchyId, Long targetTypeId);

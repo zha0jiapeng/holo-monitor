@@ -383,13 +383,13 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     @Override
-    public List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId, Long statisticsTypeId) {
+    public List<Map<String, Object>> getTargetTypeList(Long hierarchyId, Long targetTypeId, Long statisticsTypeId, Long sensorGroupId) {
         Hierarchy h = hierarchyService.getById(hierarchyId);
         HierarchyType type = hierarchyTypeService.getById(h.getTypeId());
 
         if (isDeviceType(type.getTypeKey())) {
             // 设备类型：通过传感器绑定统计
-            return getTargetTypeListByDeviceBinding(hierarchyId, targetTypeId, type);
+            return getTargetTypeListByDeviceBinding(hierarchyId, targetTypeId, type, sensorGroupId);
         } else {
             // 非设备类型：通过层级关系统计
             return getTargetTypeListByHierarchyRelation(hierarchyId, targetTypeId, statisticsTypeId);
@@ -399,16 +399,130 @@ public class StatisticsServiceImpl implements IStatisticsService {
     /**
      * 设备类型通过传感器绑定统计目标类型列表
      */
-    private List<Map<String, Object>> getTargetTypeListByDeviceBinding(Long hierarchyId, Long targetTypeId, HierarchyType type) {
+    private List<Map<String, Object>> getTargetTypeListByDeviceBinding(Long hierarchyId, Long targetTypeId, HierarchyType type, Long sensorGroupId) {
         // 获取级联子类型ID
         List<Long> typeIds = getCascadeChildTypeIds(type.getId());
 
         // 获取传感器ID列表
         List<Long> sensorIds = getSensorIdsByDeviceBinding(hierarchyId, typeIds);
 
-            // 目标层级类型具体层级
-            List<Hierarchy> targetHierarchys = hierarchyService.lambdaQuery()
-                .eq(Hierarchy::getTypeId, targetTypeId).list();
+        // 如果传入了sensorGroupId且targetTypeId=17(传感器类型)，需要过滤传感器并改变查询逻辑
+        if (sensorGroupId != null && targetTypeId == 17) {
+            log.info("传入了sensorGroupId={} 且 targetTypeId=17，查找属于该sensor_group的所有传感器类型（缺省展示）", sensorGroupId);
+
+            Hierarchy targetSensorGroup = hierarchyService.getById(sensorGroupId);
+            if (targetSensorGroup == null) {
+                log.warn("指定的sensorGroupId {} 不存在", sensorGroupId);
+                return new ArrayList<>();
+            }
+
+            // 1. 查询所有targetTypeId=17的sensor_type层级
+            List<Hierarchy> allSensorTypes = hierarchyService.lambdaQuery()
+                .eq(Hierarchy::getTypeId, targetTypeId)
+                .list();
+
+            if (allSensorTypes.isEmpty()) {
+                log.warn("未找到任何sensor_type层级");
+                return new ArrayList<>();
+            }
+
+            // 2. 查询sensor_group属性字典
+            HierarchyTypePropertyDict sensorGroupDict = hierarchyTypePropertyDictService.lambdaQuery()
+                .eq(HierarchyTypePropertyDict::getDictKey, "sensor_group")
+                .one();
+
+            if (sensorGroupDict == null) {
+                log.warn("未找到sensor_group属性字典");
+                return new ArrayList<>();
+            }
+
+            // 3. 查询sensor_type类型的sensor_group属性配置
+            HierarchyTypeProperty sensorGroupTypeProperty = hierarchyTypePropertyService.lambdaQuery()
+                .eq(HierarchyTypeProperty::getPropertyDictId, sensorGroupDict.getId())
+                .eq(HierarchyTypeProperty::getTypeId, targetTypeId)
+                .one();
+
+            if (sensorGroupTypeProperty == null) {
+                log.warn("sensor_type类型未配置sensor_group属性");
+                return new ArrayList<>();
+            }
+
+            // 4. 批量查询所有sensor_type的sensor_group属性值
+            List<Long> allSensorTypeIds = allSensorTypes.stream()
+                .map(Hierarchy::getId)
+                .collect(Collectors.toList());
+
+            List<HierarchyProperty> sensorGroupProperties = hierarchyPropertyService.lambdaQuery()
+                .in(HierarchyProperty::getHierarchyId, allSensorTypeIds)
+                .eq(HierarchyProperty::getTypePropertyId, sensorGroupTypeProperty.getId())
+                .list();
+
+            // 5. 过滤出属于指定sensorGroupId的sensor_type
+            Set<Long> filteredSensorTypeIds = sensorGroupProperties.stream()
+                .filter(prop -> String.valueOf(sensorGroupId).equals(prop.getPropertyValue()))
+                .map(HierarchyProperty::getHierarchyId)
+                .collect(Collectors.toSet());
+
+            if (filteredSensorTypeIds.isEmpty()) {
+                log.info("该sensor_group下没有配置任何sensor_type");
+                return new ArrayList<>();
+            }
+
+            log.info("找到 {} 个属于sensor_group={} 的sensor_type（缺省列表）",
+                filteredSensorTypeIds.size(), targetSensorGroup.getName());
+
+            // 6. 过滤传感器：只保留属于这些sensor_type的传感器
+            Map<Long, Long> sensorToSensorTypeMap = findBelongingTargetHierarchiesBatch(sensorIds, targetTypeId);
+
+            // 只保留sensor_type在filteredSensorTypeIds中的传感器
+            List<Long> filteredSensorIds = sensorIds.stream()
+                .filter(sensorId -> {
+                    Long sensorTypeId = sensorToSensorTypeMap.get(sensorId);
+                    return sensorTypeId != null && filteredSensorTypeIds.contains(sensorTypeId);
+                })
+                .collect(Collectors.toList());
+
+            log.info("过滤后属于该sensor_group的传感器数量: {}", filteredSensorIds.size());
+
+            // 7. 统计每个sensor_type的传感器数量
+            Map<Long, Long> sensorTypeCountMap = new HashMap<>();
+            for (Map.Entry<Long, Long> entry : sensorToSensorTypeMap.entrySet()) {
+                Long sensorId = entry.getKey();
+                Long sensorTypeId = entry.getValue();
+                if (filteredSensorIds.contains(sensorId) && filteredSensorTypeIds.contains(sensorTypeId)) {
+                    sensorTypeCountMap.put(sensorTypeId, sensorTypeCountMap.getOrDefault(sensorTypeId, 0L) + 1);
+                }
+            }
+
+            // 8. 获取属于该sensor_group的所有sensor_type层级（包括count=0的）
+            List<Hierarchy> filteredSensorTypes = allSensorTypes.stream()
+                .filter(st -> filteredSensorTypeIds.contains(st.getId()))
+                .collect(Collectors.toList());
+
+            // 9. 查询属性
+            Map<Long, String> sortMap = getSortValuesForHierarchies(new ArrayList<>(filteredSensorTypeIds));
+            Map<Long, String> iconMap = getIconValuesForHierarchies(new ArrayList<>(filteredSensorTypeIds));
+
+            // 10. 构造返回结果，返回所有属于该sensor_group的sensor_type（包括count=0的）
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Hierarchy sensorType : filteredSensorTypes) {
+                Long count = sensorTypeCountMap.getOrDefault(sensorType.getId(), 0L);
+                String sort = sortMap.get(sensorType.getId());
+                String icon = iconMap.get(sensorType.getId());
+                result.add(buildResultItem(sensorType.getName(), count, sort, icon));
+                log.info("传感器类型: {}, count: {}", sensorType.getName(), count);
+            }
+
+            // 按count降序排列
+            sortResultByCountDesc(result);
+            log.info("返回 {} 个传感器类型（包含count=0的缺省展示）", result.size());
+            return result;
+        }
+
+        // 原有逻辑：未传sensorGroupId或targetTypeId!=17
+        // 目标层级类型具体层级 - 始终查询所有targetTypeId对应的层级
+        List<Hierarchy> targetHierarchys = hierarchyService.lambdaQuery()
+            .eq(Hierarchy::getTypeId, targetTypeId).list();
 
             // 根据传感器ID列表，统计每个目标层级下的传感器数量
             Map<Long, Long> sensorCountMap = new HashMap<>();
@@ -437,7 +551,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         Map<Long, String> sortMap = getSortValuesForHierarchies(targetHierarchyIds);
         Map<Long, String> iconMap = getIconValuesForHierarchies(targetHierarchyIds);
 
-        // 构造返回结果 - 返回所有目标层级,包括count为0的
+        // 构造返回结果 - 返回所有目标层级(包括count为0的)
         List<Map<String, Object>> result = new ArrayList<>();
         for (Hierarchy targetHierarchy : targetHierarchys) {
             Long count = sensorCountMap.getOrDefault(targetHierarchy.getId(), 0L);
@@ -598,7 +712,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         // 先检查 targetTypeId 是否在层级树下（适用于所有类型）
         List<Long> matchedIds = new ArrayList<>();
         findMatchingDescendants(hierarchyId, targetTypeId, matchedIds);
-        
+
         if (matchedIds.isEmpty()) {
             // targetTypeId 不在层级树下，使用属性维度统计
             log.info("hierarchyId={} 下未找到 targetTypeId={} 的层级，使用属性维度统计", hierarchyId, targetTypeId);
@@ -608,7 +722,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         // targetTypeId 在层级树下，根据 hierarchyId 和 targetTypeId 类型选择统计策略
         HierarchyType targetHierarchyType = hierarchyTypeService.getById(targetTypeId);
         boolean targetIsDeviceType = targetHierarchyType != null && isDeviceType(targetHierarchyType.getTypeKey());
-        
+
         if (isDeviceType(hierarchyType.getTypeKey()) && !targetIsDeviceType) {
             // hierarchyId 是设备类型，但 targetTypeId 不是设备类型（如三级系统）：使用反向统计逻辑
             log.info("hierarchyId={} 是设备类型，targetTypeId={} 不是设备类型，使用反向统计", hierarchyId, targetTypeId);
@@ -1219,9 +1333,9 @@ public class StatisticsServiceImpl implements IStatisticsService {
      * @param sensorHierarchyType 传感器类型
      * @return 统计结果
      */
-    private Map<String, Object> alarmByPropertyDimension(Long hierarchyId, Long targetTypeId, 
+    private Map<String, Object> alarmByPropertyDimension(Long hierarchyId, Long targetTypeId,
             Integer statisticalType, HierarchyType sensorHierarchyType) {
-        log.info("执行属性维度报警统计 - hierarchyId: {}, targetTypeId: {}, statisticalType: {}", 
+        log.info("执行属性维度报警统计 - hierarchyId: {}, targetTypeId: {}, statisticalType: {}",
                 hierarchyId, targetTypeId, statisticalType);
 
         if (statisticalType == 1) {
@@ -1236,7 +1350,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
     /**
      * 按属性维度 + 设备点维度统计报警
      */
-    private Map<String, Object> alarmByPropertyDimensionDeviceLevel(Long hierarchyId, Long targetTypeId, 
+    private Map<String, Object> alarmByPropertyDimensionDeviceLevel(Long hierarchyId, Long targetTypeId,
             HierarchyType sensorHierarchyType) {
         log.info("执行属性维度设备点统计 - hierarchyId: {}, targetTypeId: {}", hierarchyId, targetTypeId);
 
@@ -1386,7 +1500,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
     /**
      * 按属性维度 + 传感器维度统计报警
      */
-    private Map<String, Object> alarmByPropertyDimensionSensorLevel(Long hierarchyId, Long targetTypeId, 
+    private Map<String, Object> alarmByPropertyDimensionSensorLevel(Long hierarchyId, Long targetTypeId,
             HierarchyType sensorHierarchyType) {
         log.info("执行属性维度传感器统计 - hierarchyId: {}, targetTypeId: {}", hierarchyId, targetTypeId);
 
@@ -1415,8 +1529,8 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         // 4. 查询传感器的属性值，建立传感器到目标维度的映射
         Map<Long, Long> sensorToTargetMap = getSensorPropertyMapping(
-                allSensors.stream().map(Hierarchy::getId).collect(Collectors.toList()), 
-                propertyDict.getId(), 
+                allSensors.stream().map(Hierarchy::getId).collect(Collectors.toList()),
+                propertyDict.getId(),
                 sensorHierarchyType.getId());
 
         log.info("建立了 {} 个传感器的属性映射", sensorToTargetMap.size());
@@ -1531,7 +1645,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                     Long targetId = Long.parseLong(property.getPropertyValue());
                     mapping.put(property.getHierarchyId(), targetId);
                 } catch (NumberFormatException e) {
-                    log.warn("属性值格式错误：hierarchyId={}, value={}", 
+                    log.warn("属性值格式错误：hierarchyId={}, value={}",
                             property.getHierarchyId(), property.getPropertyValue());
                 }
             }
@@ -2837,7 +2951,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 查找指定层级下的所有指定类型的层级
-     * 
+     *
      * @param hierarchyId 父层级ID
      * @param typeIds 目标类型ID列表
      * @return 符合条件的层级列表
@@ -2870,7 +2984,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 获取设备点绑定的传感器映射
-     * 
+     *
      * @param devicePointIds 设备点ID列表
      * @return 设备点ID到传感器ID列表的映射
      */
@@ -2921,7 +3035,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                     }
                     bindingMap.put(property.getHierarchyId(), sensorIds);
                 } catch (NumberFormatException e) {
-                    log.warn("设备点 {} 的传感器绑定属性值格式错误: {}", 
+                    log.warn("设备点 {} 的传感器绑定属性值格式错误: {}",
                             property.getHierarchyId(), property.getPropertyValue());
                 }
             }
@@ -3231,14 +3345,14 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         // 获取变电站的类型
         HierarchyType stationType = hierarchyTypeService.getById(station.getTypeId());
-        log.info("变电站信息: id={}, name={}, typeKey={}", station.getId(), station.getName(), 
+        log.info("变电站信息: id={}, name={}, typeKey={}", station.getId(), station.getName(),
             stationType != null ? stationType.getTypeKey() : "未知");
 
         // 查找该变电站下的所有设备区域（device_group, type_id=24）
         HierarchyType deviceGroupType = hierarchyTypeService.lambdaQuery()
             .eq(HierarchyType::getTypeKey, "device_group")
             .one();
-        
+
         if (deviceGroupType == null) {
             log.warn("未找到设备区域类型(device_group)");
             result.put("deviceTypeTree", new ArrayList<>());
@@ -3265,7 +3379,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         // 批量加载设备区域的设备大类属性
         List<Long> deviceGroupIds = deviceGroups.stream().map(Hierarchy::getId).collect(Collectors.toList());
-        List<HierarchyProperty> deviceGroupProperties = deviceGroupIds.isEmpty() ? new ArrayList<>() 
+        List<HierarchyProperty> deviceGroupProperties = deviceGroupIds.isEmpty() ? new ArrayList<>()
             : hierarchyPropertyService.lambdaQuery()
                 .in(HierarchyProperty::getHierarchyId, deviceGroupIds)
                 .eq(HierarchyProperty::getPropertyDictId, deviceCategoryDict.getId())
@@ -3335,7 +3449,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         // 批量加载设备大类的图标属性（click_icon 和 unclick_icon）
         Map<Long, String> categoryClickIcons = new HashMap<>();
         Map<Long, String> categoryUnclickIcons = new HashMap<>();
-        
+
         if (!categoryIds.isEmpty()) {
             // 获取图标属性字典
             HierarchyTypePropertyDict clickIconDict = hierarchyTypePropertyDictService.lambdaQuery()
@@ -3372,13 +3486,13 @@ public class StatisticsServiceImpl implements IStatisticsService {
                     ));
             }
 
-            log.info("加载了 {} 个设备大类的click_icon，{} 个unclick_icon", 
+            log.info("加载了 {} 个设备大类的click_icon，{} 个unclick_icon",
                 categoryClickIcons.size(), categoryUnclickIcons.size());
         }
 
         // 构建树形结构
         List<Map<String, Object>> deviceTypeTreeList = new ArrayList<>();
-        
+
         for (Hierarchy deviceCategory : deviceCategories) {
             Map<String, Object> deviceCategoryNode = new HashMap<>();
             deviceCategoryNode.put("id", deviceCategory.getId());
@@ -3387,7 +3501,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
             deviceCategoryNode.put("fullCode", deviceCategory.getFullCode());
             deviceCategoryNode.put("typeKey", "device_category");
             deviceCategoryNode.put("level", "deviceCategory");
-            
+
             // 添加图标属性
             deviceCategoryNode.put("clickIcon", categoryClickIcons.getOrDefault(deviceCategory.getId(), ""));
             deviceCategoryNode.put("unclickIcon", categoryUnclickIcons.getOrDefault(deviceCategory.getId(), ""));
@@ -3395,7 +3509,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
             // 获取该设备大类下的设备区域
             List<Hierarchy> groupsInCategory = categoryToDeviceGroups.get(deviceCategory.getId());
             List<Map<String, Object>> deviceGroupList = new ArrayList<>();
-            
+
             if (groupsInCategory != null) {
                 for (Hierarchy deviceGroup : groupsInCategory) {
                     Map<String, Object> deviceGroupNode = buildDeviceGroupTree(deviceGroup);
@@ -3443,7 +3557,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 .list();
         }
 
-        log.debug("设备区域 {} 下有 {} 个设备，自身绑定 {} 个传感器，自身报警等级: {}", 
+        log.debug("设备区域 {} 下有 {} 个设备，自身绑定 {} 个传感器，自身报警等级: {}",
             deviceGroup.getName(), devices.size(), selfSensorIds.size(), selfAlarmLevel);
 
         // 构建设备节点并收集子集最高报警等级
@@ -3452,7 +3566,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
         for (Hierarchy device : devices) {
             Map<String, Object> deviceNode = buildDeviceTree(device);
             deviceList.add(deviceNode);
-            
+
             // 获取子节点的综合报警等级
             Integer childAlarmLevel = (Integer) deviceNode.get("alarmLevel");
             if (childAlarmLevel != null && childAlarmLevel > childrenAlarmLevel) {
@@ -3500,7 +3614,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 .list();
         }
 
-        log.debug("设备 {} 下有 {} 个设备点，自身绑定 {} 个传感器，自身报警等级: {}", 
+        log.debug("设备 {} 下有 {} 个设备点，自身绑定 {} 个传感器，自身报警等级: {}",
             device.getName(), devicePoints.size(), selfSensorIds.size(), selfAlarmLevel);
 
         // 构建设备点节点并收集子集最高报警等级
@@ -3519,12 +3633,12 @@ public class StatisticsServiceImpl implements IStatisticsService {
             devicePointNode.put("fullCode", devicePoint.getFullCode());
             devicePointNode.put("typeKey", "device_point");
             devicePointNode.put("level", "devicePoint");
-            
+
             // 设备点没有子集，所以selfAlarmLevel就是alarmLevel
             devicePointNode.put("selfAlarmLevel", dpAlarmLevel);
             devicePointNode.put("childrenAlarmLevel", 0);  // 设备点没有子集
             devicePointNode.put("alarmLevel", dpAlarmLevel);
-            
+
             devicePointList.add(devicePointNode);
 
             // 更新父节点的子集报警等级
@@ -3544,7 +3658,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 获取层级绑定的传感器ID列表
-     * 
+     *
      * @param hierarchyId 层级ID
      * @return 传感器ID列表
      */
@@ -3585,7 +3699,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 获取传感器的报警等级
-     * 
+     *
      * @param sensorIds 传感器ID列表
      * @return 传感器ID到报警等级的映射
      */
@@ -3621,7 +3735,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
                     alarmLevels.put(property.getHierarchyId(), alarmLevel);
                 }
             } catch (NumberFormatException e) {
-                log.warn("解析报警等级失败: hierarchyId={}, value={}", 
+                log.warn("解析报警等级失败: hierarchyId={}, value={}",
                     property.getHierarchyId(), property.getPropertyValue());
             }
         }
@@ -3631,7 +3745,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
     /**
      * 计算最高报警等级
-     * 
+     *
      * @param sensorIds 传感器ID列表
      * @param sensorAlarmLevels 传感器报警等级映射
      * @return 最高报警等级
