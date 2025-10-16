@@ -378,7 +378,57 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
             .collect(Collectors.toList());
 
         if (!validProperties.isEmpty()) {
+            // 维护每个属性的 propertyDictId（从 HierarchyTypeProperty 中获取）
+            enrichPropertiesWithDictId(validProperties);
             hierarchyPropertyMapper.insertBatch(validProperties);
+        }
+    }
+
+    /**
+     * 为属性列表填充 propertyDictId 字段
+     * 从 HierarchyTypeProperty 中查询并设置对应的 propertyDictId
+     *
+     * @param properties 属性列表
+     */
+    private void enrichPropertiesWithDictId(List<HierarchyProperty> properties) {
+        if (properties == null || properties.isEmpty()) {
+            return;
+        }
+
+        // 收集所有的 typePropertyId
+        Set<Long> typePropertyIds = properties.stream()
+            .map(HierarchyProperty::getTypePropertyId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+
+        if (typePropertyIds.isEmpty()) {
+            return;
+        }
+
+        // 批量查询 HierarchyTypeProperty，获取 propertyDictId
+        List<HierarchyTypeProperty> typeProperties = hierarchyTypePropertyMapper.selectList(
+            Wrappers.<HierarchyTypeProperty>lambdaQuery()
+                .in(HierarchyTypeProperty::getId, typePropertyIds)
+        );
+
+        // 构建 typePropertyId -> propertyDictId 的映射
+        Map<Long, Long> typePropertyToDictIdMap = typeProperties.stream()
+            .filter(tp -> tp.getPropertyDictId() != null)
+            .collect(Collectors.toMap(
+                HierarchyTypeProperty::getId,
+                HierarchyTypeProperty::getPropertyDictId
+            ));
+
+        // 为每个属性设置 propertyDictId
+        for (HierarchyProperty property : properties) {
+            if (property.getTypePropertyId() != null) {
+                Long dictId = typePropertyToDictIdMap.get(property.getTypePropertyId());
+                if (dictId != null) {
+                    property.setPropertyDictId(dictId);
+                    log.debug("为属性 typePropertyId={} 设置 propertyDictId={}",
+                        property.getTypePropertyId(), dictId);
+                }
+            }
         }
     }
 

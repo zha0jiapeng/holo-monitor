@@ -18,14 +18,15 @@
 
      List<HierarchyVo> getNextHierarchyList(Long hierarchyId, Long targetTypeId);
 
-    Map<String, Object> alarm(Long hierarchyId, Long targetTypeId, Integer statisticalType);
+    Map<String, Object> alarm(Long hierarchyId, Long targetTypeId, Integer statisticalType, Long sensorGroupId);
 
     /**
      * 实时报警列表统计
      * @param hierarchyId 层级ID
+     * @param sensorGroupId sensor_group ID(可选,用于过滤传感器)
      * @return 实时报警统计数据
      */
-    Map<String, Object> alarmList(Long hierarchyId);
+    Map<String, Object> alarmList(Long hierarchyId, Long sensorGroupId);
 
      List<HierarchyVo> sensorList(Long hierarchyId, boolean showAllFlag);
 

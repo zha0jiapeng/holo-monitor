@@ -42,14 +42,14 @@ import org.dromara.hm.service.IStatisticsService;
      }
 
      @GetMapping("/alarm")
-     public R<Map<String,Object>> alarm(Long hierarchyId,Long targetTypeId,Integer statisticalType) {
-        Map<String,Object> result =  statisticsService.alarm(hierarchyId,targetTypeId,statisticalType);
+     public R<Map<String,Object>> alarm(Long hierarchyId,Long targetTypeId,Integer statisticalType, @RequestParam(required = false) Long sensorGroupId) {
+        Map<String,Object> result =  statisticsService.alarm(hierarchyId,targetTypeId,statisticalType, sensorGroupId);
         return R.ok(result);
      }
 
      @GetMapping("/alarmList")
-     public R<Map<String,Object>> alarmList(Long hierarchyId) {
-        Map<String,Object> result =  statisticsService.alarmList(hierarchyId);
+     public R<Map<String,Object>> alarmList(Long hierarchyId, @RequestParam(required = false) Long sensorGroupId) {
+        Map<String,Object> result =  statisticsService.alarmList(hierarchyId, sensorGroupId);
         return R.ok(result);
      }
 

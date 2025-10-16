@@ -694,9 +694,15 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     @Override
-    public Map<String, Object> alarm(Long hierarchyId, Long targetTypeId, Integer statisticalType) {
+    public Map<String, Object> alarm(Long hierarchyId, Long targetTypeId, Integer statisticalType, Long sensorGroupId) {
         if (statisticalType == null) {
             statisticalType = 2; // 默认为被监测设备统计
+        }
+
+        // 如果传入了sensorGroupId且targetTypeId=17，使用特殊逻辑过滤sensor_type
+        if (sensorGroupId != null && targetTypeId == 17) {
+            log.info("传入了sensorGroupId={} 且 targetTypeId=17，使用sensor_group过滤逻辑", sensorGroupId);
+            return alarmBySensorGroupFilter(hierarchyId, targetTypeId, statisticalType, sensorGroupId);
         }
 
         // 通用前置逻辑：获取传感器类型
@@ -744,6 +750,345 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 return alarmByMonitoredDevice(targetHierarchies, sensorHierarchyType, targetTypeId);
             }
         }
+    }
+
+    /**
+     * 按sensor_group过滤的报警统计（targetTypeId=17特殊处理）
+     */
+    private Map<String, Object> alarmBySensorGroupFilter(Long hierarchyId, Long targetTypeId, Integer statisticalType, Long sensorGroupId) {
+        log.info("执行sensor_group过滤报警统计 - hierarchyId: {}, targetTypeId: {}, statisticalType: {}, sensorGroupId: {}",
+            hierarchyId, targetTypeId, statisticalType, sensorGroupId);
+
+        // 1. 查询所有targetTypeId=17的sensor_type层级
+        List<Hierarchy> allSensorTypes = hierarchyService.lambdaQuery()
+            .eq(Hierarchy::getTypeId, targetTypeId)
+            .list();
+
+        if (allSensorTypes.isEmpty()) {
+            log.warn("未找到任何sensor_type层级");
+            return createEmptyResult(targetTypeId, statisticalType);
+        }
+
+        // 2. 查询sensor_group属性字典
+        HierarchyTypePropertyDict sensorGroupDict = hierarchyTypePropertyDictService.lambdaQuery()
+            .eq(HierarchyTypePropertyDict::getDictKey, "sensor_group")
+            .one();
+
+        if (sensorGroupDict == null) {
+            log.warn("未找到sensor_group属性字典");
+            return createEmptyResult(targetTypeId, statisticalType);
+        }
+
+        // 3. 查询sensor_type类型的sensor_group属性配置
+        HierarchyTypeProperty sensorGroupTypeProperty = hierarchyTypePropertyService.lambdaQuery()
+            .eq(HierarchyTypeProperty::getPropertyDictId, sensorGroupDict.getId())
+            .eq(HierarchyTypeProperty::getTypeId, targetTypeId)
+            .one();
+
+        if (sensorGroupTypeProperty == null) {
+            log.warn("sensor_type类型未配置sensor_group属性");
+            return createEmptyResult(targetTypeId, statisticalType);
+        }
+
+        // 4. 批量查询所有sensor_type的sensor_group属性值
+        List<Long> allSensorTypeIds = allSensorTypes.stream()
+            .map(Hierarchy::getId)
+            .collect(Collectors.toList());
+
+        List<HierarchyProperty> sensorGroupProperties = hierarchyPropertyService.lambdaQuery()
+            .in(HierarchyProperty::getHierarchyId, allSensorTypeIds)
+            .eq(HierarchyProperty::getTypePropertyId, sensorGroupTypeProperty.getId())
+            .list();
+
+        // 5. 过滤出属于指定sensorGroupId的sensor_type（这就是目标层级列表）
+        Set<Long> filteredSensorTypeIds = sensorGroupProperties.stream()
+            .filter(prop -> String.valueOf(sensorGroupId).equals(prop.getPropertyValue()))
+            .map(HierarchyProperty::getHierarchyId)
+            .collect(Collectors.toSet());
+
+        if (filteredSensorTypeIds.isEmpty()) {
+            log.info("该sensor_group下没有配置任何sensor_type");
+            return createEmptyResult(targetTypeId, statisticalType);
+        }
+
+        List<Hierarchy> filteredSensorTypes = allSensorTypes.stream()
+            .filter(st -> filteredSensorTypeIds.contains(st.getId()))
+            .collect(Collectors.toList());
+
+        log.info("找到 {} 个属于sensor_group的sensor_type，使用属性维度统计", filteredSensorTypes.size());
+
+        // 6. 获取传感器类型
+        HierarchyType sensorHierarchyType = getHierarchyTypeByKey("sensor");
+        if (sensorHierarchyType == null) {
+            return createEmptyResult(targetTypeId, statisticalType);
+        }
+
+        // 7. 使用属性维度统计（按filteredSensorTypes作为统计维度）
+        if (statisticalType == 1) {
+            // 按设备点维度统计
+            return alarmBySensorGroupFilterDeviceLevel(hierarchyId, filteredSensorTypes, sensorHierarchyType, targetTypeId);
+        } else {
+            // 按传感器维度统计
+            return alarmBySensorGroupFilterSensorLevel(hierarchyId, filteredSensorTypes, sensorHierarchyType, targetTypeId);
+        }
+    }
+
+    /**
+     * sensor_group过滤 + 设备点维度统计
+     */
+    private Map<String, Object> alarmBySensorGroupFilterDeviceLevel(Long hierarchyId, List<Hierarchy> targetSensorTypes,
+            HierarchyType sensorHierarchyType, Long targetTypeId) {
+        log.info("执行sensor_group过滤设备点统计 - hierarchyId: {}, targetTypeId: {}, 过滤后sensor_type数量: {}",
+            hierarchyId, targetTypeId, targetSensorTypes.size());
+
+        // 1. 查找对应的属性字典（sensor_type属性）
+        HierarchyTypePropertyDict propertyDict = findPropertyDictForTargetType(targetTypeId);
+        if (propertyDict == null) {
+            log.warn("targetTypeId={} 没有对应的属性字典，无法进行属性维度统计", targetTypeId);
+            return createEmptyResult(targetTypeId, 1);
+        }
+
+        log.info("找到属性字典：{} (key={})", propertyDict.getDictName(), propertyDict.getDictKey());
+
+        // 2. 获取 device 和 device_point 类型ID
+        List<Long> deviceTypeIds = getTypeIdsByKeys(List.of("device", "device_point"));
+        if (deviceTypeIds.isEmpty()) {
+            log.warn("未找到设备类型");
+            return createEmptyResult(targetTypeId, 1);
+        }
+
+        // 3. 查找 hierarchyId 下的所有设备点
+        List<Hierarchy> allDevicePoints = findAllHierarchiesUnderTarget(hierarchyId, deviceTypeIds);
+        if (allDevicePoints.isEmpty()) {
+            log.warn("hierarchyId={} 下没有找到设备点", hierarchyId);
+            return createEmptyResult(targetTypeId, 1);
+        }
+
+        log.info("找到 {} 个设备点", allDevicePoints.size());
+
+        // 4. 获取所有报警的传感器ID
+        Map<Long, Integer> sensorAlarmLevels = getSensorAlarmLevels(sensorHierarchyType.getId());
+
+        // 5. 查询所有设备点绑定的传感器
+        Map<Long, List<Long>> devicePointToSensorsMap = getDevicePointSensorBindings(
+                allDevicePoints.stream().map(Hierarchy::getId).collect(Collectors.toList()));
+
+        log.info("查询到 {} 个设备点的传感器绑定关系", devicePointToSensorsMap.size());
+
+        // 6. 查询传感器的属性值，建立传感器到目标维度的映射
+        List<Long> allSensorIds = devicePointToSensorsMap.values().stream()
+                .flatMap(List::stream)
+                .distinct()
+                .collect(Collectors.toList());
+
+        Map<Long, Long> sensorToTargetMap = getSensorPropertyMapping(
+                allSensorIds, propertyDict.getId(), sensorHierarchyType.getId());
+
+        log.info("建立了 {} 个传感器的属性映射", sensorToTargetMap.size());
+
+        // 7. 提取过滤后的sensor_type ID集合
+        Set<Long> filteredSensorTypeIds = targetSensorTypes.stream()
+                .map(Hierarchy::getId)
+                .collect(Collectors.toSet());
+
+        // 8. 按维度分组统计设备点（只统计属于filteredSensorTypes的）
+        List<Map<String, Object>> statistics = new ArrayList<>();
+        int totalDeviceCount = 0;
+        int totalAlarmDeviceCount = 0;
+        int totalGeneralCount = 0;
+        int totalSeriousCount = 0;
+
+        for (Hierarchy targetDimension : targetSensorTypes) {
+            // 找到属于该维度的设备点（通过其绑定的传感器判断）
+            List<Hierarchy> devicePointsInDimension = allDevicePoints.stream()
+                    .filter(devicePoint -> {
+                        List<Long> sensorIds = devicePointToSensorsMap.get(devicePoint.getId());
+                        if (sensorIds == null || sensorIds.isEmpty()) {
+                            return false;
+                        }
+                        // 只要有一个传感器属于该维度，就算该设备点属于该维度
+                        return sensorIds.stream()
+                                .anyMatch(sensorId -> targetDimension.getId().equals(sensorToTargetMap.get(sensorId)));
+                    })
+                    .collect(Collectors.toList());
+
+            // 统计报警设备点
+            int generalCount = 0;
+            int seriousCount = 0;
+            List<Map<String, Object>> alarmDevices = new ArrayList<>();
+
+            for (Hierarchy devicePoint : devicePointsInDimension) {
+                List<Long> sensorIds = devicePointToSensorsMap.get(devicePoint.getId());
+                if (sensorIds == null || sensorIds.isEmpty()) {
+                    continue;
+                }
+
+                // 筛选出属于当前维度的传感器
+                List<Long> dimensionSensorIds = sensorIds.stream()
+                        .filter(sensorId -> targetDimension.getId().equals(sensorToTargetMap.get(sensorId)))
+                        .collect(Collectors.toList());
+
+                if (dimensionSensorIds.isEmpty()) {
+                    continue;
+                }
+
+                // 计算该设备点的最高报警级别
+                int maxAlarmLevel = dimensionSensorIds.stream()
+                        .map(sensorId -> sensorAlarmLevels.getOrDefault(sensorId, 0))
+                        .max(Integer::compareTo)
+                        .orElse(0);
+
+                if (maxAlarmLevel > 0) {
+                    if (maxAlarmLevel >= 3) {
+                        seriousCount++;
+                    } else {
+                        generalCount++;
+                    }
+
+                    Map<String, Object> alarmDevice = new HashMap<>();
+                    alarmDevice.put("id", devicePoint.getId());
+                    alarmDevice.put("name", devicePoint.getName());
+                    alarmDevice.put("typeId", devicePoint.getTypeId());
+                    alarmDevice.put("report_st", maxAlarmLevel);
+                    alarmDevices.add(alarmDevice);
+                }
+            }
+
+            Map<String, Object> stat = new HashMap<>();
+            stat.put("targetHierarchyName", targetDimension.getName());
+            stat.put("targetHierarchyId", targetDimension.getId());
+            stat.put("totalDeviceCount", devicePointsInDimension.size());
+            stat.put("alarmDeviceCount", generalCount + seriousCount);
+            stat.put("generalCount", generalCount);
+            stat.put("seriousCount", seriousCount);
+            stat.put("alarmDevices", alarmDevices);
+
+            statistics.add(stat);
+            totalDeviceCount += devicePointsInDimension.size();
+            totalAlarmDeviceCount += (generalCount + seriousCount);
+            totalGeneralCount += generalCount;
+            totalSeriousCount += seriousCount;
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("statisticalType", 1);
+        result.put("targetTypeId", targetTypeId);
+        result.put("totalDeviceCount", totalDeviceCount);
+        result.put("totalAlarmDeviceCount", totalAlarmDeviceCount);
+        result.put("totalOfflineDeviceCount", 0); // sensor_group过滤暂不支持离线设备统计
+        result.put("totalGeneralCount", totalGeneralCount);
+        result.put("totalSeriousCount", totalSeriousCount);
+        result.put("statistics", statistics);
+
+        log.info("sensor_group过滤设备点统计完成：共 {} 个维度，包含 {} 个设备点（{} 个报警）",
+                targetSensorTypes.size(), totalDeviceCount, totalAlarmDeviceCount);
+
+        return result;
+    }
+
+    /**
+     * sensor_group过滤 + 传感器维度统计
+     */
+    private Map<String, Object> alarmBySensorGroupFilterSensorLevel(Long hierarchyId, List<Hierarchy> targetSensorTypes,
+            HierarchyType sensorHierarchyType, Long targetTypeId) {
+        log.info("执行sensor_group过滤传感器统计 - hierarchyId: {}, targetTypeId: {}, 过滤后sensor_type数量: {}",
+            hierarchyId, targetTypeId, targetSensorTypes.size());
+
+        // 1. 查找对应的属性字典（sensor_type属性）
+        HierarchyTypePropertyDict propertyDict = findPropertyDictForTargetType(targetTypeId);
+        if (propertyDict == null) {
+            log.warn("targetTypeId={} 没有对应的属性字典，无法进行属性维度统计", targetTypeId);
+            return createEmptyResult(targetTypeId, 2);
+        }
+
+        log.info("找到属性字典：{} (key={})", propertyDict.getDictName(), propertyDict.getDictKey());
+
+        // 2. 查找 hierarchyId 下的所有传感器
+        List<Hierarchy> allSensors = getSensorsForHierarchy(hierarchyId, sensorHierarchyType.getId());
+        if (allSensors.isEmpty()) {
+            log.warn("hierarchyId={} 下没有找到传感器", hierarchyId);
+            return createEmptyResult(targetTypeId, 2);
+        }
+
+        log.info("找到 {} 个传感器", allSensors.size());
+
+        // 3. 获取所有报警和离线的传感器ID
+        Map<Long, Integer> sensorAlarmLevels = getSensorAlarmLevels(sensorHierarchyType.getId());
+        List<Long> offlineSensorIds = getOfflineFlagHierarchyIds(sensorHierarchyType.getId());
+
+        // 4. 查询传感器的属性值，建立传感器到目标维度的映射
+        Map<Long, Long> sensorToTargetMap = getSensorPropertyMapping(
+                allSensors.stream().map(Hierarchy::getId).collect(Collectors.toList()),
+                propertyDict.getId(),
+                sensorHierarchyType.getId());
+
+        log.info("建立了 {} 个传感器的属性映射", sensorToTargetMap.size());
+
+        // 5. 提取过滤后的sensor_type ID集合
+        Set<Long> filteredSensorTypeIds = targetSensorTypes.stream()
+                .map(Hierarchy::getId)
+                .collect(Collectors.toSet());
+
+        // 6. 按维度分组统计（只统计属于filteredSensorTypes的）
+        List<Map<String, Object>> statistics = new ArrayList<>();
+        int totalSensorCount = 0;
+        int totalAlarmSensorCount = 0;
+        int totalOfflineSensorCount = 0;
+
+        for (Hierarchy targetDimension : targetSensorTypes) {
+            // 找到属于该维度的传感器（只保留属于filteredSensorTypes的）
+            List<Hierarchy> sensorsInDimension = allSensors.stream()
+                    .filter(sensor -> {
+                        Long mappedTypeId = sensorToTargetMap.get(sensor.getId());
+                        return targetDimension.getId().equals(mappedTypeId) &&
+                               filteredSensorTypeIds.contains(mappedTypeId);
+                    })
+                    .collect(Collectors.toList());
+
+            // 统计报警传感器
+            List<Hierarchy> alarmSensors = sensorsInDimension.stream()
+                    .filter(sensor -> {
+                        Integer alarmLevel = sensorAlarmLevels.get(sensor.getId());
+                        return alarmLevel != null && alarmLevel > 0;
+                    })
+                    .collect(Collectors.toList());
+
+            // 统计离线传感器
+            List<Hierarchy> offlineSensors = sensorsInDimension.stream()
+                    .filter(sensor -> offlineSensorIds.contains(sensor.getId()))
+                    .collect(Collectors.toList());
+
+            Map<String, Object> stat = new HashMap<>();
+            stat.put("targetHierarchyName", targetDimension.getName());
+            stat.put("targetHierarchyId", targetDimension.getId());
+            stat.put("totalSensorCount", sensorsInDimension.size());
+            stat.put("alarmSensorCount", alarmSensors.size());
+            stat.put("alarmSensors", alarmSensors.stream()
+                    .map(h -> Map.of("id", h.getId(), "name", h.getName(), "typeId", h.getTypeId()))
+                    .toList());
+            stat.put("offlineSensorCount", offlineSensors.size());
+            stat.put("offlineSensors", offlineSensors.stream()
+                    .map(h -> Map.of("id", h.getId(), "name", h.getName(), "typeId", h.getTypeId()))
+                    .toList());
+
+            statistics.add(stat);
+            totalSensorCount += sensorsInDimension.size();
+            totalAlarmSensorCount += alarmSensors.size();
+            totalOfflineSensorCount += offlineSensors.size();
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("statisticalType", 2);
+        result.put("targetTypeId", targetTypeId);
+        result.put("totalSensorCount", totalSensorCount);
+        result.put("totalAlarmSensorCount", totalAlarmSensorCount);
+        result.put("totalOfflineSensorCount", totalOfflineSensorCount);
+        result.put("statistics", statistics);
+
+        log.info("sensor_group过滤传感器统计完成：共 {} 个维度，包含 {} 个传感器（{} 个报警，{} 个离线）",
+                targetSensorTypes.size(), totalSensorCount, totalAlarmSensorCount, totalOfflineSensorCount);
+
+        return result;
     }
 
     /**
@@ -2366,7 +2711,7 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     @Override
-    public Map<String, Object> alarmList(Long hierarchyId) {
+    public Map<String, Object> alarmList(Long hierarchyId, Long sensorGroupId) {
         long methodStartTime = System.currentTimeMillis();
         Map<String, Object> result = new HashMap<>();
 
@@ -2406,6 +2751,49 @@ public class StatisticsServiceImpl implements IStatisticsService {
                 sensors = findAllSensorsUnderTarget(hierarchyId, sensorTypeId);
             }
             log.info("步骤3-查找传感器耗时: {}ms, 找到{}个传感器", System.currentTimeMillis() - step3Start, sensors.size());
+
+            // 3.5. 如果传入了sensorGroupId，需要过滤传感器（直接通过传感器的sensor_group属性）
+            if (sensorGroupId != null && !sensors.isEmpty()) {
+                log.info("传入了sensorGroupId={}, 直接通过传感器的sensor_group属性过滤", sensorGroupId);
+
+                // 查询sensor_group属性字典获取dict_id
+                HierarchyTypePropertyDict sensorGroupDict = hierarchyTypePropertyDictService.lambdaQuery()
+                    .eq(HierarchyTypePropertyDict::getDictKey, "sensor_group")
+                    .one();
+
+                if (sensorGroupDict == null) {
+                    log.warn("未找到sensor_group属性字典");
+                    sensors = new ArrayList<>();
+                } else {
+                    // 直接根据dict_id查询传感器的sensor_group属性值
+                    List<Long> sensorIdsList = sensors.stream()
+                        .map(Hierarchy::getId)
+                        .collect(Collectors.toList());
+
+                    List<HierarchyProperty> sensorGroupProperties = hierarchyPropertyService.lambdaQuery()
+                        .in(HierarchyProperty::getHierarchyId, sensorIdsList)
+                        .eq(HierarchyProperty::getPropertyDictId, sensorGroupDict.getId())
+                        .eq(HierarchyProperty::getPropertyValue, String.valueOf(sensorGroupId))
+                        .list();
+
+                    // 获取过滤后的传感器ID集合
+                    Set<Long> filteredSensorIds = sensorGroupProperties.stream()
+                        .map(HierarchyProperty::getHierarchyId)
+                        .collect(Collectors.toSet());
+
+                    if (filteredSensorIds.isEmpty()) {
+                        log.info("没有传感器属于sensor_group={}", sensorGroupId);
+                        sensors = new ArrayList<>();
+                    } else {
+                        // 只保留属于指定sensor_group的传感器
+                        sensors = sensors.stream()
+                            .filter(sensor -> filteredSensorIds.contains(sensor.getId()))
+                            .collect(Collectors.toList());
+
+                        log.info("过滤后的传感器数量: {}", sensors.size());
+                    }
+                }
+            }
 
             if (sensors.isEmpty()) {
                 result.put("totalEvents", 0);
