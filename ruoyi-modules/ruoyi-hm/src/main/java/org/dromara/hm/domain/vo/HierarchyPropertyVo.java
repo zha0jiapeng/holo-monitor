@@ -46,6 +46,8 @@ public class HierarchyPropertyVo implements Serializable {
     @ExcelProperty(value = "属性key")
     private Long typePropertyId;
 
+    private Long propertyDictId;
+
     /**
      * 属性值
      */
