@@ -1968,21 +1968,20 @@ public class StatisticsServiceImpl implements IStatisticsService {
         }
 
         // 查找该属性字典对应的类型属性
-        HierarchyTypeProperty typeProperty = hierarchyTypePropertyService.getOne(
-                Wrappers.<HierarchyTypeProperty>lambdaQuery()
-                        .eq(HierarchyTypeProperty::getPropertyDictId, propertyDictId)
-                        .eq(HierarchyTypeProperty::getTypeId, sensorTypeId));
-
-        if (typeProperty == null) {
-            log.warn("传感器类型未配置该属性，propertyDictId={}", propertyDictId);
-            return mapping;
-        }
+//        HierarchyTypeProperty typeProperty = hierarchyTypePropertyService.getOne(
+//                Wrappers.<HierarchyTypeProperty>lambdaQuery()
+//                        .eq(HierarchyTypeProperty::getPropertyDictId, propertyDictId)
+//                        .eq(HierarchyTypeProperty::getTypeId, sensorTypeId));
+//
+//        if (typeProperty == null) {
+//            log.warn("传感器类型未配置该属性，propertyDictId={}", propertyDictId);
+//            return mapping;
+//        }
 
         // 查询所有传感器的属性值
         List<HierarchyProperty> properties = hierarchyPropertyService.list(
                 Wrappers.<HierarchyProperty>lambdaQuery()
-                        .eq(HierarchyProperty::getTypePropertyId, typeProperty.getId())
-                        .in(HierarchyProperty::getHierarchyId, sensorIds));
+                        .eq(HierarchyProperty::getPropertyDictId, propertyDictId));
 
         for (HierarchyProperty property : properties) {
             if (property.getPropertyValue() != null && !property.getPropertyValue().trim().isEmpty()) {

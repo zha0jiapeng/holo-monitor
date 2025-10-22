@@ -2064,14 +2064,6 @@ public class HierarchyServiceImpl extends ServiceImpl<HierarchyMapper, Hierarchy
         hierarchyVo.setProperties(properties);
     }
 
-
-
-
-
-
-
-
-
     @Override
     public Long getIdByNameAndType(String name, Long typeId) {
         List<Hierarchy> list = lambdaQuery()
