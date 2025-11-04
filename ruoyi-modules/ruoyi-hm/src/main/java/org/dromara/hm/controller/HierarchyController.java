@@ -177,6 +177,7 @@ public class HierarchyController extends BaseController {
      */
     //@SaCheckPermission("hm:hierarchyTypeProperty:list")
     @GetMapping("/getLocationByHierarchyId/{hierarchyId}")
+    @SaIgnore
     public R<JSONObject> getLocationByHierarchyId(@PathVariable("hierarchyId") Long hierarchyId) {
         return R.ok(hierarchyService.getLocationByHierarchyId(hierarchyId));
     }

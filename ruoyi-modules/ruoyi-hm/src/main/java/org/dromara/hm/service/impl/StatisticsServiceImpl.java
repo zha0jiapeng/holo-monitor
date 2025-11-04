@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.dromara.common.core.utils.StringUtils;
 import org.dromara.common.core.utils.sd400mp.MPIDMultipleJson;
 import org.dromara.common.core.utils.sd400mp.SD400MPUtils;
 import org.dromara.hm.domain.*;
@@ -1708,12 +1709,13 @@ public class StatisticsServiceImpl implements IStatisticsService {
 
         log.info("找到属性字典：{} (key={})", propertyDict.getDictName(), propertyDict.getDictKey());
 
-        // 2. 获取 device 和 device_point 类型ID
-        List<Long> deviceTypeIds = getTypeIdsByKeys(List.of("device", "device_point"));
-        if (deviceTypeIds.isEmpty()) {
-            log.warn("未找到设备类型");
+        // 2. 获取 device_point 类型ID（statisticalType=1 只统计设备点，保持与正向统计一致）
+        HierarchyType devicePointType = getHierarchyTypeByKey("device_point");
+        if (devicePointType == null) {
+            log.warn("未找到device_point类型");
             return createEmptyResult(targetTypeId, 1);
         }
+        List<Long> deviceTypeIds = List.of(devicePointType.getId());
 
         // 3. 查找 hierarchyId 下的所有设备点
         List<Hierarchy> allDevicePoints = findAllHierarchiesUnderTarget(hierarchyId, deviceTypeIds);
@@ -1745,8 +1747,17 @@ public class StatisticsServiceImpl implements IStatisticsService {
         log.info("建立了 {} 个传感器的属性映射", sensorToTargetMap.size());
 
         // 7. 查询所有目标类型的层级（作为统计维度标签）
-        List<Hierarchy> targetDimensions = hierarchyService.list(
-                Wrappers.<Hierarchy>lambdaQuery().eq(Hierarchy::getTypeId, targetTypeId));
+        // 只获取在 hierarchyId 层级树下的目标类型层级，避免统计到其他层级的设备
+        List<Long> targetDimensionIds = new ArrayList<>(new HashSet<>(sensorToTargetMap.values()));
+        List<Hierarchy> targetDimensions;
+        if (targetDimensionIds.isEmpty()) {
+            log.warn("没有找到任何传感器映射到目标维度");
+            return createEmptyResult(targetTypeId, 1);
+        }
+        targetDimensions = hierarchyService.list(
+                Wrappers.<Hierarchy>lambdaQuery()
+                        .eq(Hierarchy::getTypeId, targetTypeId)
+                        .in(Hierarchy::getId, targetDimensionIds));
 
         log.info("找到 {} 个统计维度", targetDimensions.size());
 
@@ -1881,8 +1892,17 @@ public class StatisticsServiceImpl implements IStatisticsService {
         log.info("建立了 {} 个传感器的属性映射", sensorToTargetMap.size());
 
         // 5. 查询所有目标类型的层级（作为统计维度标签）
-        List<Hierarchy> targetDimensions = hierarchyService.list(
-                Wrappers.<Hierarchy>lambdaQuery().eq(Hierarchy::getTypeId, targetTypeId));
+        // 只获取在 hierarchyId 层级树下的目标类型层级，避免统计到其他层级的传感器
+        List<Long> targetDimensionIds = new ArrayList<>(new HashSet<>(sensorToTargetMap.values()));
+        List<Hierarchy> targetDimensions;
+        if (targetDimensionIds.isEmpty()) {
+            log.warn("没有找到任何传感器映射到目标维度");
+            return createEmptyResult(targetTypeId, 2);
+        }
+        targetDimensions = hierarchyService.list(
+                Wrappers.<Hierarchy>lambdaQuery()
+                        .eq(Hierarchy::getTypeId, targetTypeId)
+                        .in(Hierarchy::getId, targetDimensionIds));
 
         log.info("找到 {} 个统计维度", targetDimensions.size());
 
@@ -2710,18 +2730,28 @@ public class StatisticsServiceImpl implements IStatisticsService {
     }
 
     @Override
-    public Map<String, Object> alarmList(Long hierarchyId, Long sensorGroupId) {
+    public Map<String, Object> alarmList(Long hierarchyId, Long sensorGroupId,String startTimeStr,String endTimeStr,String groupKeys) {
         long methodStartTime = System.currentTimeMillis();
         Map<String, Object> result = new HashMap<>();
 
         try {
+            LocalDateTime endend = LocalDateTime.now();
             // 1. 计算时间范围：当前时间-1天到现在
-            LocalDateTime now = LocalDateTime.now();
-            LocalDateTime yesterday = now.minusDays(30);
+            LocalDateTime fromfrom =  endend.minusDays(30);;
+            if(StringUtils.isNotEmpty(startTimeStr)){
+                fromfrom = LocalDateTime.parse(startTimeStr, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            }
+            if(StringUtils.isNotEmpty(endTimeStr)){
+                endend = LocalDateTime.parse(endTimeStr, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            }
+            if(StringUtils.isEmpty(groupKeys)){
+                groupKeys = "sys:st,sys:mont/pd/dia/st/sum";
+            }
+
 
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'+08:00'");
-            String fromTime = yesterday.format(formatter);
-            String toTime = now.format(formatter);
+            String fromTime = fromfrom.format(formatter);
+            String toTime = endend.format(formatter);
 
             log.info("查询时间范围: {} 到 {}", fromTime, toTime);
 
@@ -2929,14 +2959,13 @@ public class StatisticsServiceImpl implements IStatisticsService {
                     long step9Start = System.currentTimeMillis();
                     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                     List<Map<String, Object>> allEvents = new ArrayList<>();
-
+                    String[] split = groupKeys.split("\\,");
+                    List<String> keys = new ArrayList<>(Arrays.asList(split));
                     eventList.getGroups().forEach((key, group) -> {
                         String tagTitle = group.getTag() != null ? group.getTag().getTitle() : null;
-                        // 只保留这两个key
-                        if (!key.equals("sys:st") && !key.equals("sys:mont/pd/dia/st/sum")) {
+                        if(!keys.contains(key)){
                             return;
                         }
-
                         // 处理该分组中的所有事件
                         group.getEvents().forEach(event -> {
                             Map<String, Object> eventInfo = new HashMap<>();

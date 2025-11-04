@@ -26,7 +26,7 @@
      * @param sensorGroupId sensor_group ID(可选,用于过滤传感器)
      * @return 实时报警统计数据
      */
-    Map<String, Object> alarmList(Long hierarchyId, Long sensorGroupId);
+    Map<String, Object> alarmList(Long hierarchyId, Long sensorGroupId,String startTime,String endTime,String groupKeys);
 
      List<HierarchyVo> sensorList(Long hierarchyId, boolean showAllFlag);
 

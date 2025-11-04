@@ -48,14 +48,20 @@ import org.dromara.hm.service.IStatisticsService;
      }
 
      @GetMapping("/alarmList")
-     public R<Map<String,Object>> alarmList(Long hierarchyId, @RequestParam(required = false) Long sensorGroupId) {
-        Map<String,Object> result =  statisticsService.alarmList(hierarchyId, sensorGroupId);
+     public R<Map<String,Object>> alarmList(Long hierarchyId, @RequestParam(required = false) Long sensorGroupId,
+                                            @RequestParam(required = false)String startTime,
+                                            @RequestParam(required = false)String endTime,
+                                            @RequestParam(required = false)String groupKeys) {
+        Map<String,Object> result =  statisticsService.alarmList(hierarchyId, sensorGroupId,startTime,endTime,groupKeys);
         return R.ok(result);
      }
 
     @GetMapping("/sensorList")
     public R<List<HierarchyVo>> sensorList(Long hierarchyId,boolean showAllFlag) {
         List<HierarchyVo> list =  statisticsService.sensorList(hierarchyId,showAllFlag);
+        for (HierarchyVo hierarchyVo : list) {
+            hierarchyVo.setCode(hierarchyVo.getFullCode());
+        }
         return R.ok(list);
     }
 
